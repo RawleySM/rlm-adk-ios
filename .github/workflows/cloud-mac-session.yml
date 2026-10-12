@@ -1,0 +1,65 @@
+# Interactive cloud Mac session. The runner joins Rawley's tailnet as an ephemeral tag:ci-mac
+# node with Tailscale SSH on, prepares the project, then stays up until the time runs out or
+# someone releases it. Start and use it with scripts/cloud-mac (start / ssh / stop).
+# Auth is Tailscale workload identity federation: GitHub's OIDC token for this repo is
+# exchanged for an auth key, so there is no secret to store or rotate.
+name: cloud-mac-session
+
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "How long to keep the Mac on the tailnet (1-330)"
+        type: number
+        default: 60
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: cloud-mac-session
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  session:
+    runs-on: macos-latest
+    timeout-minutes: 345
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Join tailnet (tag:ci-mac, Tailscale SSH)
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ vars.TS_OIDC_CLIENT_ID }}
+          audience: ${{ vars.TS_AUDIENCE }}
+          tags: tag:ci-mac
+          hostname: rlm-adk-ios-mac
+          args: --ssh
+
+      - name: Prepare project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+          sw_vers -productVersion
+          xcodebuild -version
+          echo "workspace: $GITHUB_WORKSPACE"
+          printf '%s\n' "$GITHUB_WORKSPACE" > /tmp/cloud-mac-workspace
+
+      - name: Hold for the session
+        env:
+          MINUTES: ${{ inputs.minutes }}
+        run: |
+          minutes=$(( MINUTES < 1 ? 1 : (MINUTES > 330 ? 330 : MINUTES) ))
+          end=$(( $(date +%s) + minutes * 60 ))
+          echo "On the tailnet as $(tailscale status --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"])') for ${minutes} min."
+          echo "Release early: scripts/cloud-mac stop (touches /tmp/release-cloud-mac)."
+          while [ "$(date +%s)" -lt "$end" ] && [ ! -f /tmp/release-cloud-mac ]; do
+            echo "$(date -u +%H:%M:%SZ) $(( (end - $(date +%s)) / 60 )) min left"
+            sleep 60
+          done
+          echo "Session over."

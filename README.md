@@ -9,3 +9,4 @@ SwiftUI app for Rawley's iPhone that will connect to rlm-adk over the Tailscale 
 - Apple Developer account: KeePassXC entry
   "Apple Developer + App Store Connect - Individual - Enrollment 9Z9523324Y". Device builds,
   signing and TestFlight wait for the Team ID and an App Store Connect API key.
+- Hands-on cloud Mac over the tailnet: `scripts/cloud-mac start`, then `cloud-mac ssh`. See `AGENTS.md`.

@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# cloud-mac: start, enter and stop a GitHub-hosted macOS runner that joins the tailnet.
+#
+#   cloud-mac start [minutes]   dispatch cloud-mac-session.yml and wait until the Mac is reachable
+#   cloud-mac ssh [command...]  open a shell (or run a command) in the project checkout on the Mac
+#   cloud-mac status            show the latest session run and whether the Mac is online
+#   cloud-mac stop              release the session early (the run then finishes normally)
+#
+# Needs: gh (logged in to RawleySM), tailscale, ssh. Runs from any device on the tailnet.
+set -euo pipefail
+
+REPO="RawleySM/rlm-adk-ios"
+WORKFLOW="cloud-mac-session.yml"
+SSH_USER="runner"
+# NOTE [Context]: each session is a fresh VM with new host keys under a reused name, so known_hosts is skipped.
+SSH_OPTS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ServerAliveInterval=30)
+
+mac_host() {
+  tailscale status --json | python3 -c '
+import json, sys
+peers = json.load(sys.stdin).get("Peer") or {}
+online = [p for p in peers.values() if "tag:ci-mac" in (p.get("Tags") or []) and p.get("Online")]
+online.sort(key=lambda p: p.get("Created", ""), reverse=True)
+print(online[0]["DNSName"].rstrip(".") if online else "")'
+}
+
+latest_run() {
+  gh run list -R "$REPO" --workflow "$WORKFLOW" --limit 1 --json databaseId,status,conclusion,createdAt,url \
+    --jq '.[0] | "\(.databaseId) \(.status) \(.conclusion // "-") \(.createdAt) \(.url)"'
+}
+
+case "${1:-}" in
+  start)
+    minutes="${2:-60}"
+    before="$(gh run list -R "$REPO" --workflow "$WORKFLOW" --limit 1 --json databaseId --jq '.[0].databaseId // 0')"
+    gh workflow run "$WORKFLOW" -R "$REPO" -f minutes="$minutes"
+    echo "Dispatched a ${minutes}-minute session; waiting for the run..."
+    run=""
+    for _ in $(seq 1 30); do
+      run="$(gh run list -R "$REPO" --workflow "$WORKFLOW" --limit 1 --json databaseId --jq '.[0].databaseId // 0')"
+      [ "$run" != "$before" ] && break
+      sleep 4
+    done
+    echo "Run: https://github.com/$REPO/actions/runs/$run"
+    echo "Waiting for the Mac to join the tailnet (usually 2-4 minutes)..."
+    for _ in $(seq 1 120); do
+      host="$(mac_host)"
+      if [ -n "$host" ] && ssh "${SSH_OPTS[@]}" -o ConnectTimeout=10 "$SSH_USER@$host" test -f /tmp/cloud-mac-workspace 2>/dev/null; then
+        echo "Ready: $host  (cloud-mac ssh)"
+        exit 0
+      fi
+      status="$(gh run view "$run" -R "$REPO" --json status,conclusion --jq '.status + " " + (.conclusion // "")')"
+      case "$status" in completed*) echo "Run ended before the Mac was ready: $status"; exit 1 ;; esac
+      sleep 5
+    done
+    echo "Timed out waiting for the Mac; check the run page." >&2
+    exit 1
+    ;;
+  ssh)
+    shift
+    host="$(mac_host)"
+    [ -n "$host" ] || { echo "No cloud Mac online. Run: cloud-mac start" >&2; exit 1; }
+    if [ "$#" -gt 0 ]; then
+      ssh "${SSH_OPTS[@]}" "$SSH_USER@$host" "cd \"\$(cat /tmp/cloud-mac-workspace)\" && $*"
+    else
+      ssh -t "${SSH_OPTS[@]}" "$SSH_USER@$host" 'cd "$(cat /tmp/cloud-mac-workspace)" && exec "$SHELL" -l'
+    fi
+    ;;
+  status)
+    echo "Latest session run: $(latest_run)"
+    host="$(mac_host)"
+    echo "Cloud Mac on tailnet: ${host:-none}"
+    ;;
+  stop)
+    host="$(mac_host)"
+    [ -n "$host" ] || { echo "No cloud Mac online."; exit 0; }
+    ssh "${SSH_OPTS[@]}" "$SSH_USER@$host" touch /tmp/release-cloud-mac
+    echo "Released $host; the run will finish within a minute."
+    ;;
+  *)
+    sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
+    exit 2
+    ;;
+esac
