@@ -10,6 +10,9 @@ the existing pipeline products and connect them to durable tasks, projects, and 
   requirements, and backend knowledge organization.
 - [Architecture research prompt](architecture-research-prompt.md): a self-contained prompt for
   investigating the current interfaces and comparing front-end and backend options.
+- [Recent live-voice tooling research prompt](live-voice-landscape-research-prompt.md): a focused
+  review of recent open-source and hybrid voice stacks, using OpenAI live voice as the performance
+  reference and total operating cost as a significant selection factor.
 - [Architecture research](architecture-research.md): source inventory, native audio considerations,
   Theographic and retrieval comparisons, proposed components and interfaces, and a phased proof plan.
 

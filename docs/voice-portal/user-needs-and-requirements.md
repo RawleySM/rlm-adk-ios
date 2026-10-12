@@ -2,7 +2,7 @@
 
 Rawley wants a personal application that connects Scripture, devotional teaching, prayer, life context, and practical responsibilities to real work carried out by RLM-ADK. Voice is the primary interface. The application should help him spend less time looking at a screen while directing projects, receiving timely reminders, and reviewing their outputs.
 
-These requirements come from the October 12, 2026 conversation and the subsequent clarification about native iOS development and backend organization. They describe desired product behavior, not a claim that the current backend or phone already supports it. The latest explicit choices govern the modes and proactive behavior below.
+These requirements come from the October 12, 2026 conversation and the subsequent clarifications about native iOS development, backend organization, foundational live voice, and cost. They describe desired product behavior, not a claim that the current backend or phone already supports it. The latest explicit choices govern the modes and proactive behavior below.
 
 ## User and intended outcomes
 
@@ -46,6 +46,8 @@ Existing pipelines have accumulated prayer, life-context, teaching, Scripture, a
 
 ## Core voice experience
 
+Live voice is a central product requirement. The app must support the natural, free-flowing interaction Rawley experienced in this requirements conversation: interrupting, adding details, changing activities, and interviewing about a story while the backend carries work forward. Choosing the live-voice API and its surrounding tooling is therefore a foundational architecture decision.
+
 **VOICE-01 — Speak naturally.** The user can ask questions, provide details, correct an interpretation, direct a project, and reprioritize work without navigating menus for ordinary operations.
 
 **VOICE-02 — Interrupt and change context.** During Scripture or devotional playback, speech stops the playback and lets the user choose the next activity. The system remembers the passage, what was actually heard, and the interrupted activity. It resumes when directed; an interruption does not require automatic resumption.
@@ -55,6 +57,24 @@ Existing pipelines have accumulated prayer, life-context, teaching, Scripture, a
 **VOICE-04 — Switch the visible view when needed.** A spoken request to review a storyboard, inspect a project, or play a finished video brings up the appropriate material. A switch to a project does not imply that an unproduced storyboard or deliverable is already available.
 
 **VOICE-05 — Stay usable without looking.** Ordinary navigation, playback control, status queries, project selection, prioritization, and revision requests should work by voice. Visual review remains available for frames, videos, documents, and other artifacts.
+
+**VOICE-06 — Provide a live conversational interface.** Support responsive streaming speech, natural turn taking, interruption, and continuous conversational context during an exchange. Evaluate simultaneous listening and speaking, partial utterances, spoken corrections, and the transition from conversation into backend work. A sequence of record/upload/respond forms is insufficient for the intended experience.
+
+**VOICE-07 — Use OpenAI live voice as the performance gold standard.** OpenAI's live-voice API is Rawley's chosen reference for conversational naturalness, responsiveness, interruption handling, and delegation to the backend. Evaluate the current GPT-Live and Realtime offerings explicitly and identify the exact model/API used as the benchmark. This sets the product's target experience; it is not a claim that a head-to-head comparison of every alternative has already established a universal winner.
+
+**VOICE-08 — Keep voice and execution independently selectable.** The live-voice frontend must connect to RLM-ADK and its local or hosted reasoning/services without requiring the voice provider to become the durable task, project, or knowledge owner. Compare recent open-source frameworks, speech models, and hybrid stacks against the OpenAI reference while preserving the user's mode and continuity requirements.
+
+## Voice cost and subscription expectations
+
+Cost is a significant driver of the ultimate voice choice. Preserve the desired conversational quality while evaluating affordable daily operation, including local/open-source and hybrid arrangements. The reference experience does not predetermine the selected provider.
+
+**COST-01 — Compare total ongoing cost against the required experience.** Show costs for realistic active-conversation, prayer, quiet, and available-idle workloads. Compare the lowest-cost credible options that satisfy the required interaction quality, and explain the experience lost by cheaper compromises. A monthly budget is not yet specified.
+
+**COST-02 — Separate Pro subscription use from API billing.** Rawley has ChatGPT Pro and is concerned about heavy voice usage. Treat Pro/ChatGPT usage and application API usage as separate budgets; do not assume Pro includes an API allowance. Verify the applicable API billing/credit arrangement rather than assuming subscription credits can fund it. OpenAI's current documentation separates API pricing from subscription usage. [OpenAI subscription and API pricing distinction](https://learn.chatgpt.com/docs/pricing).
+
+**COST-03 — Separate recording from paid voice-session lifetime.** Continuous recording must not automatically imply an always-open paid voice session. Investigate how session closure/reconnection, local capture, wake handling, and proactive calendar/phase prompts can coexist with natural voice. GPT-Live currently bills active session duration, including silence and backend waits; muting alone does not end billing. [OpenAI voice cost accounting](https://developers.openai.com/api/docs/guides/voice-latency-cost).
+
+**COST-04 — Make usage and ownership costs inspectable.** Track voice session duration, backend model/tool use, transcription, storage, hosted compute, and local compute assumptions separately. Open-source code or open weights do not imply zero operating cost. Include hardware compatibility, power, implementation and maintenance effort, and any required hosted dependencies in the comparison.
 
 ## Recording and spoken engagement
 
@@ -151,7 +171,7 @@ Parts mapping, a Christian IFS book, original devotionals, ministry services, an
 
 The interface should have clear prayer and quiet controls, an understandable recording state, and a simple way to view the current artifact or project. Ordinary operations should require little screen attention. Project selection and priority changes should also be available by voice.
 
-Voice may be provided by an external service while reasoning and execution use local or hosted models. The user is open to local inference, OpenAI, Claude, or another suitable backend; provider selection is unresolved.
+The live-voice API is a foundational component, with OpenAI as the user-selected performance benchmark and cost as a significant driver of the ultimate choice. Voice may be provided by an external service while reasoning and execution use local or hosted models. The user is open to local inference, OpenAI, Claude, or another suitable backend; provider selection remains unresolved. The separate live-voice landscape research prompt compares recent open-source and hybrid options against this experience.
 
 Research must cover unreliable connectivity, application restarts, recording interruptions, simultaneous phone audio, deferred reminders, and long-running jobs. Identify what must remain durable outside any individual voice session and how the user learns about incomplete work.
 
@@ -167,6 +187,8 @@ This is a private deployment. Preserve existing safeguards and applicable reposi
 6. Standing task preferences and how existing execution authority applies to delegated practical work.
 7. Scripture and devotional source choices and spoken versus inspectable source presentation.
 8. A proposed first complete user journey and a phased scope that preserves the eventual vision.
+9. Live-voice API and tooling selection: compare recent open-source and hybrid options against the OpenAI performance reference, establish an acceptable quality floor, and identify the cost/latency tradeoffs.
+10. Voice usage and monthly budget assumptions; separate Pro subscription usage from API billing, and compare paid session lifetime with continuous local recording and background work.
 
 ## Scenario acceptance criteria
 
@@ -186,4 +208,6 @@ This is a private deployment. Preserve existing safeguards and applicable reposi
 | A corrected prayer or repaired source arrives | Relevant derived context is updated using the source revision/change contract; prior evidence and the correction remain distinguishable. |
 | Theographic supplies context for a verse | The entity/passage link resolves to retained source evidence and the appropriate Scripture edition; unresolved mappings are visible. |
 | A simulator build succeeds | Report simulator success separately from signed-device installation and microphone/background proof. |
+| A live-voice alternative is recommended | Its interruption, naturalness, latency, backend handoff, and mode behavior are compared against the OpenAI reference; limitations and total cost are explicit. |
+| The app is recording during a long quiet or prayer interval | Capture and saved mode state persist; any paid voice-session lifetime and cost are separately represented rather than inferred from microphone activity. |
 | The platform cannot meet continuous phone recording | The research identifies the exact limitation and proposes explicit alternatives without claiming the requirement has been satisfied. |

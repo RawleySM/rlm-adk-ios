@@ -6,6 +6,8 @@ Research date: October 12, 2026. Scope: source inspection and architecture resea
 
 Use the existing **SwiftUI iPhone repository** for the portal. Give the app ownership of recording, playback position, prayer boundaries, and permission to speak. Connect it to an application coordinator that holds durable conversation, task, project, reminder, and artifact state and delegates execution through existing RLM-ADK owners. A voice-provider session should be replaceable without losing those records.
 
+The live-voice API is a foundational product component. Rawley selects OpenAI live voice as the performance gold standard for natural conversation, interruptions, and backend delegation, while making cost a significant driver of the ultimate choice. This is the target experience, not a completed universal ranking. The [live-voice landscape research prompt](live-voice-landscape-research-prompt.md) requests a fresh comparison of open-source and hybrid tooling against that reference.
+
 Build a **source-backed knowledge service** over the existing pipeline products. Start with exact relational records, keyword/vector retrieval, and explicitly typed relationships. Use **Theographic** to supply biblical entities and passage relationships after validating its native identifiers and edition mappings. Compare a Neo4j projection against that baseline on the relationship-heavy journeys. Keep Microsoft GraphRAG as a candidate for corpus-wide synthesis and Graphiti as an optional experiment for changing personal context. Neither needs to be the operational task store.
 
 This recommendation is an engineering judgment based on the requirements and inspected contracts. No comparative retrieval benchmark or new provider experiment was run. It would change if a small evaluation showed substantially better evidence coverage, correction handling, or maintainability with a different arrangement.
@@ -205,7 +207,20 @@ These are proposed implementation/evaluation steps, not tests run in this resear
 
 ## Resource considerations and unresolved decisions
 
-The main resource variables are recorded hours and codec, transcription cadence, live-conversation hours, retrieval corpus size, extraction frequency, source-change volume and local/hosted model placement. Budget voice inference separately from always-on recording, and index only changed source revisions when the contract supports it. Graph extraction and community summaries add work beyond storing and searching text; their value should be measured. No monthly cost or provider throughput guarantee is asserted without a selected workload and current pricing.
+Treat ChatGPT Pro subscription usage and application API usage as separate budgets. API pricing is separate from subscription usage; do not assume Pro funds this app's API calls. The applicable API billing/credit arrangement still needs to be verified for implementation. [OpenAI pricing distinction](https://learn.chatgpt.com/docs/pricing).
+
+GPT-Live's active session accounting includes silence and backend waits; muting does not close a session. Preserve continuous local recording and mode state independently of paid session lifetime. Session/reconnection policy must also preserve natural conversation and allowed proactive prompts. [Voice cost accounting](https://developers.openai.com/api/docs/guides/voice-latency-cost).
+
+The current published `gpt-live-1` voice rate is **$0.05 per active minute**, billed per second, with backend usage charged separately. For a 30-day month, the following are illustrative voice-session subtotals; refresh the rate during selection and add reasoning, tools, transcription, storage and compute. They are not measured usage or a complete app budget. [OpenAI GPT-Live pricing](https://developers.openai.com/api/docs/pricing).
+
+| Assumed active session time per day | Active minutes per 30-day month | Voice-session subtotal |
+| --- | --- | --- |
+| 30 minutes | 900 | $45 |
+| 2 hours | 3,600 | $180 |
+| 8 hours | 14,400 | $720 |
+| 24 hours | 43,200 | $2,160 |
+
+The main resource variables are recorded hours and codec, transcription cadence, live-conversation hours, retrieval corpus size, extraction frequency, source-change volume and local/hosted model placement. Budget voice inference separately from always-on recording, and index only changed source revisions when the contract supports it. Graph extraction and community summaries add work beyond storing and searching text; their value should be measured. The table is a conditional arithmetic illustration; no total monthly app cost or provider throughput guarantee is asserted without a selected workload and evaluation.
 
 For scale illustration only, uncompressed mono audio at 24 kHz and 16 bits is approximately 172.8 MB/hour, or 4.15 GB per 24-hour day, before container overhead. That is arithmetic under an assumed format, not the selected recording format; compression, retention and power must be tested. Decide raw audio versus transcript retention and playback needs before sizing storage.
 
