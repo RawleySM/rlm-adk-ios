@@ -17,7 +17,10 @@ Xcode, so all Xcode work happens on GitHub-hosted macOS runners.
 - Each session is a fresh VM. Commit and push anything you want to keep before it ends.
 - Nothing needs setting up per session. Tailscale access uses workload identity federation:
   repo variables `TS_OIDC_CLIENT_ID` and `TS_AUDIENCE`, trust credential subject
-  `repo:RawleySM/rlm-adk-ios:*`. No secret is stored and nothing expires.
+  `repo:RawleySM@215691718/rlm-adk-ios@1415944198:*`. No secret is stored and nothing expires.
+  GitHub's OIDC subject includes the owner and repo IDs. A subject written as
+  `repo:RawleySM/rlm-adk-ios:*` gets a 403 from the token exchange. Because the IDs survive a
+  rename, the credential keeps working if the repo is renamed.
 - Tailnet policy: `tag:ci-mac` is owned by autogroup:admin, and an `ssh` rule lets
   autogroup:member in as `runner` or `root`.
 
