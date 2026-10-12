@@ -1,0 +1,63 @@
+# Builds and runs the app on a GitHub-hosted Mac. No Apple Developer team or signing is needed
+# for the iOS Simulator; device builds and TestFlight uploads wait for the Team ID.
+name: cloud-mac
+
+on:
+  push:
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  simulator:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cloud Mac environment
+        run: |
+          sw_vers
+          uname -m
+          sysctl -n machdep.cpu.brand_string
+          ls -d /Applications/Xcode*.app
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i -E 'ios|simulator'
+          xcrun simctl list runtimes
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build for iOS Simulator (unsigned)
+        run: |
+          xcodebuild -project RLMADK.xcodeproj -scheme RLMADK -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO build | tail -25
+
+      - name: Run in a simulator and take a screenshot
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          for runtime in sorted((r for r in devices if ".iOS-" in r), reverse=True):
+              for device in devices[runtime]:
+                  if device["name"].startswith("iPhone") and device.get("isAvailable"):
+                      print(device["udid"]); sys.exit(0)
+          sys.exit("no iPhone simulator found")')
+          xcrun simctl list devices | grep "$UDID"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          APP=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 1 -name '*.app' | head -1)
+          xcrun simctl install "$UDID" "$APP"
+          xcrun simctl launch "$UDID" com.rawleystanhope.rlmadk
+          sleep 8
+          xcrun simctl io "$UDID" screenshot simulator.png
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simulator-screenshot
+          path: simulator.png

@@ -1,0 +1,24 @@
+# XcodeGen spec. `xcodegen generate` writes RLMADK.xcodeproj; the project file is not committed.
+name: RLMADK
+options:
+  bundleIdPrefix: com.rawleystanhope
+  deploymentTarget:
+    iOS: "17.0"
+targets:
+  RLMADK:
+    type: application
+    platform: iOS
+    sources: [RLMADK]
+    scheme: {}
+    settings:
+      base:
+        PRODUCT_NAME: RLMADK
+        PRODUCT_BUNDLE_IDENTIFIER: com.rawleystanhope.rlmadk
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: RLM-ADK
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
