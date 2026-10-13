@@ -138,6 +138,33 @@ class ServerTests(unittest.TestCase):
         self.assertTrue(self.inference.requests[0].get("client_disconnected"))
         self.assertEqual(self._get("/turns/t3")["status"], "cancelled")
 
+    def test_new_final_supersedes_pending_turn_of_same_session(self):
+        self.inference.reply = " ".join(["word"] * 80)
+        ws, _ = self._ws()
+        ws.send_json({"type": "final_transcript", "turn_id": "s1", "text": "first long question"})
+        self.assertEqual(json.loads(ws.receive())["type"], "turn_accepted")
+        first = json.loads(ws.receive())
+        self.assertEqual(first["type"], "assistant_text_delta")
+        ws.send_json({"type": "final_transcript", "turn_id": "s2", "text": "actually this instead"})
+        seen = []
+        while True:
+            ev = json.loads(ws.receive())
+            seen.append((ev["type"], ev.get("turn_id")))
+            if ev["type"] == "assistant_done" and ev.get("turn_id") == "s2":
+                break
+            if ev["type"] == "error":
+                self.fail(ev)
+        accepted = next(e for e in seen if e[0] == "turn_accepted")
+        self.assertEqual(accepted[1], "s2")
+        self.assertIn(("assistant_cancelled", "s1"), seen)
+        self.assertEqual(self._get("/turns/s1")["status"], "cancelled")
+        self.assertEqual(self._get("/turns/s2")["status"], "done")
+        deadline = time.time() + 5
+        while time.time() < deadline and not self.inference.requests[0].get("client_disconnected"):
+            time.sleep(0.1)
+        self.assertTrue(self.inference.requests[0].get("client_disconnected"), "s1's upstream request must be closed")
+        ws.close()
+
     def test_inference_error_is_reported_not_faked(self):
         self.inference.status = 503
         result = self._post("/turns", {"turn_id": "t4", "text": "hello"})

@@ -205,8 +205,8 @@ class FakeInference:
                     chunk(b"data: " + json.dumps({"choices": [{"delta": {}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 50, "completion_tokens": len(words)}}).encode() + b"\n\n")
                     chunk(b"data: [DONE]\n\n")
                     chunk(b"")
-                except (BrokenPipeError, ConnectionResetError):
-                    owner.requests[-1]["client_disconnected"] = True
+                except OSError:  # peer closed: EPIPE, ECONNRESET, ECONNABORTED, timeout
+                    payload["client_disconnected"] = True
 
         return H
 

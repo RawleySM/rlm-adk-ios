@@ -285,11 +285,16 @@ class Handler(BaseHTTPRequestHandler):
                     if turn_id in session_turns or conn.execute("SELECT 1 FROM turns WHERE turn_id = ?", (turn_id,)).fetchone():
                         emit({"type": "duplicate_turn", "turn_id": turn_id})
                         continue
+                    # One conversation per session: a new final supersedes any turn still running for
+                    # this session, so a pending request never keeps an owner slot behind the user.
+                    superseded = [old for old, ev in list(session_turns.items()) if not ev.is_set()]
+                    for old in superseded:
+                        session_turns[old].set()
                     cancel = threading.Event()
                     session_turns[turn_id] = cancel
                     with svc.active_lock:
                         svc.active_turns[turn_id] = cancel
-                    emit({"type": "turn_accepted", "turn_id": turn_id})
+                    emit({"type": "turn_accepted", "turn_id": turn_id, "superseded": superseded})
                     threading.Thread(target=run, args=(turn_id, text, event.get("context"), cancel), daemon=True).start()
                 elif kind == "cancel":
                     turn_id = event.get("turn_id")

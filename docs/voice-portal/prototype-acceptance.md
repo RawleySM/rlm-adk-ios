@@ -94,6 +94,23 @@ in Git). Simulator screenshots are in [`evidence/`](evidence/). Every item below
 | 0.2.0 (3), IPA md5 `a48eec019c978707a2739083eabbe18a`, signed on cloud-Mac session 38339802786 | Transport succeeded end to end through the Build Upload API; Apple validation **FAILED**: `90022` (no 120x120 icon in the bundle) and `90713` (no `CFBundleIconName`). The app had no asset catalog. Build number 3 is spent on App Store Connect. |
 | 0.2.0 (4), IPA md5 `1779fcf0630548e7433add388f763be4`, with `Assets.xcassets/AppIcon` and top-level `CFBundleIconName`, signed on session 38339802786 (`rlm-adk-ios-mac-1`) | **Accepted.** Build Upload API record `3d99fc47-22f2-407a-8bef-9bbb369a5a8d`, file `40924b66-d230-4c84-a168-8bb5d90c655c`, one part 613,208 bytes HTTP 200, commit `COMPLETE`, Apple `PROCESSING` → `COMPLETE`; build `3d99fc47…` `processingState VALID`, `usesNonExemptEncryption false`, `internalBuildState READY_FOR_BETA_TESTING`, uploaded 2026-10-13 03:17 UTC. Receipt `fable-evidence/signed/v4/upload-receipt.json`. Internal TestFlight group "Prototype internal" (`93dc08e3-d600-4606-9508-2a37d56c0225`) has access to all builds; the only tester is the account holder `rawley.stanhope@gmail.com` (state `INVITED`, TestFlight's own email to his address); build state `IN_BETA_TESTING`; no external invitation, no public link. |
 
+## Physical-device session findings (2026-10-13, build 0.2.0 (4) on iphone-12)
+
+Evidence: `~/.local/state/rlm-adk-ios-prototype-supervision/physical-device-session-20261013T110137Z.json`
+(sessions `3a293e2e…` 10:37:33 UTC and `885246c0…` 10:40:07 UTC from `100.115.237.108`; 78 turns:
+27 done, 21 cancelled, 30 error), the backend `turns` table, and the Spark-B owner journal (read-only).
+
+| Finding | Evidence | Repair |
+| --- | --- | --- |
+| Cancels could not reach a cold owner. The first four phone turns (10:37:44–10:37:52) hit `qwen-coding` stopped; `stream_chat` blocked in `urlopen` waiting for headers, so the phone's cancels were only observed when headers arrived 203–211 s later (`done_ms` is the request lifetime, not cancel latency). | turns 2d352ca5…, d8674549…, 3b6ae7a8…, e22ff854…; owner `model_ready` at 10:41:16 and 10:45:59 UTC | `reasoning.stream_chat` now runs the request on a socket-owning reader thread and waits in short ticks; cancel closes the upstream socket before headers or between SSE lines; an already-cancelled turn sends nothing; cancel-vs-error ordering is preserved; usage stays unknown when the owner sent none. Eight stalling-owner tests. |
+| Queue saturation behind the stale leases. Owner capacity for qwen-coding is 4; with the four stale leases plus the cold load every later request waited the owner's 10 s queue and failed `503 queue_timeout` (30 errors, `done_ms` 10.0–10.2 s) from 10:38:01 until 10:45:45, even after the first `model_ready`. | owner access log: 30 × `503 466`; two `200` at 10:46:02 for requests from 10:42:37 | Same repair (leases are released on cancel). The server also supersedes a session's still-running turn when a new final arrives, so one phone never holds more than one owner slot. WebSocket test. No owner configuration was changed. |
+| Pending turns cancelled by false starts. `partial()` treated `currentTurnId != nil` as barge-in, so the first partial of the next utterance cancelled a pending turn that had produced nothing audible. | 21 cancelled turns, several with no first delta | Barge-in on partials now requires audible output (speaking or devotional playing); a pending turn is superseded only by the next final (reducer emits cancel for the old turn, server cancels it). Controller and reducer tests. |
+| Restarted recognition inherited the previous utterance's silence age, so the silence timer could end a fresh request immediately (restart churn). | code path `startSilenceTimer` / `lastSpeechAt`; not directly observable in the turn table | `EndpointClock` measures silence from the later of the last partial and the request start; prayer never end-points. Tests. |
+| One/two-word transcripts dominate ("No" ×~25). | transcripts in the turn table | Not changed: ordinary short answers are legitimate; no word-count filter or wake word. Recognizer segment finalisation vs. the 2.5 s window needs audible-UX feedback from Rawley before any change. |
+
+Warm behaviour after 10:46 UTC: first delta median ≈ 830 ms over the observed first deltas. The
+`spark-small` image is still missing on Spark-B (owner `failures`).
+
 ## Proof boundaries
 
 - Simulator runs prove app/service connectivity, state rendering and the typed turn path. They do not

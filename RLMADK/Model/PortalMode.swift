@@ -99,6 +99,11 @@ enum PortalReducer {
             }
         case .finalTranscript(let turnId):
             if state.isPraying { break } // prayer is addressed to God; transcripts never start a turn
+            if let pending = state.currentTurnId, pending != turnId {
+                // The new utterance supersedes a turn that is still pending or speaking.
+                effects.append(.cancelOutput(turnId: pending))
+                effects.append(.sendCancel(turnId: pending))
+            }
             next.activity = .responding(turnId: turnId)
             effects.append(.startTurn(turnId: turnId))
         case .assistantDelta:
