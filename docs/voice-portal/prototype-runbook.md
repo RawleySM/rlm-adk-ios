@@ -140,8 +140,9 @@ launched as `SIMCTL_CHILD_RLMADK_BACKEND_URL=http://127.0.0.1:18765`.
 
 ## Recovering locally retained captures (issue #4)
 
-Capture files never leave the phone unless a prayer is explicitly ended and uploaded. They live in
-the app container: `Documents/captures/<captureId>/NNNNNNNN.wav` (60-second WAV segments),
+Prayer segments upload as they close; End prayer finalizes the ordered recording. Ambient segments
+remain local. Files live in the app container: `Documents/captures/<captureId>/NNNNNNNN.wav`
+(roughly 60-second segments, with shorter segments at capture boundaries),
 `Documents/captures.json` (per-segment `startedAt`/`endedAt`, bytes, sha256, gaps) and
 `Documents/mode.json`. Builds that include `UIFileSharingEnabled` and
 `LSSupportsOpeningDocumentsInPlace` expose that directory as **Files > On My iPhone > RLM-ADK** and
@@ -152,9 +153,10 @@ in Finder's file sharing.
 2. In Files, open On My iPhone > RLM-ADK, select `captures.json` and the `captures/` folder, and
    copy (share/AirDrop/Finder copy) to the Mac or desktop. Copy; do not move or delete.
 3. Hash the copied WAVs (`sha256sum`) and compare with `captures.json` before anything else.
-4. Decide coverage from evidence, not counts: a segment's `startedAt`/`endedAt` and its WAV header
-   (sample rate, data length) say what wall-clock span it holds; gaps mark missing spans. Only
-   listening confirms what a span contains.
+4. Decide coverage from evidence, not counts: use a segment's `startedAt`/`endedAt`, its WAV header
+   (sample rate, data length) and recorded gaps to select candidate files. These timestamps are writer
+   start/close observations, not sample-accurate wall-clock alignment across interruptions. Listening
+   establishes what the retained audio contains.
 5. Transcribe only the segments that evidence places in the window of interest, through the existing
    batch transcription route; never upload the whole ambient capture as prayers, and never finalize
    ambient audio as a prayer recording without listening.
