@@ -136,3 +136,4 @@ jobs:
             simulator-diagnostics.png
             xcodebuild-build.log
             xcodebuild-test.log
+            build/Build/Products/Debug-iphonesimulator/RLMADK.app/Info.plist
