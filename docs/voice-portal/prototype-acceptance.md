@@ -111,6 +111,26 @@ Evidence: `~/.local/state/rlm-adk-ios-prototype-supervision/physical-device-sess
 Warm behaviour after 10:46 UTC: first delta median ≈ 830 ms over the observed first deltas. The
 `spark-small` image is still missing on Spark-B (owner `failures`).
 
+## Explicit Scripture references (2026-10-13 follow-up)
+
+Attended real-data smoke after the device repair (`device-repair-live-smoke.json`, case
+`normal_completion`): "What does Psalm 23 say about rest? Explain briefly using the source." with no
+heard-passage context retrieved 1 Peter 5 and Hebrews 4 (topic hits for "rest"), omitted Psalm 23, and
+the model correctly refused to explain a passage it had not been given. The chapter is in the retained
+edition (`/devotional?passage=PSA.23`).
+
+Smallest correction (`voice_portal/references.py`, wired in `gather_evidence`): a reference written
+in the question (book name or spoken alias, optional ordinal, chapter, optional verse or range) is
+resolved against the current retained chapter document and its verse locators before topic
+retrieval, with the chapter's chunks (or only the chunks holding the named verses) as
+revision-qualified citations. An unknown book, a chapter not in the retained edition, or verse
+numbers beyond the chapter are reported in `scope.explicit_references` and in the prompt as not
+retained; nothing is invented. Heard-passage evidence still comes first at its exact revision;
+focus-first topic retrieval and the Scripture/teaching/prayer distinction are unchanged. Tests cover
+"Psalm"/"Psalms"/"Ps" 23, `1 John 3` vs `John 3`, `1 Peter 5(:7)`, `Psalm 23:4-6`, `Genesis 51`, and
+the heard-passage ordering. Real-data evidence: see the handoff file
+`fable-explicit-passage-status.md` and `receipts/evidence/turn-explicit-psalm23.json` on the desktop.
+
 ## Proof boundaries
 
 - Simulator runs prove app/service connectivity, state rendering and the typed turn path. They do not

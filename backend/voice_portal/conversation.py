@@ -12,6 +12,7 @@ from collections.abc import Callable
 from .config import Config
 from .db import now
 from .reasoning import ReasoningError, stream_chat
+from .references import explicit_references, resolve_reference
 from .retrieval import cite_id, document_by_source, focus_terms, resolve_citation, search
 from .sources.scripture import BOOK_NAMES
 from .sources.theographic import passage_entities
@@ -62,6 +63,16 @@ def gather_evidence(conn: sqlite3.Connection, query: str, *, families: list[str]
             hits.append({"cite_id": cite, "source_family": detail["source_family"], "source_doc_id": detail["source_doc_id"], "revision_hash": detail["revision_hash"], "title": title, "text": detail["text"], "attribution": detail["attribution"], "recorded_at": detail.get("recorded_at"), "verse_refs": [v["osis"] for v in detail.get("verse_locators") or []], "strategy": "heard_passage", "current": bool(detail.get("current"))})
         else:
             failed.append(cite)
+    # Explicit references in the question ("Psalm 23", "1 Peter 5:7") are grounded in the requested
+    # retained chapter before any topic retrieval; a reference that is not retained is reported, not invented.
+    references: list[dict] = []
+    for ref in explicit_references(query):
+        ref_hits, report = resolve_reference(conn, ref)
+        references.append(report)
+        for hit in ref_hits[:4]:
+            if hit["cite_id"] not in seen:
+                seen.add(hit["cite_id"])
+                hits.append(hit)
     strategies: dict[str, str | None] = {}
     for family in families or ["scripture", "teaching", "prayer"]:
         result = search(conn, query, families=[family], limit=per_family)
@@ -70,7 +81,7 @@ def gather_evidence(conn: sqlite3.Connection, query: str, *, families: list[str]
             if hit["cite_id"] not in seen:
                 seen.add(hit["cite_id"])
                 hits.append(hit)
-    scope = {"passage_supplied": supplied, "passage_failed": failed, "focus_terms": focus_terms(query), "strategies": strategies}
+    scope = {"passage_supplied": supplied, "passage_failed": failed, "explicit_references": references, "focus_terms": focus_terms(query), "strategies": strategies}
     return hits, scope
 
 
@@ -103,6 +114,13 @@ def run_turn(
         passage_note = f"\nThe user has just been listening to: {context.get('passage_title')}. That passage is included in the evidence."
     elif context.get("passage_cite_ids"):
         passage_note = f"\nThe user was listening to {context.get('passage_title')}, but that passage could not be supplied as evidence; do not quote it."
+    for ref in scope.get("explicit_references") or []:
+        if ref["supplied"] and ref.get("reason") == "verses_not_in_retained_chapter":
+            passage_note += f"\nThe question names {ref['matched']}; the retained chapter is included but those verse numbers are not in it."
+        elif not ref["supplied"]:
+            passage_note += f"\nThe question names {ref['matched']}, which is not in the retained Scripture edition; say so and do not quote it."
+        else:
+            passage_note += f"\nThe question names {ref['matched']}; that passage is included in the evidence."
     if scope["focus_terms"]:
         passage_note += f"\nThe retrieval looked for excerpts about: {', '.join(scope['focus_terms'])}."
     messages = [
