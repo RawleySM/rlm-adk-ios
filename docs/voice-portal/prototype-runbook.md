@@ -149,8 +149,10 @@ remain local. Files live in the app container: `Documents/captures/<captureId>/N
 `LSSupportsOpeningDocumentsInPlace` expose that directory as **Files > On My iPhone > RLM-ADK** and
 in Finder's file sharing.
 
-1. Update the app through TestFlight (same bundle id). Do **not** uninstall: deleting the app deletes
-   the container and every capture with it.
+1. Copy the current app's Documents through the paired developer connection or existing file sharing
+   before changing installation channels when accessible. Use the direct private installation route
+   below for updates of the same bundle id; TestFlight is a fallback. Do **not** uninstall: deleting
+   the app deletes the container and every capture with it.
 2. In Files, open On My iPhone > RLM-ADK, select `captures.json` and the `captures/` folder, and
    copy (share/AirDrop/Finder copy) to the Mac or desktop. Copy; do not move or delete.
 3. Hash the copied WAVs (`sha256sum`) and compare with `captures.json` before anything else.
@@ -250,7 +252,8 @@ CI exercises all of this against the fixture backend with the real simulator cli
 including a byte-for-byte copy of a seeded capture file, a portal-to-work tab transition observed
 in the snapshots, and the image matched to its command id; the keyboard navigation XCUITest
 requires the software keyboard (the hardware keyboard is disabled before the simulator boots).
-Simulator evidence only; the phone must install the new build (over TestFlight, not an uninstall).
+Simulator evidence only; the phone must receive an upgrade through the direct private installation
+route below (or the retained TestFlight fallback), without uninstalling.
 
 ## Signing, TestFlight and device
 
@@ -338,7 +341,8 @@ Apple still issues the certificate, the registered device and the provisioning p
 certificate check runs at first launch, but there is no upload, processing, review or TestFlight.
 Signing a build and installing it on the phone are two separate steps.
 
-One-time prerequisites (root owns these; none exist yet as of 2026-10-13):
+One-time device setup (registration and Ad Hoc profile pending as of 2026-10-13; the team and
+distribution certificate already exist):
 
 1. The phone's UDID. Cable the phone to the MacBook or Spark once (unlock it and accept "Trust This
    Computer", the computer-pairing trust, which is unrelated to any "trust developer" setting):

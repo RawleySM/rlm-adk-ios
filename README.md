@@ -8,11 +8,12 @@ SwiftUI app for Rawley's iPhone that will connect to rlm-adk over the Tailscale 
   iOS Simulator unsigned, run it, and upload a screenshot artifact.
 - Apple Developer account: KeePassXC entry
   "Apple Developer + App Store Connect - Individual - Enrollment 9Z9523324Y". Team `4PJBKY2WQR`
-  is active with signing assets in place. This is a private app for one phone: builds are signed
-  for the registered iPhone and installed directly (`.github/workflows/direct-install.yml`,
+  is active with signing assets in place. This is a private app for one phone: the delivery workflow
+  signs builds for the registered iPhone for direct installation (`.github/workflows/direct-install.yml`,
   manual dispatch, no App Store Connect upload); TestFlight (`testflight.yml`) is the fallback.
   The phone needs Developer Mode for IPA installs, and the Ad Hoc profile and certificate expire
-  (profile expiry is in each build's receipt). Details in
+  (profile expiry is in each build's receipt). Device registration and the first direct installation
+  are still pending the phone connection. Details in
   `docs/voice-portal/prototype-runbook.md`.
 - Hands-on cloud Mac over the tailnet: `scripts/cloud-mac start`, then `cloud-mac ssh`. See `AGENTS.md`.
 

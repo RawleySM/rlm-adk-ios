@@ -29,8 +29,9 @@ Xcode, so all Xcode work happens on GitHub-hosted macOS runners.
 - Apple Developer, Individual: KeePassXC entry
   "Apple Developer + App Store Connect - Individual - Enrollment 9Z9523324Y".
 - Membership is active. Team `4PJBKY2WQR`, the Apple Distribution identity, the App Store profile
-  and the App Store Connect API key are configured. Reuse the existing assets; never create new
-  certificates or publish anything.
+  and the App Store Connect API key are configured. Reuse the existing certificate across builds;
+  replace it only when renewal or an actual signing failure requires it. Do not publish to the
+  public App Store.
 - This is permanently a private app for Rawley alone. The default delivery is a **direct signed
   install** (Ad Hoc / release-testing export for the registered iPhone) through
   `.github/workflows/direct-install.yml` and `scripts/direct_install.py`; TestFlight
@@ -40,6 +41,7 @@ Xcode, so all Xcode work happens on GitHub-hosted macOS runners.
   when that profile is absent or unsuitable. Developer Mode on the phone is required to run an app
   installed from an IPA (Apple, "Distributing your app to registered devices"); Apple's
   certificate check runs online at first launch. Signing a build and installing it on the phone
-  are separate steps; the install is an upgrade of the same bundle id, never an uninstall, so the
-  retained prayer and ambient captures stay in place. Physical-device validation remains pending.
+  are separate steps. Upgrade the same bundle id without uninstalling; copy retained prayer and
+  ambient captures before changing installation channels and verify their bytes afterward.
+  Physical-device validation remains pending.
   See `docs/voice-portal/prototype-runbook.md`, "Direct private installation".
