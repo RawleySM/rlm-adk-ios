@@ -138,14 +138,55 @@ the real-backend simulator run a reverse tunnel from Spark-A was used:
 `ssh -N -R 18765:100.90.105.30:8765 runner@rlm-adk-ios-mac.tail0ec4a5.ts.net`, with the app
 launched as `SIMCTL_CHILD_RLMADK_BACKEND_URL=http://127.0.0.1:18765`.
 
-## Signing and device
+## Signing, TestFlight and device
 
-- KeePassXC entry `Apple Developer + App Store Connect - Individual - Enrollment 9Z9523324Y`
-  (username `rawley.stanhope@gmail.com`, URL `https://developer.apple.com/account`), metadata only.
-- No Team ID or App Store Connect API key exists in the repository or on the hosts; the project builds
-  with `CODE_SIGNING_ALLOWED=NO` for the simulator only.
-- The only owned Mac with a physical device path (`macbook-rawley`, via `mac-actions --target rawley
-  system status`) runs macOS 12.7.6 and cannot run current Xcode; the GitHub runner cannot attach a
-  physical phone. `iphone-12` is on the tailnet (state `-`).
-- Checking membership activation requires an interactive Apple ID sign-in with two-factor approval on
-  Rawley's device; that was not attempted unattended.
+Verified on 2026-10-13 through the existing authenticated Chrome session (no password or two-factor
+entry was needed): the Individual Apple Developer Program membership is active, **Team ID
+`4PJBKY2WQR`**, renewal 2027-10-12. App Store Connect first-use terms and App Store Connect API
+access were accepted/approved in the same session.
+
+Assets created on 2026-10-13 (none should be recreated; all are retained outside the runner):
+
+| Asset | Identity | Where |
+| --- | --- | --- |
+| App Store Connect API team key `rlm-adk-ios-ci` (App Manager) | Key ID `Z9XH3R3RV2`, Issuer `192ea9f0-7f02-4fa4-9cac-051d567feced` | `.p8` in `~/.local/state/rlm-adk-ios-prototype-supervision/asc-key/` on Spark-A (one-time download); GitHub secrets `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY` |
+| Bundle ID `com.rawleystanhope.rlmadk` | `87XJJ9FG5S` | registered via the API |
+| Apple Distribution certificate | `AUBJ7C9S7Y`, expires 2027-10-13 | CSR made on the cloud Mac; `.p12` backup in the same private directory; secrets `DIST_P12_BASE64`, `DIST_P12_PASSWORD` |
+| App Store provisioning profile `rlm-adk-ios appstore` | `6SW4NCM292`, UUID `8548aa2f-24a2-4bc2-9ada-37e7707c484d` | `.mobileprovision` in the private directory; secret `APPSTORE_PROFILE_BASE64` |
+| App Store Connect app record "RLM-ADK Voice Portal" | app `6822129536`, SKU `rlmadk-voice-portal`, en-US, Full Access | created in App Store Connect |
+| Development certificate "Created via API" | `67R2TGBV29` | created by Xcode's first automatic-signing attempt; unused |
+
+Repository variable `APPLE_TEAM_ID=4PJBKY2WQR`. The small API client used for the registrations is
+`asc.py` next to the key (stdlib plus `openssl` for the ES256 JWT); the repo-owned upload script is
+`scripts/asc_build_upload.py`.
+
+### What works and what does not (Xcode 26.6 on the GitHub runner)
+
+- `xcodebuild archive` with **automatic** signing fails: the team has no registered device, so Xcode
+  cannot create an iOS App Development profile ("Your team has no devices from which to generate a
+  provisioning profile").
+- `xcodebuild archive` with **manual** signing (`CODE_SIGN_STYLE=Manual`, `Apple Distribution`,
+  profile `rlm-adk-ios appstore`) succeeds once the identity is in a dedicated keychain with
+  `set-key-partition-list`; signing from the login keychain hung codesign on the headless runner.
+- `xcodebuild -exportArchive` with `destination=export` produces a signed IPA (`codesign --verify
+  --deep --strict` passes). With `destination=upload` it fails: `lookupGenericSettingsForSubmission
+  returned an error` / `No Accounts with App Store Connect Access` for the API key.
+- `xcrun altool --upload-app` fails on Xcode 26.6 (`Defaults.properties` missing);
+  `iTMSTransporter` reports it is now part of the Transporter app, which is not installed.
+- The App Store Connect **Build Upload API** (`buildUploads` / `buildUploadFiles`) is available to
+  this team; `scripts/asc_build_upload.py` implements it and refuses to re-send a build number that
+  already has a build.
+
+Version and build come from the build settings (`MARKETING_VERSION`, `CURRENT_PROJECT_VERSION`), wired
+into the generated Info.plist by XcodeGen; `testflight.yml` sets the build number from its input or
+the run number.
+
+### Device
+
+- No device is registered (UDID unknown). The private install route is TestFlight internal testing
+  (no UDID needed); Rawley's Apple ID is the account holder and can be added as an internal tester
+  once a build has processed.
+- `iphone-12` is on the tailnet (state `-`); the only owned Mac with a device path (`macbook-rawley`,
+  macOS 12.7.6) cannot run current Xcode, so a cabled install is not available.
+- Physical-device voice behaviour (microphone, on-device recognition, Bluetooth, lock screen,
+  interruptions) remains unverified until a TestFlight build is installed on the phone.
