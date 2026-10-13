@@ -129,6 +129,11 @@ supersedes the session's pending turn on both the phone and the server; barge-in
 unchanged. Findings and evidence are in the
 [acceptance report](prototype-acceptance.md#physical-device-session-findings-2026-10-13-build-020-4-on-iphone-12).
 
+A second follow-up grounds explicit Scripture references in the question (for example "Psalm 23"
+or "1 Peter 5:7") in the requested retained chapter and verses before topic retrieval, using only
+the existing book/chapter identity and verse locators; unavailable references are reported, never
+invented.
+
 ## Review adjudication and supervision
 
 Claude Fable's review completed successfully, with no permission denials. Accept F1's native audio simplification, F4's on-device recognition/native TTS split, F5's small SQLite design, F6's actual prayer intake, and F7's build configuration checks. Correct F2/F3/D3/D5 using the desktop evidence above; reject the claim that the current allocator is masked or absent on desktop and the unnecessary new tunnel. Remove D2's unused raw-audio uplink. Strengthen outbox uncertain-delivery and artifact-link evidence as above. These are the final implementation choices, superseding contradictory details in the preserved review.

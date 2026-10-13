@@ -111,6 +111,40 @@ Evidence: `~/.local/state/rlm-adk-ios-prototype-supervision/physical-device-sess
 Warm behaviour after 10:46 UTC: first delta median ≈ 830 ms over the observed first deltas. The
 `spark-small` image is still missing on Spark-B (owner `failures`).
 
+## Explicit Scripture references (2026-10-13 follow-up)
+
+Attended real-data smoke after the device repair (`device-repair-live-smoke.json`, case
+`normal_completion`): "What does Psalm 23 say about rest? Explain briefly using the source." with no
+heard-passage context retrieved 1 Peter 5 and Hebrews 4 (topic hits for "rest"), omitted Psalm 23, and
+the model correctly refused to explain a passage it had not been given. The chapter is in the retained
+edition (`/devotional?passage=PSA.23`).
+
+Smallest correction (`voice_portal/references.py`, wired in `gather_evidence`): a reference written in
+the user's own transcript (canonical book name or its numbered form with a written or spoken ordinal,
+plus Psalm/Psalms/Ps; chapter; optional verse or range) is resolved against the current retained
+chapter document and its verse locators before topic retrieval, with the chapter's chunks (or only the
+chunks holding the named verses) as revision-qualified citations. References are parsed from the
+transcript only, never from the topic query augmented with a heard-passage title, so "Why?" after a
+devotional does not become a reference and a historical heard revision is not shadowed by the current
+chapter. Coverage is reported exactly in `scope.explicit_references[]` and in the prompt:
+
+| Case | `supplied` | `coverage` | `reason` |
+| --- | --- | --- | --- |
+| whole chapter (always supplied in full; the largest retained chapter, Psalm 119, is 20 chunks / 12.8k chars) | true | full | – |
+| verse or range fully in the chapter | true (chunks holding them) | full | – |
+| range partly beyond the chapter (e.g. 23:5-99, 119:1-99) | true (chunks holding every retained requested verse) | partial | `some_verses_not_in_retained_chapter`, `verses_missing` listed |
+| verses entirely beyond the chapter (e.g. 1 Peter 5:7 in a 4-verse fixture) | false | none | `verses_not_in_retained_chapter` |
+| chapter not retained (e.g. Genesis 51) | false | none | `chapter_not_in_retained_edition` |
+| verse 0, chapter 0, reversed range | false | none | `invalid_verse` / `invalid_chapter` / `reversed_range` |
+| unknown book or bare numbered base ("Peter 5") | not a reference | – | – |
+
+Heard-passage evidence still comes first at its exact revision; focus-first topic retrieval and the
+Scripture/teaching/prayer distinction are unchanged. Tests (`tests/test_explicit_reference.py`, 15)
+cover the parser forms above, each coverage row, a valid verse inside a multi-chunk chapter, a long
+chapter supplied in full with every cite id, an oversized range, the heard-passage ordering, and two
+`run_turn`-level cases (a historical heard citation with "Why?" plus a heard title; an explicit
+reference in the transcript). Real-data evidence: `fable-explicit-passage-status.md`.
+
 ## Proof boundaries
 
 - Simulator runs prove app/service connectivity, state rendering and the typed turn path. They do not
