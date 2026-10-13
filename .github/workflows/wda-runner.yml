@@ -1,0 +1,33 @@
+name: wda-runner
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/wda-runner.yml'
+      - 'scripts/build_wda.sh'
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      WDA_COMMIT: e7e2665a00633dc174d7fc579f7e606bc9ba782a
+      WDA_TAG: v16.15.0
+      WDA_BUNDLE: com.rawleystanhope.wda.xctrunner
+      DEVICE_UDID: 00008101-000C35463A32001E
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build and development-sign the separate UI runner
+        env:
+          WDA_DEV_P12_BASE64: ${{ secrets.WDA_DEV_P12_BASE64 }}
+          WDA_DEV_P12_PASSWORD: ${{ secrets.WDA_DEV_P12_PASSWORD }}
+          WDA_DEV_PROFILE_BASE64: ${{ secrets.WDA_DEV_PROFILE_BASE64 }}
+        run: bash scripts/build_wda.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: device-ui-runner
+          path: |
+            build/wda-publish/
+            build/wda-build.log
