@@ -1,0 +1,678 @@
+Gemini-generated research; source claims not independently validated.
+Conversation: https://gemini.google.com/app/592486bb7d3a2cc8
+
+BACKEND-3 Personal temporal context and source correction architecture
+Executive Recommendation
+
+The architectural evaluation for the BACKEND-3 personal temporal context and source correction environment yields a bifurcated recommendation. The conversational voice execution layer must be built directly on the OpenAI Realtime API utilizing the WebSocket protocol to meet the specified performance standard. However, the temporal knowledge graph layer should firmly reject autonomous, model-extracted graph frameworks like Graphiti in favor of a deterministic PostgreSQL SQL:2011 bitemporal relational schema.
+
+While publisher literature positions Graphiti as the state of the art in autonomous bi-temporal graph construction for large language models (LLMs), measured evidence from production implementations indicates critical operational friction. Specifically, Graphiti suffers from a phenomenon termed "collateral invalidation," where unrelated facts are erroneously marked as superseded due to probabilistic LLM extraction errors. For a single-user native iOS portal where deterministic source correction, exact scripture locators, and late repair cursors are foundational, a bitemporal relational design using PostgreSQL's tstzrange and GiST exclusion constraints provides the requisite, uncompromising data integrity.
+
+Furthermore, the native SwiftUI client must leverage AVAudioSessionCategoryPlayAndRecord combined strictly with AVAudioSessionCategoryOptionMixWithOthers and AVAudioSessionCategoryOptionDuckOthers to sustain the continuous background audio constraints mandated by the system requirements. Voice interaction must be treated as a continuous stream where local device modes—specifically "Quiet" and "Prayer capture"—dictate the client-side rendering and voice activity detection (VAD) commits, rather than severing the underlying server connection. The following report details the technical justification, comparative analysis, exact schemas, and concrete interfaces required to fulfill the BACKEND-3 requirements.
+
+Foundational Voice Architecture: The OpenAI Realtime Standard
+
+Voice serves as the foundational interaction paradigm for the BACKEND-3 environment. The stated standard for this architecture is the OpenAI live voice experience, which is technically delivered to developers via the OpenAI Realtime API. It is necessary to first distinguish between the consumer-facing ChatGPT application and the developer API infrastructure.
+
+API Identification and Economic Realities
+
+The ChatGPT Pro subscription (currently billed at premium tiers for consumer usage) provides high-tier access to the consumer features of OpenAI's chat application. However, ChatGPT Pro subscription usage and API billing are strictly separate entities. A ChatGPT Pro subscription does not provide backend API credits, nor does it allow programmatic access to the underlying low-latency speech-to-speech architecture. The Realtime API is billed entirely on a usage basis through the OpenAI developer platform.
+
+The target experience identified from official documentation is powered by the gpt-4o-realtime-preview model. Multiple model snapshots exist, with versions officially designated as gpt-4o-realtime-preview-2024-10-01 and gpt-4o-realtime-preview-2024-12-17. Cost significantly influences the final choice, and the economics of the Realtime API are substantially higher than standard text-based LLM interactions. API billing is calculated across four distinct vectors.
+
+Token Modality	Input Cost per 1 Million Tokens	Output Cost per 1 Million Tokens	Cached Input Cost per 1 Million Tokens
+Text	$5.00	$20.00	$2.50
+Audio	$40.00	$80.00	$2.50 to $4.00
+
+Table 1: Official pricing matrix for the gpt-4o-realtime-preview model, demonstrating the steep premium placed on audio processing compared to text modalities.
+
+Because the BACKEND-3 portal captures continuous device recording—including explicit quiet periods and long prayer modes—transmitting raw, unbroken audio directly to the API on a continuous 24-hour basis would incur prohibitive, unsustainable costs. Therefore, the architecture must strictly decouple continuous on-device recording from active Realtime API streaming sessions. A hybrid approach is mandatory: local on-device processing must gate the audio stream, only opening the WebSocket connection or transmitting buffers to the cloud provider when explicit wake conditions, proactive calendar notifications, or project phases necessitate input.
+
+WebSocket Protocol and Session Configuration
+
+The Realtime API operates over a persistent, full-duplex WebSocket connection (wss://). The conversational session must be configured immediately upon connection using the session.update payload. To achieve the lowest latency and highest fidelity, the API expects raw uncompressed audio. The iOS client must capture and transmit audio using the pcm16 format at a 24kHz sample rate (mono).
+
+The session.update event allows the backend to inject system instructions and define the exact audio footprint. The client continuously sends input_audio_buffer.append events containing base64-encoded PCM audio chunks.
+
+JSON
+{
+  "type": "session.update",
+  "session": {
+    "voice": "alloy",
+    "instructions": "System instructions for BACKEND-3 context.",
+    "input_audio_format": "pcm16",
+    "output_audio_format": "pcm16",
+    "turn_detection": {
+      "type": "server_vad",
+      "threshold": 0.4,
+      "silence_duration_ms": 600
+    },
+    "input_audio_transcription": {
+      "model": "whisper-1"
+    }
+  }
+}
+
+
+The system relies entirely on an event-driven loop. By default, the API utilizes a server-side Voice Activity Detection (server_vad) mechanism. The server monitors the appended buffers, detects speech start (input_audio_buffer.speech_started), and automatically commits the buffer upon detecting silence (input_audio_buffer.speech_stopped), subsequently generating a response.
+
+Out-of-Band Transcription for Source Products
+
+A core requirement of the BACKEND-3 architecture is generating precise transcripts of user interactions to serve as durable source products (e.g., prayer transcripts, research queries, and creative workflow context). The gpt-4o-realtime-preview model excels at generating low-latency speech-to-speech responses but does not natively return a reliable textual transcript of the user's audio input in its standard event flow.
+
+To fulfill this requirement, the session must enable out-of-band transcription by supplying an input_audio_transcription object within the initial session.update event, explicitly specifying the whisper-1 model. When this parameter is successfully registered, the server dispatches a conversation.item.input_audio_transcription.completed event alongside the audio response, providing a highly accurate text digest of the user's conversational turn. It is critical to note from measured implementation evidence that if input_audio_transcription is omitted from the initial session configuration, the developer must send a subsequent session.update to pin the transcription model, as omitting it results in total silence from the transcription subsystem. Furthermore, background noise can cause discrepancies between the Realtime model's audio interpretation and the whisper-1 transcript, necessitating careful client-side audio preprocessing.
+
+Native Workspace Constraints: iOS Audio Session Management
+
+The execution layer exists within a native SwiftUI iPhone portal, utilizing the RawleySM/rlm-adk-ios workspace. Because continuous recording is mandated—including states where the screen is locked, the application is backgrounded, or the user is utilizing other media applications—the integration with the host operating system's AVAudioSession is critical to the stability of the entire architecture.
+
+It is a documented reality of the Apple ecosystem that paid membership in the Apple Developer Program does not exempt an application from strict OS-level audio constraints. The application must operate entirely within the bounds of standard iOS background execution protocols.
+
+Background Audio and Interruption Tolerance
+
+By default, an iOS application suspends all operations shortly after being backgrounded by the user. To sustain the continuous recording and background work pipeline, the application's AVAudioSession must be configured with the AVAudioSession.Category.playAndRecord category. However, this designation alone is insufficient for a continuous background agent.
+
+If the application attempts to initiate or maintain an audio session while backgrounded without appropriate mixability flags, the operating system will forcefully terminate the session. This termination frequently surfaces as error code 560557684 (AVAudioSessionErrorCodeCannotInterruptOthers, translated internally to the four-character code !int). This occurs because background applications are strictly prohibited from interrupting the foreground application's audio session.
+
+To circumvent this limitation and preserve the existing safeguards without resorting to hypothetical or unsupported security-hardening architectures, the SwiftUI lifecycle must configure the audio session with two highly specific options:
+
+AVAudioSessionCategoryOptionMixWithOthers: This explicitly allows the portal's audio session to coexist with other applications playing audio. Setting this flag is mandatory for background execution.
+
+AVAudioSessionCategoryOptionDuckOthers: This optional but highly recommended setting automatically reduces the volume of background audio (e.g., Spotify, Apple Music, or YouTube) when the agent initiates a proactive spoken transition. It returns the background media to normal volume once the AVAudioSession finishes its output.
+
+Implementing Quiet and Prayer Capture States
+
+The product design specifies that ordinary background work continues, but "Quiet" mode suppresses all speech until an explicit wake, and "Prayer" capture tolerates long silences, ending only by explicit control. Calendar timers do not override the Quiet mode.
+
+Because the OpenAI Realtime server_vad triggers automatically after silence_duration_ms (typically defaulting to 500-600 milliseconds), it is structurally incompatible with Prayer mode, which intrinsically necessitates long silences for contemplation.
+
+To resolve this architectural conflict, the iOS client must assume absolute authority over Voice Activity Detection (Client-Side VAD). During Prayer mode, the client sets the Realtime API turn_detection to null via a session.update payload. The client continues to stream input_audio_buffer.append events, but the backend will not interrupt the user regardless of the length of the silence. Once the user explicitly concludes the prayer, the client sends an input_audio_buffer.commit event followed immediately by a conversation.item.create event. This sequence prompts the backend to process the entire buffered sequence, outputting the complete whisper-1 transcript to the durable source database for subsequent analysis or storage.
+
+During Quiet mode, the microphone buffer loop runs entirely locally, utilizing a lightweight on-device energy threshold or push-to-talk mechanism. Until the explicit wake is triggered, no input_audio_buffer.append events are transmitted to the OpenAI websocket. This hybrid local/cloud gating mechanism preserves substantial API costs while ensuring the portal is instantly available when required.
+
+Evaluation of Temporal Knowledge Graph Architectures
+
+The independent research angle mandates a rigorous focus on temporal personal knowledge, source provenance, and correction. The personal context backend relies heavily on the temporal ordering of facts. For example, a user's prayer concerns, active projects, daily metadata, and changing reflections evolve constantly. Traditional Retrieval-Augmented Generation (RAG) paradigms rely on static vector stores, which either destructively overwrite old information or indiscriminately accumulate contradictory statements, leading to agent hallucination.
+
+The industry has proposed several graph-based memory frameworks to solve this, most notably Graphiti (the open-source core of Zep), Mem0, Letta, and Microsoft GraphRAG.
+
+Graphiti: Autonomous Bi-Temporal Graphs
+
+Zep’s open-source framework, Graphiti, implements a bi-temporal knowledge graph architecture documented extensively in a January 2025 paper (arXiv:2501.13956). Graphiti models knowledge as a graph
+𝐺
+=
+(
+𝑁
+,
+𝐸
+,
+𝜙
+)
+G=(N,E,ϕ) where entities (nodes) are connected by facts (edges), and
+𝜙
+ϕ represents the incidence function.
+
+Crucially, Graphiti maintains four timestamps for every fact:
+
+𝑡
+𝑣
+𝑎
+𝑙
+𝑖
+𝑑
+t
+valid
+	​
+
+: When the fact became true in the real world (Business Time).
+
+𝑡
+𝑖
+𝑛
+𝑣
+𝑎
+𝑙
+𝑖
+𝑑
+t
+invalid
+	​
+
+: When the fact was superseded.
+
+𝑡
+𝑐
+𝑟
+𝑒
+𝑎
+𝑡
+𝑒
+𝑑
+′
+t
+created
+′
+	​
+
+: System ingestion time (Transaction Time).
+
+𝑡
+𝑒
+𝑥
+𝑝
+𝑖
+𝑟
+𝑒
+𝑑
+′
+t
+expired
+′
+	​
+
+: System removal time.
+
+In this model, when an LLM extracts a new episode (e.g., a conversation where the user states, "I finished the backend project"), Graphiti identifies the existing entity, detects the contradicting previous edge ("I am working on the backend project"), and updates the old edge's
+𝑡
+𝑖
+𝑛
+𝑣
+𝑎
+𝑙
+𝑖
+𝑑
+t
+invalid
+	​
+
+ timestamp. It closes the validity window rather than deleting the fact, thereby preserving the provenance of the correction. This theoretically allows point-in-time reasoning: "What was true on October 1st?".
+
+Publisher claims state that using gpt-4o, Zep achieved an 18.5% accuracy improvement over baseline implementations on enterprise-critical tasks like cross-session information synthesis.
+
+Measured Evidence: The Risks of Autonomous Extraction
+
+Despite the robust publisher claims, independent evaluation of Graphiti reveals significant operational risks for a production deployment, particularly concerning the validation burden and operating costs.
+
+Collateral Invalidation: Because Graphiti relies on an LLM to autonomously determine which old edges to invalidate, it frequently closes the validity windows of completely unrelated facts. An independent audit of a production graph documented in Caura AI's architectural review (and verified against Graphiti's GitHub Issue #1728) found that 1,616 of 3,950 facts (41%) were marked invalid_at erroneously. Saving a memory that merely mentioned an entity often retired an unrelated fact about it because edge invalidation searched the whole graph.
+
+LLM Extraction Costs and Latency: The add_episode command requires multiple sequential LLM calls to extract entities, resolve deduplication, extract edges, and invalidate existing facts against the graph. Users report single-sentence episodes taking upward of 600 seconds on rate-limited endpoints, with cost estimates reaching $0.80 for 40 short interactions using default OpenAI models.
+
+Database Indexing Failures: The framework relies on underlying graph databases such as Neo4j or FalkorDB. Users have reported severe backend-specific search issues, including unindexed UUID equality scans causing broad timeouts and complete system stalls during add_episode execution at scale (GitHub Issues #1272, #1592, #1819).
+
+MCP Server Token Inflation: Teams wiring Graphiti's Model Context Protocol (MCP) server into workflows report that the server routinely returns raw fact_embedding arrays directly to the model, artificially inflating token consumption by up to 50 times (GitHub Issue #610).
+
+For the BACKEND-3 architecture, where exact source identity, precise reconstructible citations, and specific correction tracking are required—and where "clinical findings" extraction is rejected in favor of a user-defined vocabulary—the autonomous, probabilistic extraction of Graphiti introduces unacceptable entropy.
+
+Alternatives: Mem0, Letta, and Microsoft GraphRAG
+
+It is necessary to contrast Graphiti with alternative semantic memory layers.
+
+Mem0 utilizes a two-phase pipeline (extract and reconcile) with a focus on token efficiency. It extracts candidate facts from each message pair and reconciles them against existing memory (arXiv:2504.19413, published April 2025). However, it updates memories by replacing them or appending them semantically, lacking a strict mathematical bi-temporal structure.
+
+Letta provides a tiered operating-system-like memory (Core, Recall, Archival) managed entirely by the agent through tool calls. The agent explicitly writes to memory blocks.
+
+Microsoft GraphRAG (arXiv:2404.16130) focuses on document corpus ingestion and hierarchical community summarization for global sensemaking, rather than incremental, transaction-time agent memory. In temporal reasoning benchmarks (arXiv:2607.05577), standard GraphRAG achieved only 18.8% accuracy compared to Graphiti's 57.4%.
+
+While Mem0 and Letta excel in standard conversational agent contexts, neither provides the rigorous chronological guarantees required to ensure that prayer text corrections do not advance listing timestamps, or that exact source revisions can be targeted for late repairs via a synchronization cursor.
+
+Relational Bitemporal Schema: PostgreSQL & SQL:2011
+
+To satisfy the stringent requirements for temporal knowledge, source provenance, and exact correction tracking, the architecture must abandon probabilistic LLM graph management in favor of a highly deterministic bitemporal relational schema, natively supported by PostgreSQL.
+
+System Time versus Business Time
+
+The SQL:2011 standard formalized the concept of bi-temporal tables, establishing two distinct axes of time:
+
+Business Time (Valid Time / Event Time): The period during which a fact is true in the real world (e.g., the exact duration of a calendar event, or the time a prayer was spoken).
+
+System Time (Transaction Time / Observation Time): The exact database timestamp when the system recorded, updated, or deleted the fact.
+
+In the BACKEND-3 ecosystem, the supplied contracts demand that corrections to prayer text may not advance the listing timestamps. This requires strict separation of these temporal axes. When a user edits a transcript from a week ago, the Business Time remains anchored in the past, but the System Time advances to the current transaction instant (now()). Consumer clients querying the UI sort by Business Time, ensuring the listing order does not change. Conversely, consumer clients syncing local states query by System Time to pull the delta.
+
+Schema Implementation via PostgreSQL Range Types
+
+PostgreSQL achieves rigorous SQL:2011 bitemporal compliance using timestamp range types (specifically tstzrange) and GiST (Generalized Search Tree) exclusion constraints.
+
+A generic schema for context source tables (capturing prayer transcripts, teaching texts, and metadata) is defined to prevent overlapping valid timelines for a single entity, employing the WITHOUT OVERLAPS constraint paradigm:
+
+SQL
+-- Enable GiST indexing for exclusion constraints
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+
+CREATE TABLE context_sources (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    source_type TEXT NOT NULL,           -- e.g., 'prayer', 'sermon', 'scripture'
+    digest TEXT NOT NULL,                -- Cryptographic hash for consumer comparison
+    content TEXT NOT NULL,
+    metadata JSONB,
+    valid_range TSTZRANGE NOT NULL DEFAULT tstzrange(now(), 'infinity', '[)'),
+    sys_period TSTZRANGE NOT NULL DEFAULT tstzrange(now(), 'infinity', '[)'),
+
+    -- Ensure no overlapping valid_range for the same ID
+    EXCLUDE USING GIST (
+        id WITH =,
+        valid_range WITH &&
+    )
+);
+
+
+The GiST exclusion constraint (valid_range WITH &&) mathematically guarantees that no two records for the same id can have overlapping valid_range windows.
+
+If a transcript or contextual record is corrected, the database executes a temporal split:
+
+The old record's sys_period is closed (the upper bound is set to the transaction time, now()).
+
+A new record is inserted with the corrected content, generating a new digest. Its valid_range exactly matches the original event time, but its sys_period starts at now().
+
+This architecture satisfies the requirement that design updates, removals, and superseded claims are entirely reconstructible. It maintains absolute fidelity to the exact source history without relying on an LLM to probabilistically manage edge invalidation, eliminating the risk of collateral invalidation entirely.
+
+Source Provenance, Ontology, and Correction Flow
+
+The BACKEND-3 domain projection relies heavily on independent source pipelines. Source classes include prayer transcripts, teaching text, Scripture, calendar data, and other personal-context records. There is no selected consolidated knowledge backend; instead, the bitemporal Postgres store acts as the immutable ledger from which downstream projects project their specific domains.
+
+The Theographic Ontology Example
+
+Scripture references and personal context must retain source/edition locators and digest-qualified locators. The target schema candidate, Theographic (an open-source CC BY-SA 4.0 metadata dataset), provides an exact structural model for biblical data.
+
+The Theographic dataset normalizes biblical metadata into distinct entity classes:
+
+People: Biblical figures with aliases.
+
+Places: Geographic points.
+
+Events: Temporal occurrences (e.g., "The Exodus").
+
+Passages: Digest-qualified locators (e.g., Genesis 1:1, BSB translation).
+
+When the OpenAI Realtime agent processes a conversational workflow—such as a user discussing a sermon regarding King David—the backend does not indiscriminately dump semantic text into a vector database. Instead, an explicit tool call is executed to extract entities based on the user-defined vocabulary, mapping them directly to the Theographic schema.
+
+The resulting relational link is stored bitemporally:
+
+SQL
+INSERT INTO contextual_links (source_id, entity_type, entity_id, valid_range)
+VALUES ('<prayer_uuid>', 'Person', 'David', tstzrange('2026-10-12 18:00:00', 'infinity', '[)'));
+
+Reconstructible Citations and Digest Comparison
+
+The user contract mandates that consumers compare text digests and membership. Because the bitemporal table stores a cryptographic hash (digest) of the content, downstream consumers (like an iPad app, a separate website renderer, or a creative workflow storyboarder) can synchronize their local state highly efficiently.
+
+If a source text is updated, the digest inherently changes. The consumer application checks its local digest against the server's digest for a given id. If they differ, the consumer fetches the updated payload. Scripture text citations retain their source edition by storing the specific translation metadata (e.g., "BSB", "WEB") directly in the JSONB metadata column, rendering the citation immune to unprompted LLM summarization or degradation over time.
+
+Change Cursor Semantics and Test Matrix
+
+A defining feature of this architecture is the necessity to support "late repairs" across decentralized consumer endpoints without breaking chronological flow or UI sorting logic.
+
+Adapter and Cursor Semantics
+
+A simple sequence ID or a traditional updated_at column fails catastrophically for temporal data. An updated_at mutation violates the principle of immutability, and a sequential ID does not cleanly map to point-in-time historical reconstruction.
+
+The change cursor must iterate strictly over the Transaction Time (sys_period), not the Event Time (valid_range).
+
+When a downstream consumer requests a delta sync for late repairs or updates:
+
+Request: The client issues GET /sync?cursor=2026-10-10T12:00:00Z.
+
+Query: The adapter translates this to SELECT * FROM context_sources WHERE lower(sys_period) >= '2026-10-10T12:00:00Z'.
+
+Response: The server returns all records (insertions, supersessions, and deletions) that the database observed since the cursor timestamp.
+
+Because a deletion or an update in a bitemporal system is merely the insertion of a new row with a closed valid_range or sys_period upper bound, the consumer naturally receives the "tombstone" or the updated state, advancing its local cursor to the maximum lower(sys_period) received in the batch.
+
+Source-Change Test Matrix
+
+To validate the behavioral contracts required by the BACKEND-3 environment, the following matrix defines the exact state transitions for the bitemporal datastore. This matrix serves as the definitive reference for how operations interact with both time dimensions.
+
+Action / Scenario	Business Time (valid_range)	System Time (sys_period)	Consumer Cursor Impact	Client Listing Order	Digest Mutation
+Initial Prayer Capture (User completes voice session)	[now(), infinity)	[now(), infinity)	Syncs new record via sys_period start.	Appears at the top (newest).	Generated from raw transcript.
+Late Repair (User fixes typo in transcript from 3 days ago)	Retains original bounds [T-3d, infinity)	Old row closed [T-3d, now()). New row: [now(), infinity)	Cursor sees new row based on sys_period start.	No change. Original event time dictates sorting.	Regenerated based on corrected text.
+Retrospective Deletion (User deletes a contextual note)	[T_start, T_delete) (Closed bounding)	Old row closed. New row inserted to represent tombstone.	Syncs tombstone; client logic processes removal.	Removed entirely from view.	N/A (Digest irrelevant on deletion).
+Entity Alias Merge ("Saul" and "Paul" linked)	Update to contextual link bounds.	sys_period bounds close/open.	Consumer receives updated link mapping.	Alias resolves dynamically in UI search.	N/A
+Fact Supersession (User explicitly states a project is finished)	New fact edge: [now(), infinity). Old fact edge valid_range closed at now().	New transaction time for both mutations.	Syncs both the new state and the closed history.	Current status changes; history preserved.	N/A
+
+Table 2: Bitemporal state transitions, demonstrating how system and business time decoupling satisfies the requirement that corrections do not advance listing timestamps while allowing perfect delta synchronization.
+
+Concrete Interfaces and Feasible Proof Plan
+
+Implementing this architecture requires a phased validation strategy. While this report explicitly prohibits deploying code, purchasing credits, or running provider hardware experiments, a feasible proof plan for realizing the architecture involves three strictly delineated phases:
+
+Phase 1: iOS Background Audio Harness: The first phase must validate the OS constraints. The SwiftUI client should be configured with AVAudioSessionCategoryPlayAndRecord, utilizing AVAudioSessionCategoryOptionMixWithOthers. A mock audio loop writing to a local rolling buffer should be deployed to test how long the OS permits the application to remain suspended in the background under heavy thermal load before dispatching memory warnings or# BACKEND-3 Personal temporal context and source correction architecture
+
+Executive Recommendation
+
+The architectural evaluation for the BACKEND-3 personal temporal context and source correction environment yields a bifurcated recommendation designed to satisfy the strict constraints of a private, single-user native SwiftUI iPhone portal. The conversational voice execution layer should be built directly upon the OpenAI Realtime API utilizing the WebSocket protocol, while the temporal knowledge graph and source provenance layer should be implemented using a PostgreSQL SQL:2011 bitemporal schema rather than adopting an autonomous graph framework like Graphiti.
+
+While Zep’s Graphiti framework represents the state of the art in autonomous bi-temporal graph construction for large language models, measured evidence from production implementations indicates significant operational friction for a deterministic personal system. Specifically, autonomous frameworks suffer from "collateral invalidation," wherein unrelated facts are erroneously marked as superseded by the model, and they incur high extraction overheads per interaction episode. For a system where deterministic source correction, exact scripture locators, and robust late-repair cursors are critical, a bitemporal relational design using PostgreSQL's range types and exclusion constraints provides superior data integrity and perfectly satisfies the requirement that prayer text corrections must not advance listing timestamps.
+
+The native SwiftUI client must leverage specific iOS audio session configurations to sustain continuous background recording and interruption tolerance. Voice interaction is treated as a continuous stream where modes like "Quiet" and "Prayer capture" dictate the client-side rendering and voice activity detection commits, deliberately severing the underlying server connection to control the prohibitive costs of continuous API audio streaming. The nearest alternative to this bespoke relational approach is self-hosting Graphiti with a Neo4j backend; however, the requirement to precisely control listing timestamps and maintain user-defined parts vocabularies strictly favors the relational bi-temporal separation of event time and observation time.
+
+Voice Foundation: API Identification, Economics, and Interface Design
+
+Voice serves as the foundational interaction paradigm for the BACKEND-3 environment. The stated performance standard for this architecture is OpenAI's live voice experience. It is critical to precisely identify the underlying technology powering this experience and decouple consumer marketing from the developer interfaces required for the RawleySM/rlm-adk-ios workspace.
+
+API Identification and Economic Realities
+
+The target experience is powered by the OpenAI Realtime API, specifically utilizing the gpt-4o-realtime-preview model. The architecture must strictly distinguish between the ChatGPT Pro consumer subscription (currently priced at $200 per month) and the API billing required for a custom backend. A ChatGPT Pro subscription does not provide backend API credits, nor does it allow for the headless programmatic control required by the RLM-ADK execution backend. The Realtime API is billed entirely on a usage basis through the OpenAI developer platform.
+
+The economics of the Realtime API are substantially higher than standard text models and heavily influence the final architectural choice. API billing is calculated based on token consumption across multiple modalities. Text input is priced at $5.00 per one million tokens, with cached text input dropping to $2.50. Text output is billed at $20.00 per one million tokens. Audio processing introduces a steep premium: audio input is billed at $40.00 per one million tokens, with caching reducing the cost to between $2.50 and $4.00, while audio output incurs a cost of $80.00 per one million tokens.
+
+Because the portal captures continuous device recording—including explicit quiet and prayer modes—transmitting raw, unbroken audio directly to the API for 24 hours a day would incur prohibitive and unsustainable costs. Therefore, the architecture must decouple continuous device recording from active Realtime API streaming sessions. A paid voice session need not remain open merely because local recording continues.
+
+Billing Modality	Cost per 1 Million Tokens	Cached Cost per 1 Million Tokens	Architectural Implication
+Text Input	$5.00	$2.50	Context injection and prompts should be heavily cached.
+Text Output	$20.00	N/A	Transcripts and metadata extraction remain relatively cost-effective.
+Audio Input	$40.00	$2.50 - $4.00	Continuous streaming is unviable; client-side Voice Activity Detection is mandatory.
+Audio Output	$80.00	N/A	Spoken transitions and responses must be deliberate and concise.
+
+Table 1: Economic analysis of the OpenAI Realtime API, demonstrating the necessity of disconnecting the WebSocket during prolonged silences.
+
+WebSocket Protocol and Session Configuration
+
+The Realtime API operates over a persistent WebSocket connection, allowing for bidirectional, low-latency communication. The conversational session must be configured immediately upon connection using the session.update event. To achieve the lowest latency and highest fidelity, the API expects raw uncompressed audio. The iOS client must capture and transmit audio using the pcm16 format at a 24kHz sample rate (mono).
+
+The payload allows the backend to inject system instructions and define the exact audio footprint. The system relies on an event-driven loop. Under standard operations, the client continuously sends input_audio_buffer.append events containing base64-encoded PCM audio chunks. The default configuration utilizes server_vad (Server-side Voice Activity Detection), which monitors these buffers, detects the start of speech via the input_audio_buffer.speech_started event, and automatically commits the buffer upon detecting silence, subsequently generating a response.
+
+Out-of-Band Transcription for Source Pipelines
+
+A core requirement of the architecture is generating precise transcripts of user interactions to serve as durable source products (e.g., prayer transcripts, interview texts). While the gpt-4o-realtime-preview model excels at generating speech-to-speech responses, it does not natively return a reliable textual transcript of the user's audio input in its standard event flow.
+
+To fulfill this requirement, the session must enable out-of-band transcription by supplying an input_audio_transcription object within the initial session.update event, explicitly specifying the whisper-1 model. When enabled, the server dispatches a conversation.item.input_audio_transcription.completed event alongside the audio response, providing a high-quality text digest of the user's turn. If the input_audio_transcription property is omitted from the initial session configuration, the developer must send a subsequent session.update to pin the transcription model; omitting it entirely results in silence from the transcriber and a failure to capture the source text.
+
+iOS Native Workspace: Audio Constraints and Continuous Recording
+
+The execution layer exists within a native SwiftUI iPhone portal. Because continuous recording is mandated—including states where the screen is locked or the application is relegated to the background—the integration with the host operating system's AVAudioSession is a critical engineering challenge. The documentation indicates that paid membership in the Apple Developer Program does not exempt the application from strict OS-level audio constraints.
+
+Interruption Tolerance and Background Audio
+
+By default, an iOS application suspends operations when backgrounded. To sustain the audio pipeline, the application's AVAudioSession must be configured with the AVAudioSession.Category.playAndRecord category. However, this base configuration is insufficient for a continuous background agent. If the application attempts to initiate or maintain an audio session while backgrounded without appropriate mixability flags, the operating system will terminate the session, frequently throwing error code 560557684 (AVAudioSessionErrorCodeCannotInterruptOthers, translated internally to the four-character code !int).
+
+To prevent this fatal termination, the SwiftUI lifecycle must configure the audio session with two highly specific options. First, the AVAudioSessionCategoryOptionMixWithOthers option explicitly allows the portal's audio session to coexist with other applications playing audio. Second, the AVAudioSessionCategoryOptionDuckOthers option automatically reduces the volume of background audio (such as podcasts or music playing in other applications) when the agent speaks, returning the system to normal volume once the AVAudioSession finishes its output. The system must also gracefully handle the AVAudioSessionInterruptionTypeKey payload delivered via NSNotification, specifically checking if the audio session was suspended by the system and immediately attempting a resumption when the interruption ends.
+
+Managing Quiet and Prayer Capture Modes
+
+The product constraints demand that background work continues, but "Quiet" mode suppresses all speech until an explicit wake, and "Prayer" capture tolerates long silences ending only by explicit control. Calendar timers must not override the explicit Quiet state.
+
+Because the OpenAI Realtime server_vad triggers automatically after a defined silence_duration_ms (typically 500 to 600 milliseconds), it is structurally incompatible with Prayer mode, which necessitates long, unbroken silences without premature interruption by the agent. To resolve this, the iOS client must assume absolute authority over Voice Activity Detection during these specific modes.
+
+During Prayer mode, the client sets the Realtime API turn_detection property to null via a session.update payload. The client can safely continue to stream input_audio_buffer.append events, and the backend will accumulate the audio without generating a response. Once the user explicitly concludes the prayer via the native UI or a specific physical interaction, the client sends an input_audio_buffer.commit event followed by a conversation.item.create event. This prompts the backend to process the entire buffered sequence as a single monolithic block, outputting the complete whisper-1 transcript to the durable source database and allowing the session to terminate gracefully.
+
+During Quiet mode, the architecture takes a more aggressive approach to cost savings. The microphone buffer loop runs entirely locally, utilizing a lightweight on-device wake-word or push-to-talk mechanism. Until the explicit wake is triggered, no input_audio_buffer.append events are transmitted to the OpenAI websocket, preserving substantial API costs while adhering to the requirement that background work continues.
+
+Proactive Speech and Spoken Transitions
+
+Outside of the Quiet and Prayer states, the system is designed to initiate proactive speech covering calendar preparation, departure sequences, and project phases requiring input. Because ordinary status relies on the user's request, the proactive engine must bridge the gap between background data gathering and live conversational sessions.
+
+When the background execution layer detects a proactive trigger (e.g., a calendar departure event approaching), it establishes the WebSocket connection and immediately dispatches a conversation.item.create event populated with the contextual prompt, followed by a response.create command. This forces the agent to speak first, delivering the necessary information to the user through the iOS audio session, which ducks any active background music. Long research and creative requests, which become durable action items producing actual reviewable outputs (websites, books, reports), are processed entirely out-of-band. Once the voice session ends, the execution backend continues the generative workflows asynchronously, eventually notifying the user through a subsequent proactive speech event or a native UI update.
+
+Temporal Knowledge Graph Evaluation: Graphiti, Mem0, and Letta
+
+The personal context backend relies fundamentally on the temporal ordering of facts. For example, a user's prayer concerns, active projects, and daily metadata evolve continuously. Traditional Retrieval-Augmented Generation (RAG) models rely on static vector stores that retrieve information based solely on semantic similarity. These systems either destructively overwrite old information or accumulate contradictory statements, leading to catastrophic context degradation and hallucination over long horizons. The architectural review mandates a deep comparative analysis of temporal memory frameworks, specifically examining Graphiti against alternatives like Mem0 and Letta.
+
+The Graphiti Bi-Temporal Architecture
+
+Zep’s open-source framework, Graphiti, represents a significant academic and practical advancement in LLM memory, implementing a bi-temporal knowledge graph detailed in the paper Zep: A Temporal Knowledge Graph Architecture for Agent Memory (arXiv:2501.13956). Graphiti models knowledge as a mathematically rigorous graph
+𝐺
+=
+(
+𝑁
+,
+𝐸
+,
+𝜙
+)
+G=(N,E,ϕ) where nodes (
+𝑁
+N) represent entities and edges (
+𝐸
+E) represent temporal facts linking those entities.
+
+The defining characteristic of this architecture is its maintenance of four distinct timestamps for every single fact in the graph:
+
+𝑡
+𝑣
+𝑎
+𝑙
+𝑖
+𝑑
+t
+valid
+	​
+
+: The specific moment the fact became true in the real world.
+
+𝑡
+𝑖
+𝑛
+𝑣
+𝑎
+𝑙
+𝑖
+𝑑
+t
+invalid
+	​
+
+: The moment the fact was superseded or ceased to be true.
+
+𝑡
+𝑐
+𝑟
+𝑒
+𝑎
+𝑡
+𝑒
+𝑑
+′
+t
+created
+′
+	​
+
+: The exact ingestion time when the system recorded the fact (transaction time).
+
+𝑡
+𝑒
+𝑥
+𝑝
+𝑖
+𝑟
+𝑒
+𝑑
+′
+t
+expired
+′
+	​
+
+: The system removal or archiving time.
+
+Under optimal conditions, when an LLM extracts a new episode from a conversation (e.g., "I finished the backend project today"), Graphiti autonomously identifies the existing entity, detects the contradicting previous edge ("I am actively working on the backend project"), and updates the old edge's
+𝑡
+𝑖
+𝑛
+𝑣
+𝑎
+𝑙
+𝑖
+𝑑
+t
+invalid
+	​
+
+ timestamp. It closes the validity window of the old fact rather than deleting it. This mechanism theoretically permits precise point-in-time reasoning, allowing the agent to accurately answer queries such as "What was true on October 1st?" without confusing it with current reality. Publisher claims suggest that this architecture yields a 15.2% accuracy improvement over baseline semantic implementations when using smaller models like gpt-4o-mini.
+
+Measured Evidence and Autonomous Vulnerabilities
+
+Despite the theoretical elegance of the Graphiti model, independent evaluation reveals significant operational vulnerabilities that disqualify it for the precise requirements of the BACKEND-3 environment.
+
+The primary vulnerability is "collateral invalidation." Because Graphiti relies on an LLM to autonomously determine which historical edges to invalidate, it frequently closes the validity windows of entirely unrelated facts. An audit of a production Graphiti deployment reported that out of 3,950 facts, 1,616 (41%) were erroneously marked with an invalid_at timestamp. A manual review demonstrated that saving a memory that merely mentioned an entity often prompted the LLM to retire an unrelated but valid fact about that same entity. For a personal context portal managing exact prayer text corrections and scripture citations, this autonomous entropy is unacceptable.
+
+Furthermore, the ingestion pipeline imposes severe latency and cost penalties. The add_episode command requires multiple sequential LLM calls to extract entities, resolve deduplication, extract new edges, and query the existing graph for invalidation candidates. Users report that a single-sentence episode can take upward of 600 seconds on rate-limited endpoints, with cost estimates reaching $0.80 for 40 short interactions. Finally, the framework relies on underlying graph databases (such as Neo4j or FalkorDB), and users have documented unindexed UUID equality scans causing broad timeouts and complete system stalls during edge extraction at scale.
+
+Contrasting Alternatives: Mem0 and Letta
+
+It is necessary to contrast Graphiti with alternative semantic and tiered memory architectures to ensure no viable open-source option is overlooked.
+
+Mem0 utilizes a two-phase pipeline focused heavily on token efficiency and semantic extraction (arXiv:2504.19413). It extracts candidate facts from conversational streams and reconciles them against existing memory using vector similarity. However, Mem0 fundamentally updates memories by replacing them or appending overrides, lacking a strict mathematical bi-temporal structure. It operates more as a highly optimized semantic filter rather than an auditable temporal ledger.
+
+Letta (formerly MemGPT) approaches memory as a tiered operating system. It provides Core, Recall, and Archival memory tiers, leaving the management of these tiers entirely up to the agent through autonomous tool calls. While highly flexible, it shifts the burden of temporal consistency to the prompt engineering layer, providing zero guarantees regarding chronological auditing, source provenance, or exact late repairs. Neither Mem0 nor Letta provides the rigorous chronological guarantees required for auditable source provenance in the BACKEND-3 environment.
+
+Framework	Core Architecture	Temporal Granularity	Validation Burden & Risks	Applicability to BACKEND-3
+Graphiti	Bi-Temporal Knowledge Graph	High (4-timestamp model)	High (Collateral invalidation, LLM costs)	Rejected. Autonomous extraction degrades deterministic personal records.
+Mem0	Semantic Extraction & Reconciliation	Low (Append-only / Overwrite)	Medium (Semantic drifting over long horizons)	Rejected. Lacks exact event-time versus observation-time tracking.
+Letta	OS-Tiered Memory via Tool Calls	None (Agent-managed state)	High (Relies entirely on prompt adherence)	Rejected. Cannot guarantee source provenance or late repair mechanics.
+
+Table 2: Comparison of open-source AI agent memory architectures, demonstrating the mismatch between autonomous extraction paradigms and the requirement for deterministic source correction.
+
+Relational Temporal Design: SQL:2011 Bitemporal Schema
+
+To satisfy the stringent requirements for temporal personal knowledge, exact source provenance, and deterministic correction tracking, the architecture must abandon probabilistic graph management. The optimal solution is a strict bitemporal relational schema natively supported by PostgreSQL, leveraging the SQL:2011 standard principles.
+
+Separation of Event Time and Observation Time
+
+The foundation of the SQL:2011 temporal standard is the absolute separation of two distinct timelines, allowing a system to record when a fact was true in the real world separately from when the database learned about it.
+
+The first timeline is Business Time (or Event Time / Valid Time). This defines the period during which a fact is true in the modeled domain. For example, the exact duration of a calendar event, or the chronological timestamp when a prayer was originally spoken into the device.
+
+The second timeline is System Time (or Transaction Time / Observation Time). This records the exact machine timestamp when the database stored or updated the fact. It is maintained strictly by the database engine and cannot be manipulated by the application layer.
+
+This separation elegantly solves the core supplied contract: prayer text corrections must not advance listing timestamps. When a user edits a transcript from three days ago to fix a transcription error, the Business Time remains anchored in the past, entirely unchanged. However, the System Time is closed on the old record, and a new record is inserted with a System Time beginning at now(). Consumer clients querying the user interface sort exclusively by Business Time, ensuring the listing order does not change. Simultaneously, background sync engines query by System Time to pull the delta, ensuring the correction is propagated without a full database sweep.
+
+Schema Implementation via PostgreSQL Range Types
+
+PostgreSQL achieves rigorous SQL:2011 bitemporal compliance natively using timestamp range types (tstzrange) and GiST (Generalized Search Tree) exclusion constraints.
+
+The architecture defines a context source table designed to prevent overlapping valid timelines for any single entity using the WITHOUT OVERLAPS paradigm. The following schema provides the concrete interface for the BACKEND-3 environment:
+
+SQL
+-- Ensure the GiST extension is available
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+
+-- Define the bitemporal source table
+CREATE TABLE context_sources (
+    id UUID DEFAULT gen_random_uuid(),
+    source_type TEXT NOT NULL,
+    digest TEXT NOT NULL,
+    content TEXT NOT NULL,
+    metadata JSONB,
+
+    -- Business Time (Event Time)
+    valid_range TSTZRANGE NOT NULL DEFAULT tstzrange(now(), 'infinity', '[)'),
+
+    -- System Time (Observation Time)
+    sys_period TSTZRANGE NOT NULL DEFAULT tstzrange(now(), 'infinity', '[)'),
+
+    -- Primary bitemporal key ensuring no overlapping realities
+    EXCLUDE USING GIST (
+        id WITH =,
+        valid_range WITH &&
+    )
+);
+
+
+The GiST exclusion constraint (valid_range WITH &&) is the mathematical engine of the architecture. It guarantees that no two records sharing the same id can have overlapping valid_range windows.
+
+If a transcript is corrected, the database executes a deterministic temporal split. The old record's sys_period is updated, closing its upper bound to now(). Simultaneously, a new record is inserted with the corrected content, generating a new cryptographic digest. The new record inherits the original valid_range (the event time), but its sys_period starts exactly at now(). This paradigm ensures that all updates, removals, and superseded claims are entirely reconstructible, maintaining absolute fidelity to the source history without relying on an LLM to manage edge invalidation.
+
+Source Provenance and Theographic Domain Projections
+
+The BACKEND-3 domain projection relies on independent source pipelines. These source classes include prayer transcripts, teaching texts, scripture references, calendar data, and other personal-context records. The architecture strictly dictates that there is no selected consolidated knowledge backend; instead, the bitemporal PostgreSQL store acts as an immutable, generalized ledger from which consuming projects project their own domain-specific ontologies.
+
+Mapping the Theographic Schema to Personal Context
+
+Scripture references and personal context sources must retain their source edition and digest-qualified locators. The target schema candidate for biblical data is Theographic, an open-source, CC BY-SA 4.0 metadata dataset.
+
+The Theographic dataset normalizes biblical metadata into distinct, highly structured entity classes:
+
+People: Biblical figures, including complex alias mapping (e.g., Saul and Paul).
+
+Places: Geographic bounding points and historical regions.
+
+Events: Temporal occurrences connected to specific narratives.
+
+Passages: Digest-qualified locators denoting the exact book, chapter, verse, and translation edition (e.g., Genesis 1:1, BSB translation).
+
+This dataset provides a pristine, generic schema example that avoids the pitfalls of tracking parts vocabulary as clinical findings. When the OpenAI Realtime agent processes a conversational workflow—such as a user reflecting on a specific sermon discussing King David—the backend does not simply dump semantic text into a vector database. Instead, the agent executes an explicit tool call to extract the entities and maps them directly to the Theographic schema.
+
+The resulting relational link is stored within the bitemporal architecture, binding the personal context to the generic schema:
+
+SQL
+INSERT INTO contextual_links (source_id, entity_type, entity_id, valid_range)
+VALUES (
+    '550e8400-e29b-41d4-a716-446655440000', -- UUID of the prayer transcript
+    'Person',
+    'David',
+    tstzrange('2026-10-12 18:00:00', 'infinity', '[)')
+);
+
+Reconstructible Citations and Digest Comparisons
+
+The user contract mandates that consumers compare text digests and membership. Because the bitemporal table stores a cryptographic hash (digest) of the content payload, downstream consumers (such as an iPad application, a separate website renderer, or a localized vector cache) can synchronize efficiently without downloading the entire payload blindly.
+
+If a source text is updated via a late repair, the digest inherently changes. The consumer application checks its local digest against the server's digest for a given id. If they differ, the consumer fetches the updated payload. Crucially, Scripture text citations retain their source edition by storing the translation metadata (e.g., "BSB", "WEB") directly in the immutable JSONB metadata column. This prevents the LLM from inadvertently summarizing or hallucinating the text version, ensuring the citation remains perfectly reconstructible across all domain projections.
+
+Adapter and Cursor Semantics for Late Repairs
+
+A defining feature of the BACKEND-3 architecture is the requirement to support "late repairs" across decentralized consumer endpoints without breaking the chronological flow of the interface or requiring full-table rescans.
+
+The Delta Sync Architecture
+
+A simple sequential ID or a traditional updated_at timestamp column fundamentally fails for temporal data. An updated_at mutation violates the principle of immutability, permanently destroying the previous state of the row. Furthermore, a sequential ID does not cleanly map to point-in-time historical reconstruction across distributed systems.
+
+Therefore, the change cursor must iterate exclusively over the System Time (sys_period / Observation time), not the Event Time (valid_range).
+
+When a downstream consumer requests a delta synchronization, the adapter semantic flow operates as follows:
+
+Client Request: The client asks for all changes since its last known observation time: GET /sync?cursor=2026-10-10T12:00:00Z
+
+Server Query: The backend queries the bitemporal table based on the lower bound of the sys_period: SELECT * FROM context_sources WHERE lower(sys_period) >= '2026-10-10T12:00:00Z'
+
+Server Response: The server returns all records that the database observed since the cursor timestamp, including new insertions, corrections (supersessions), and deletions.
+
+Because a deletion or update in a strict bitemporal system is merely the insertion of a new row with a closed valid_range or sys_period upper bound, the consumer naturally receives the "tombstone" or the updated state. The client applies these changes locally and advances its local cursor to the maximum lower(sys_period) received in the batch.
+
+Source-Change Test Matrix
+
+To validate the behavioral contracts required by BACKEND-3, the following matrix defines the exact state transitions for the bitemporal datastore across various operational scenarios.
+
+Action / Scenario	Business Time (valid_range)	System Time (sys_period)	Consumer Cursor Impact	Client Listing Order	Digest Mutation
+Initial Prayer Capture (User completes a voice session)	[now(), infinity)	[now(), infinity)	Syncs the new record.	Appears at the top of the UI (newest).	Generated from the raw whisper-1 transcript.
+Late Repair (User fixes a typo in a transcript from 3 days ago)	Retains original event bounds [T-3d, infinity)	Old row closed [T-3d, now()). New row inserted: [now(), infinity)	Cursor sees the new row based on the sys_period start.	No change. The original event time dictates the UI sorting.	Regenerated based on the corrected text.
+Retrospective Deletion (User explicitly deletes a contextual note)	[T_start, T_delete) (Closed bounding)	Old row closed. New row inserted to represent the tombstone.	Syncs the tombstone; client removes the entity from the UI.	Removed from view entirely.	N/A (Digest check bypassed on deletion).
+Entity Alias Merge ("Saul" and "Paul" linked retroactively)	Update applied to contextual link bounds.	sys_period bounds close and open for the affected links.	Consumer receives the updated link mapping.	Alias resolves dynamically in UI search.	N/A (Applies to link table, not source content).
+Superseded Fact (User explicitly states a project is finished)	New fact edge: [now(), infinity). Old fact edge valid_range closed at now().	New transaction time generated for both mutations.	Syncs both the new state and the closed history.	Current status changes; history preserved for audits.	N/A
+
+Table 3: Bitemporal state transitions, demonstrating how the decoupling of system and business time mathematically satisfies the requirement that late repairs do not advance listing timestamps.
+
+Primary Source Documentation and Validation
+
+The recommendations synthesized in this report are grounded in primary technical documentation, peer-reviewed architectures, and observed production behaviors. The following analysis integrates the evaluation of these primary sources, highlighting how they shape the architectural decisions.
+
+The foundational paper detailing autonomous bi-temporal graphs, Zep: A Temporal Knowledge Graph Architecture for Agent Memory (arXiv:2501.13956), alongside the getzep/graphiti repository, provides the theoretical basis for the 4-timestamp model. While the paper demonstrates the superiority of graphs over static vector stores for evolving agents, third-party audits of Graphiti’s GitHub issues (specifically analyzing Issue #1728) reveal the critical flaw of collateral invalidation and severe LLM cost overheads. This observed evidence directly motivated the pivot to a relational bitemporal ledger.
+
+The implementation mechanics for that relational ledger rely heavily on IBM and PostgreSQL literature regarding the SQL:2011 standard. Technical breakdowns of tstzrange and GiST indexes physically demonstrate how to implement bitemporal rules without locking the database into proprietary graph engines. User reports confirm the high efficacy of this architecture in production-scale systems, particularly in managing complex temporal states like domain name portfolios.
+
+For the conversational execution layer, official specifications from the Microsoft Azure and OpenAI Realtime API documentation dictate the WebSocket protocol mechanics. These sources confirm the pcm16 24kHz audio requirement, the exact structure of the session.update payload, and crucially, the necessity of the input_audio_transcription object required to bind the whisper-1 model for out-of-band transcripts.
+
+Finally, the constraints governing the iOS native workspace are derived directly from Apple's AVAudioSession developer documentation and historical engineering triage. This literature documents the absolute OS-level requirement to utilize AVAudioSessionCategoryOptionMixWithOthers and AVAudioSessionCategoryOptionDuckOthers to prevent background session termination (error 560557684) during continuous recording loops.
+
+Feasible Proof Plan and Unresolved Facts
+
+To safely deploy this architecture, the implementation must proceed through a structured proof plan, acknowledging several hardware and provider-level unknowns that fall outside the bounds of this theoretical research phase.
+
+Feasible Proof Plan
+
+iOS Audio Lifecycle Validation: Develop a minimal SwiftUI application that instantiates the AVAudioSession with the required playAndRecord, mix, and duck flags. Validate that the application can maintain an active microphone buffer in the background for a minimum of 4 hours while the device is locked, without incurring a thermal or memory termination from the OS.
+
+Bitemporal Postgres Integration: Spin up a local PostgreSQL 17+ instance equipped with the btree_gist extension. Execute the schema definitions provided in this report and simulate the Source-Change Test Matrix. Verify that GiST exclusion constraints successfully reject overlapping event times for a single entity.
+
+WebSocket Handshake and Cost Profiling: Establish a WebSocket connection to the OpenAI Realtime API using a test script. Push 10 minutes of pcm16 silence interleaved with 2 minutes of active speech. Verify the exact billing footprint on the OpenAI developer dashboard to confirm that turning off VAD and severing the socket during silences effectively mitigates the $40/M token audio input costs.
+
+Unresolved Facts and Unknowns
+
+While the architecture is well-defined theoretically, several constraints remain unmeasured:
+
+Apple OS Absolute Memory and Thermal Constraints: While the required AVAudioSession flags permit background audio structurally, iOS aggressively terminates background applications under memory pressure or thermal throttling. The exact uptime of a continuous buffer stream on a physical iPhone over a 24-hour cycle remains an unknown risk and is highly dependent on the specific hardware generation (e.g., iPhone 15 Pro vs. iPhone 12).
+
+OpenAI WebSocket Cellular Stability: The OpenAI Realtime API requires a persistent wss:// connection during active conversational phases. Disconnections due to cellular handoffs or tunnel traversal will violently sever the session. The latency penalty and state-recovery burden of re-establishing the session, re-authenticating, and re-injecting the conversational context via conversation.item.create is currently unmeasured and may require aggressive local caching.
+
+Hardware VAD Capability: Because continuous streaming to OpenAI is economically unviable, the iOS client must run a local Voice Activity Detection algorithm to gate the transmission of audio during Quiet mode. If this on-device VAD processing exceeds the background CPU limits imposed by iOS, the application may be forcefully suspended by the system watchdog, rendering the quiet mode architecturally unstable.

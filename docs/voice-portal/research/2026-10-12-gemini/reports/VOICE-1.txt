@@ -1,0 +1,360 @@
+Gemini-generated research; source claims not independently validated.
+Conversation: https://gemini.google.com/app/6828661b9fed492f
+
+VOICE-1 Recent open speech-to-speech and full-duplex models
+Executive Recommendation and Decision Matrix
+
+The transition from cascaded conversational pipelines to native, full-duplex speech-to-speech architectures has fundamentally redefined the artificial intelligence landscape in the latter half of 2026. For the private, single-user native SwiftUI iPhone portal interfacing with the RLM-ADK execution backend, the foundational voice layer must support continuous background recording, explicit silence tolerance, natural conversational interruptions, and seamless handoffs to complex reasoning workflows.
+
+An exhaustive analysis of the current market, spanning proprietary application programming interfaces (APIs) and the latest open-weight foundation models, indicates that a singular, monolithic model cannot optimally satisfy the diametrically opposed requirements of absolute sub-second conversational fluidity and deep, prolonged theological and creative reasoning. Therefore, the recommended architectural decision is a hybrid, decoupled deployment strategy.
+
+The application should physically decouple continuous environmental audio capture, Voice Activity Detection (VAD), and silence-tolerant "prayer capture" from active generative voice sessions. For the active, conversational generative voice sessions, the recommendation is to adopt the OpenAI gpt-live-1 API as the immediate production engine. This WebRTC-based frontend guarantees the user-selected performance gold standard, ensuring flawless interruption handling and utilizing asynchronous tool calling for backend RLM-ADK execution.
+
+Concurrently, NVIDIA PersonaPlex-7B is identified as the primary open-weight fallback and the nearest alternative for future localized execution. PersonaPlex’s L3 true full-duplex architecture natively supports simultaneous listening and speaking. Crucially, its hybrid prompt conditioning allows the application to instantly alter the model's persona—shifting dynamically from a solemn devotional narrator to a proactive project manager—without incurring the latency of restarting a cascaded pipeline. The community’s successful compilation of PersonaPlex into the MLX framework provides a feasible, evidence-backed pathway for native Swift execution on Apple Silicon, satisfying the iOS deployment constraint.
+
+The conditions that would trigger a shift away from the OpenAI API entirely toward local PersonaPlex execution revolve primarily around Apple iOS thermal throttling and the operational economics of continuous audio processing. Should the SwiftUI application’s AVAudioSession overhead and local MLX memory footprint prove sustainable during screen-locked background execution, migrating the entire voice layer to a quantized PersonaPlex model would eliminate the persistent $0.05 per minute API metering, enabling unbounded proactive speech and continuous conversational readiness.
+
+The Target Experience: OpenAI Performance Reference and Economics
+
+To accurately benchmark the open-weight ecosystem, the exact target experience provided by OpenAI must be precisely defined. The landscape of OpenAI's offerings in October 2026 demands a strict demarcation between consumer subscription products and developer API infrastructure.
+
+Subscription Interfaces vs. API Infrastructure
+
+The user reference to the ChatGPT Pro subscription highlights a common point of architectural friction. OpenAI's ChatGPT Pro tier, introduced in December 2024 at $200 per month, and the subsequent Pro 500 tier at $500 per month, are exclusively end-user interface products. These subscriptions grant individual human users unlimited access to the o1 pro mode, GPT-5.6 Sol models, and the Advanced Voice interface within the confines of the proprietary ChatGPT web and mobile applications.
+
+Crucially, these subscriptions do not provide API access, nor do they subsidize programmatic API token consumption. The $200 monthly fee cannot be leveraged to power the private RLM-ADK SwiftUI portal. A bespoke application executing continuous device recording and complex background reasoning must rely entirely on pay-as-you-go API billing, necessitating a rigorous cost-benefit analysis of cloud versus local execution.
+
+The Realtime API (gpt-realtime-2.1)
+
+OpenAI’s monolithic solution for real-time voice integration is the Realtime API, which achieved general availability in August 2025. The current flagship model, gpt-realtime-2.1, released in July 2026, processes audio input and output natively as tokens while applying GPT-5-class reasoning capabilities and a 128,000-token context window.
+
+The cost structure for the Realtime API is fundamentally token-centric. Audio input is priced at $32.00 per one million tokens, which translates to approximately $0.06 per minute of ingested speech. Audio output is billed at $64.00 per one million tokens, equating to roughly $0.24 per minute of generated speech. However, the economic viability of this API in production hinges entirely on prompt caching. Retaining static system prompts, long-context workflow guidelines, and rigid tool schemas applies an 80x discount to cached audio and text inputs, reducing the cost to a nominal $0.40 per one million tokens.
+
+The second generation of the Realtime API introduced native support for the Model Context Protocol (MCP). This feature allows developers to pass a remote MCP server URL directly into the session. The model can asynchronously call external tools mid-conversation without freezing the audio session, ensuring that the conversational interface remains fluid while a slow, complex tool resolves on the backend. This asynchronous behavior is an absolute requirement for the target application, where long research requests become durable action items that may take minutes to process against a Theographic dataset or a Neo4j graph.
+
+The Full-Duplex Frontend (gpt-live-1)
+
+To address the latency and logic coupling of the Realtime API, OpenAI introduced gpt-live-1 on September 10, 2026. This model represents a deliberate unbundling of the voice interface from the reasoning engine.
+
+The gpt-live-1 endpoint provides a dedicated, full-duplex voice frontend billed strictly on a temporal basis at $0.05 per session minute, metered precisely by the second. This model handles the acoustic realities of human conversation—simultaneous listening, barge-ins, breathing, and backchanneling—natively at the edge. However, it delegates complex analytical tasks, semantic extraction, and tool calling to a separate backend model, such as gpt-5.6-sol, which is billed independently at standard text token rates.
+
+Integration of gpt-live-1 utilizes modern transport protocols, requiring the generation of ephemeral client keys with a 60-second expiration to open WebRTC peer connections directly from the client, or the use of sideband WebSockets for server-to-server routing. This represents the definitive performance gold standard for the SwiftUI application: an 800 to 1100 millisecond response latency, absolute conversational fluidity, and the ability to hand off massive reasoning tasks to frontier models without dropping audio frames.
+
+Architectural Taxonomy of Full-Duplex Spoken Dialogue Systems
+
+To rigorously evaluate the wave of open-weight models released within the last 180 days, it is necessary to apply a structured architectural taxonomy. The academic literature from 2026, specifically the Speaking While Listening survey (EMNLP 2026), provides a standard ontology for classifying full-duplex systems across four architectural layers (L0 to L3) and a continuous state machine.
+
+The L0 layer defines the traditional cascaded pipeline. In an L0 system, an external Voice Activity Detection (VAD) module acts as a rigid scheduler, sequentially passing audio to an Automatic Speech Recognition (ASR) model, text to a Large Language Model (LLM), and text back to a Text-to-Speech (TTS) synthesizer. This architecture is essentially half-duplex, resulting in robotic conversational rhythms and a complete inability to process interruptions gracefully.
+
+The L1 layer introduces a sidecar predictor. In this architecture, a secondary, lightweight neural network reads the hidden states of the primary LLM to predict when the user is pausing, allowing for faster, predictive turn-taking without relying on rigid silence thresholds.
+
+The L2 layer integrates the full-duplex decision matrix natively into the token stream. The model continuously ingests audio tokens and predictively outputs either semantic text/audio tokens or silence tokens, allowing for dynamic yielding of the conversational floor.
+
+The L3 layer represents the pinnacle of current speech-to-speech research. In an L3 system, the acoustic and semantic spaces are fully unified into a shared latent representation. Listening and speaking occur concurrently at the deepest neural level, enabling immediate, sub-second micro-adjustments in prosody based on the user's ongoing speech. Furthermore, true full-duplex capabilities are judged on a Time, Interruption, and Role (T x I x R) ontology, requiring the system to handle six canonical interaction scenarios, including overlapping speech, affirmative backchanneling, and sudden semantic redirection.
+
+Landscape Map of Open-Weight Speech Models (April - October 2026)
+
+The open-source and open-weight ecosystem has aggressively pursued parity with proprietary endpoints. The following analysis categorizes the most significant releases from mid-2026 into distinct paradigms based on the L0-L3 architectural taxonomy.
+
+Table 1: Landscape of Recent Foundation Speech Models
+Model Name	Primary Contributor	Release Window	Architecture Type	Parameter Scale	Base License	Turn-Taking Latency
+Kyutai Moshi	Kyutai Labs	Pre-90d Baseline	L3: Dual-stream S2S	7B	CC-BY 4.0	~160ms (Theoretical)
+NVIDIA PersonaPlex	NVIDIA	Jan 2026 Baseline	L3: Dual-stream S2S	7B	CC-BY 4.0	~450ms (Practical)
+Qwen2.5-Omni	Alibaba (Qwen)	March 2025	L2: Streaming Dual-track	3B, 7B, 11B	Apache 2.0 / Qwen	Varies by hardware
+Mini-Omni2	Tsinghua / Open	October 2024	L2: Delayed Parallel	Unknown	Apache 2.0	Varies by hardware
+GLM-4-Voice (STITCH)	Zhipu AI / Kyutai	July 2025	Streaming Turn-Based	9B	GLM-4 License	Optimized via logic tags
+LLaMA-Omni	ICT NLP	September 2024	L1: Adapter-based	8B	Llama 3.1 License	Low-latency turn-based
+Fixie Ultravox v0.7	Fixie AI	Dec 2025 - 2026	Multimodal Projector	8B, 70B	MIT	~150ms (Text output)
+Deep Evaluation of True Full-Duplex (L3) Candidates
+
+Models classified under the L3 architecture are the only open-weight candidates fully capable of satisfying the application's requirement for natural interruptions, proactive speech generation, and fluid conversational transitions without external VAD arbitration.
+
+NVIDIA PersonaPlex (Primary Recommendation)
+
+NVIDIA released PersonaPlex in early 2026 as a 7-billion parameter, real-time speech-to-speech conversational model explicitly designed to eradicate the robotic cadences inherent in cascaded pipelines. Built heavily upon the foundational architecture of Kyutai's Moshi and utilizing the Helium underlying language model for semantic understanding, PersonaPlex operates in a true dual-stream configuration. This architectural choice ensures that the processing of incoming user audio and the generation of outgoing speech occur concurrently, facilitating natural dynamics such as barge-ins, overlaps, and rapid turn-taking with a practical latency of approximately 450 milliseconds.
+
+The most profound advantage of PersonaPlex for the specified SwiftUI portal is its implementation of a Hybrid Prompting Architecture. Before a voice session initiates, the model is conditioned on two distinct input vectors. The first is a voice prompt—a short audio embedding that establishes the target vocal characteristics, speaking style, prosody, and rhythm, functioning as a zero-shot voice cloning mechanism. The second is a dense text prompt utilizing natural language to define the persona's attributes, background rules, and scenario context.
+
+This hybrid conditioning solves a critical product requirement. The application must fluidly transition between disparate activities: a few minutes of solemn Scripture playback, sharp unscripted interviews, and highly organized project management transitions. By hot-swapping the hybrid prompt on the backend, the system can instantly shift from a fast-talking, highly energetic interviewer to a measured, contemplative devotional narrator, maintaining deep role consistency across long interactions.
+
+The model weights are available under the CC-BY-4.0 license, providing excellent viability for private commercial integration. Crucially for the iOS constraint, the development community has successfully compiled PersonaPlex for Apple Silicon using the MLX framework, enabling native full-duplex speech-to-speech in Swift. This hardware compatibility suggests that local execution on modern iPhone hardware is theoretically feasible, though exact thermal and memory bandwidth constraints remain unresolved facts requiring isolated testing.
+
+Kyutai Moshi
+
+Moshi remains the vital baseline framework upon which newer L3 models, including PersonaPlex, are constructed. It is a speech-text foundation model utilizing the Mimi streaming neural audio codec to process concurrent audio streams. Moshi introduced the critical "Inner Monologue" mechanism, wherein the model predicts text tokens corresponding to its own intended speech prior to generating acoustic sounds. This mechanism anchors the linguistic coherence of the generation while simultaneously enabling real-time transcript access.
+
+A small Depth Transformer models inter-codebook dependencies, while a massive 7-billion parameter Temporal Transformer models temporal progression, achieving an extraordinary theoretical latency of 160 milliseconds. While Moshi lacks the dynamic zero-shot voice cloning and advanced persona control overlaid by NVIDIA, the official Kyutai repository contains a dedicated moshi_mlx/ directory explicitly engineered for on-device inference on Macs and iPhones. This establishes the absolute feasibility of running L3 dual-stream architectures within the Apple hardware ecosystem. The source code operates under an Apache 2.0 license, while the weights retain a CC-BY-4.0 designation.
+
+Deep Evaluation of Omni-Modal and Turn-Based Models
+
+While L3 models excel at conversational fluidity, a parallel track of research focuses on highly capable omni-modal models that optimize for deep reasoning and extreme low-latency turn-taking, often at the expense of native simultaneous listening.
+
+Qwen2.5-Omni
+
+Released closely alongside the acclaimed Qwen2.5 language models, Qwen2.5-Omni is an end-to-end multimodal foundation model capable of processing text, images, audio, and video in a streaming fashion. The architecture relies on a novel sliding-window Diffusion Transformer (DiT) specifically designed to restrict the receptive field during audio decoding, thereby minimizing the initial package delay for streaming output. Speech is generated via a custom discrete token system named the qwen-tts-tokenizer.
+
+The model demonstrates excellent end-to-end speech instruction following, with capabilities that rival its effectiveness on text-only inputs, as evidenced by objective benchmarks such as GSM8K and MMLU. However, it operates primarily as an advanced L2 streaming turn-based model; while it can process streaming audio rapidly, it is not inherently designed for native dual-stream barge-ins in the exact manner of PersonaPlex.
+
+A significant advantage for local iOS and macOS deployment is the availability of the Qwen2.5-Omni-7B-AWQ variant. This 4-bit Activation-aware Weight Quantization (AWQ) model reduces GPU VRAM requirements by over 50%. The implementation adjusts the internal ODE solver from a second-order Runge-Kutta method to a first-order Euler method to further decrease computational overhead, making it highly attractive for edge hardware deployment where memory bandwidth is at an absolute premium.
+
+GLM-4-Voice and the STITCH Mechanism
+
+The GLM-4-Voice architecture introduces a paradigm-shifting approach to the latency-versus-reasoning dilemma, embodied in the glm-4-voice-of-reason-stitch-9b model. The core innovation is the STITCH (Simultaneous Thinking and Talking with Chunked Reasoning) methodology.
+
+The STITCH philosophy recognizes a physical reality: generating a chunk of text or acoustic tokens is orders of magnitude faster than the actual physical time required to play that audio chunk back to a human user. Therefore, the GLM-4-Voice model emits dense reasoning tokens (wrapped invisibly in [SOPR] and [EOPR] tags) during the physical playback of the audio chunk. The "thinking" costs effectively zero extra latency from the human user's perspective, as the model utilizes the acoustic playback time to perform deep logic inference on its next step.
+
+For the RLM-ADK application, this design judgment is profound. The user requires that long research and creative requests become durable action items producing actual reviewable outputs. By adopting a STITCH-like concurrent reasoning loop on the backend, the voice session can generate conversational filler ("I'll begin compiling that contextual metadata now...") while the backend utilizes the playback window to execute complex queries against the Theographic biblical dataset or Microsoft GraphRAG frameworks without introducing unnatural silence into the voice session.
+
+LLaMA-Omni and Mini-Omni2
+
+LLaMA-Omni represents a highly optimized L1 adapter-based architecture. Built directly upon the Llama-3.1-8B-Instruct foundation, it integrates a pre-trained Whisper speech encoder and a streaming non-autoregressive speech decoder. While it achieves low-latency speech interaction by leveraging Llama 3.1's strong instruction-following capabilities, it remains fundamentally turn-based.
+
+Mini-Omni2, evolving from the open-source community's attempts to replicate GPT-4o, utilizes a three-stage training process and a delayed parallel generation algorithm. It connects the visual component of CLIP and a Whisper-small audio encoder to a language model via multi-modal adapters. To simulate full-duplex behavior, it relies on a command-based interruption method, constructing specialized training data to force the model to halt its audio output stream based on external semantic cues, acting more as a fast interrupter than a true simultaneous listener.
+
+Fixie Ultravox v0.7
+
+Ultravox bypasses the traditional ASR phase entirely by utilizing a multimodal projector that converts incoming audio directly into the high-dimensional embedding space of underlying open-weight models like Llama 3.3, Mistral, and Gemma. This direct coupling yields an astonishing ~150-millisecond time-to-first-token latency.
+
+However, as of its# VOICE-1 Recent open speech-to-speech and full-duplex models
+
+Executive Recommendation and Decision Matrix
+
+The architectural foundation of conversational artificial intelligence has fundamentally shifted in the period leading up to October 2026. The transition from cascaded pipelines—where independent Automatic Speech Recognition (ASR), Large Language Models (LLMs), and Text-to-Speech (TTS) models operate in sequential, high-latency loops—to native, end-to-end full-duplex architectures has redefined the boundaries of natural human-computer interaction. For the development of a private, single-user native SwiftUI iPhone portal interfacing with the existing RLM-ADK execution backend, this paradigm shift dictates a critical decision regarding the foundational voice layer. The application demands continuous device recording, the ability to tolerate long silences during "prayer capture," natural interruptions during unscripted interviews, and seamless transitions to proactive speech for calendar preparation.
+
+Based on an exhaustive evaluation of current capabilities, economic models, and iOS deployment constraints, the recommended path forward is a decoupled, hybrid architecture that separates the active generative voice session from continuous audio capture and backend reasoning.
+
+The Decision: The application should deploy the OpenAI gpt-live-1 API as the primary generative voice engine for active, conversational sessions. This endpoint, released in September 2026, represents the absolute performance gold standard, providing native full-duplex simultaneous listening and speaking at a predictable, time-based cost of $0.05 per minute for the voice layer.
+
+However, because continuous device recording over a paid API is economically unfeasible, the application must utilize local, on-device Voice Activity Detection (VAD) and silence-gating within the SwiftUI iOS environment. During "quiet" states and "prayer capture," the system should rely on native iOS audio buffers and local, heavily quantized transcription models, establishing the gpt-live-1 WebRTC connection only upon an explicit wake command or a scheduled proactive transition.
+
+The Nearest Alternative (Open-Weight Local Fallback): The immediate alternative—and the primary candidate for future total self-hosting—is the open-weight NVIDIA PersonaPlex model, published in early 2026. PersonaPlex utilizes a true dual-stream full-duplex architecture based on the Kyutai Moshi framework, capable of simultaneous listening and speaking with roughly 450ms latency. Crucially, PersonaPlex utilizes "Hybrid System Prompts," combining a short audio sample with a text prompt to dynamically alter its persona and voice without fine-tuning. This perfectly satisfies the requirement to shift fluidly between a measured devotional narrator and a rapid-fire interviewer. The community has demonstrated MLX framework compatibility for Apple Silicon, making native iOS Swift execution a tangible, albeit highly memory-constrained, possibility.
+
+Conditions Changing the Decision: The decision to rely on OpenAI gpt-live-1 would shift entirely to local PersonaPlex execution if iOS background memory limits (the OS watchdog terminating high-VRAM applications) are proven to accommodate a 7B-parameter quantized model while the screen is locked, or if the RLM-ADK backend is hosted on local Apple Silicon hardware capable of running PersonaPlex as a local Wi-Fi relay for the iPhone.
+
+The Target Experience: OpenAI Performance and Economic Baseline
+
+To rigorously assess the open-weight models emerging over the last 180 days, it is first necessary to precisely define the performance and economic baseline established by OpenAI. The user-selected gold standard is not a theoretical benchmark; it is a specific set of production application programming interfaces (APIs) updated aggressively through late 2026.
+
+The Generational Divide: Realtime vs. GPT-Live 1
+
+OpenAI currently supports two distinct pathways for integrating high-fidelity voice capabilities, and they operate on fundamentally different billing and architectural models. The legacy Beta Realtime API, utilizing older Session Description Protocol (SDP) exchange formats, was deprecated on May 12, 2026, rendering older client code obsolete.
+
+The current monolithic reasoning pipeline is the Realtime API, utilizing the gpt-realtime-2.1 model generation (released July 2026). This model brings GPT-5-class logic inference directly into the audio pipeline with a 128,000-token context window. The cost structure is based strictly on token consumption. Audio input is priced at $32.00 per 1 million tokens (approximately $0.06 per minute of speech heard), and audio output is $64.00 per 1 million tokens (approximately $0.077 to $0.24 per minute of speech generated). The most significant cost lever in production is the prompt caching discount; cached audio input drops by a factor of 80x to $0.40 per 1 million tokens. For the RLM-ADK iOS application, this means loading large static schemas—such as Theographic database structures or extensive sermon metadata—costs mere cents if the context remains stable across sessions.
+
+In contrast, the GPT-Live 1 API, released on September 10, 2026, separates the conversational voice layer from the backend reasoning layer. The gpt-live-1 model acts as a dedicated full-duplex frontend. It listens and speaks simultaneously, managing conversational flow and interruptions, but it delegates complex logic and tool calling to a separate backend model (like gpt-5.6-sol).
+
+The pricing for gpt-live-1 is purely time-based at the edge, costing $0.05 per session minute, billed precisely by the second without arbitrary rounding. Any backend reasoning tokens consumed by the delegated model are billed additionally. This frontend connects via WebRTC in the browser or sideband WebSockets on servers, utilizing 60-second ephemeral client keys for security.
+
+Demarcating API Billing from Consumer Subscriptions
+
+A critical economic constraint for this project is the separation of developer API costs from consumer subscriptions. OpenAI offers the ChatGPT Pro subscription for $200 per month, introduced in late 2024, and a higher $500 per month tier. These subscriptions provide heavy end-users with unlimited access to the o1 pro reasoning mode, GPT-5.6 Sol, and Advanced Voice features within the first-party ChatGPT web and mobile applications.
+
+The research unequivocally confirms that the $200/month ChatGPT Pro subscription does not include any programmatic API access or API credits. The API and the consumer subscriptions are separate products with independent billing infrastructures. Therefore, the RLM-ADK iOS workspace cannot leverage a flat $200 monthly fee to subsidize continuous device recording or background audio processing. Every second of audio sent to gpt-live-1, and every token sent to gpt-realtime-2.1, will incur a direct, pay-as-you-go financial cost, reinforcing the necessity of local silence-gating and open-weight alternatives.
+
+Table 1: OpenAI Voice Infrastructure Cost Modeling (October 2026)
+Component / Model	Billing Metric	Estimated Cost Per Minute	Primary Use Case for RLM-ADK
+gpt-live-1	Time-based ($0.05/min)	$0.05 (Voice layer only)
+
+Full-duplex conversational sessions requiring instant interruption handling.
+
+
+gpt-realtime-2.1	Token-based ($32 in / $64 out)	~$0.15 - $0.20 (Balanced)
+
+Monolithic reasoning where the audio session itself requires deep theological logic.
+
+
+gpt-realtime-2.1-mini	Token-based ($10 in / $20 out)	~$0.05 - $0.07 (Balanced)
+
+Routine proactive calendar updates and basic status requests.
+
+
+ChatGPT Pro ($200)	Flat Monthly Subscription	N/A (Web/App UI only)
+
+Cannot be used for backend API integration or custom iOS app deployment.
+
+
+Architectural Taxonomy of Spoken Dialogue Systems
+
+To independently map and evaluate the open-weight landscape of the last 180 days, it is necessary to establish a rigorous technical taxonomy. Merely labeling a model "speech-to-speech" is insufficient, as the underlying architecture heavily dictates its capability to handle the product requirements of natural interruptions, corrections, and unscripted interviews.
+
+Recent academic literature from the EMNLP 2026 main track introduces the L0–L3 architectural hierarchy for full-duplex spoken dialogue systems, alongside a Time, Interruption, and Role (T x I x R) interaction ontology. This framework is critical for distinguishing true full-duplex systems from fast turn-based systems.
+
+L0 (External Scheduler): These are traditional cascaded pipelines. An external Voice Activity Detection (VAD) module decides when the user has finished speaking, passing the audio to an ASR model, then an LLM, and finally a TTS model. These systems cannot be interrupted without complex external engineering and inherently suffer from awkward turn-taking pauses.
+
+L1 (Sidecar Predictor): A separate, lightweight auxiliary model reads the hidden states of the primary LLM to predict when the assistant should interrupt, yield the floor, or emit a backchannel (e.g., "uh-huh").
+
+L2 (Token Stream Integration): The full-duplex decision matrix is migrated directly into the token stream. The model continuously ingests a stream of audio tokens and autoregressively predicts whether to emit text, outgoing audio tokens, or silence tokens.
+
+L3 (Shared Latent Representation): The bleeding edge of current research. Acoustic and semantic spaces are fully unified. Listening and speaking occur concurrently at the latent layer in a dual-stream configuration, allowing the model to make micro-adjustments in prosody based on the user's ongoing speech.
+
+For the iOS SwiftUI application, the goal is to utilize L3 architectures for the conversational layer to mirror the gpt-live-1 experience, ensuring that when the user interrupts a few-minute Scripture playback, the model acknowledges and halts immediately.
+
+Landscape Analysis: Open-Weight Models (Recent 180 Days and Baselines)
+
+The open-weight ecosystem has responded aggressively to proprietary advancements. The following analysis isolates the most significant speech models, prioritizing those with true L3 full-duplex capabilities or unique streaming characteristics relevant to the application's requirement for durable action item processing.
+
+Table 2: Open-Weight Speech Model Landscape (Prioritizing Recent Releases)
+Model / System	Publisher	Architecture Type	Params	Latency Profile	License (Weights)
+NVIDIA PersonaPlex	NVIDIA	L3: Dual-stream S2S	7B	~450ms (Turn-taking)
+
+CC-BY 4.0
+
+
+Kyutai Moshi	Kyutai Labs	L3: Dual-stream S2S	7B	~160ms (Theoretical)
+
+CC-BY 4.0
+
+
+Qwen2.5-Omni	Alibaba (Qwen)	Streaming Dual-track	7B / 3B	DiT Sliding Window
+
+Apache 2.0 / Qwen
+
+
+GLM-4-Voice (STITCH)	THUDM / Kyutai	S2S Chunked Reasoning	9B	Hides reasoning latency
+
+GLM-4 License
+
+
+Mini-Omni2	Tsinghua / Open	L2: Delayed Parallel	Multi	Hardware dependent
+
+Apache 2.0
+
+
+LLaMA-Omni	ICT NLP	Llama 3.1 + Adaptors	8B	Low Latency S2S
+
+Llama 3.1 License
+
+
+Ultravox v0.7	Fixie AI	Multimodal Projector	8B/70B	~150ms TTFT (Text Out)
+
+MIT
+
+
+Deep Architectural Evaluation: True Full-Duplex (L3) Candidates
+NVIDIA PersonaPlex (The Primary Open Candidate)
+
+Published in early 2026, NVIDIA PersonaPlex represents the most mature open-weight implementation of an L3 dual-stream architecture. It is a 7B-parameter real-time conversational model that jointly performs streaming speech understanding and generation, operating directly on continuous audio encoded with a neural codec. Incoming user audio is incrementally fed to the model while PersonaPlex simultaneously generates its own outgoing speech.
+
+The critical innovation for the RLM-ADK application is PersonaPlex's Hybrid Prompting Architecture. Traditional systems force a trade-off: cascaded pipelines allow for custom voices and roles but feel robotic, while standard full-duplex models have natural turn-taking but are locked into a single, fixed identity. PersonaPlex breaks this paradigm. Before a session begins, it accepts a short audio embedding (for zero-shot voice cloning and prosody) and a natural language text prompt (defining the persona, background, and scenario context).
+
+This directly satisfies the application's requirement to handle varied workflows. The system can inject a text prompt instructing the model to act as a solemn, measured narrator for Scripture playback, and subsequently hot-swap the prompt for a fast-paced, inquisitive persona during a creative storyboard interview. Built upon the Helium underlying language model and utilizing the Moshi architecture, PersonaPlex is commercially viable under the CC-BY-4.0 license and achieves practical turn-taking latencies around 450ms.
+
+Kyutai Moshi (The Precursor Baseline)
+
+Moshi serves as the foundational framework for many subsequent L3 models. It uses the Mimi neural audio codec to process 24 kHz audio into a 12.5 Hz representation. Moshi introduced the highly influential "Inner Monologue" mechanism, where the model predicts text tokens corresponding to its own speech just before generating the acoustic sounds, enhancing linguistic coherence while maintaining a theoretical latency of just 160ms. While Moshi lacks the dynamic role-control refinements of PersonaPlex, its official GitHub repository includes a dedicated moshi_mlx/ directory specifically engineered for on-device inference on Macs and iPhones. This proves that running a 7B-parameter full-duplex acoustic model on Apple Silicon is structurally feasible.
+
+Deep Architectural Evaluation: Streaming Omnimodal and Turn-Based Candidates
+
+Models in this category excel at rapid speech generation and multimodal understanding but do not possess the native, continuous dual-stream capabilities necessary to gracefully handle simultaneous human speech and barge-ins without external logic.
+
+Qwen2.5-Omni
+
+Released closely alongside the broader Qwen2.5 family, Qwen2.5-Omni is an end-to-end multimodal foundation model. It processes text, images, and audio in a streaming fashion, generating natural speech responses using a dual-track architecture. To solve the problem of initial package delay during speech streaming, the model introduces a "sliding-window Diffusion Transformer (DiT)" that restricts the receptive field.
+
+For the iOS portal, Qwen2.5-Omni is notable for its exceptional end-to-end speech instruction following, which rivals its text-only capabilities on benchmarks like MMLU. Furthermore, the community has provided AWQ 4-bit quantized versions of the 7B model, reducing GPU memory requirements by over 50%. The ODE solver was adjusted from a second-order to a first-order Euler method to decrease computational overhead, making it a strong candidate for local execution, though its lack of L3 duplex capabilities makes it less suitable for the active voice session than PersonaPlex.
+
+GLM-4-Voice and the STITCH Mechanism
+
+The GLM-4-Voice architecture, specifically the glm-4-voice-of-reason-stitch-9b iteration, introduces a vital architectural concept for the RLM-ADK backend's durable action items. The STITCH paradigm (Simultaneous Thinking and Talking with Chunked Reasoning) leverages a fundamental discrepancy in human-computer interaction: a chunk of physical speech takes far longer to play back than it takes a GPU to generate.
+
+When the model receives a complex reasoning request (e.g., cross-referencing a sermon transcript against the Theographic dataset), it generates reasoning tokens wrapped in [SOPR] and [EOPR] tags. These hidden reasoning tokens are emitted during the spare time while the physical audio of the spoken answer is playing. Thus, complex thinking costs no extra latency from the user's perspective. For the RLM-ADK execution backend, adopting the STITCH methodology means the voice agent can say, "Let me analyze that scripture reference," while concurrently executing a deep graph database query without freezing the audio session.
+
+The Foundational Codec and TTS Layer
+
+True full-duplex systems rely heavily on neural audio codecs to compress audio into discrete tokens.
+
+SNAC (Multi-Scale Neural Audio Codec): An open-source (MIT license) codec that extends standard Residual Vector Quantization (RVQ) by introducing quantization at different temporal resolutions. Coarse tokens are sampled less frequently, covering a broader time span, which allows LLMs with fixed context windows (like 2048 tokens) to effectively model consistent audio structures over much longer durations (up to 3 minutes). The existence of a pure Go implementation (snac-go) highlights the maturity and ease of deployment for backend systems looking to bypass Python dependencies.
+
+Mimi: Developed by Kyutai and utilized by Moshi and PersonaPlex, Mimi processes audio into a 12.5 Hz representation at an exceptionally low 1.1 kbps bandwidth, maintaining a fully causal streaming latency of just 80ms.
+
+CosyVoice 2: For workflows that output text and require a cascaded streaming TTS engine, CosyVoice 2 (0.5B parameters) offers human-parity zero-shot voice cloning. It eliminates traditional grapheme-to-phoneme frontends by processing raw text directly via BPE tokenization, masking out one-to-many tokens to prevent pronunciation errors caused by data sparsity.
+
+Concrete Design Implications for the iOS SwiftUI Application
+
+The deployment target is a private, single-user native SwiftUI iPhone portal. This environment imposes strict constraints on memory, background execution, and audio session management. The product requirements demand continuous device recording, silence-tolerant prayer capture, proactive speech, and deep integration with Theographic data and durable action items.
+
+1. Resolving the OS Audio Constraint and "Quiet" Mode
+
+The user desires continuous device recording, including an explicit "quiet" state that suppresses all speech until an explicit wake, un-overridden by calendar timers.
+
+The iOS Constraint: Apple's iOS strictly manages background microphone usage. An application cannot record ambiently in the background without maintaining an active AVAudioSession, which triggers a persistent orange microphone indicator in the status bar. Paid Apple Developer Program membership does not bypass these kernel-level privacy safeguards and memory limits. If the application consumes too much memory while backgrounded, the OS watchdog will terminate it.
+
+Architectural Design: Sending continuous audio to the OpenAI gpt-live-1 API at $0.05 per minute during hours of silence is financially untenable. The SwiftUI app must implement a local, highly quantized Voice Activity Detection (VAD) model or a local MLX port of the Mimi encoder.
+
+During "quiet" mode, the iPhone buffers audio locally. The network connection to the voice generation API remains closed. Only when the local model detects the explicit wake phrase does the app initiate the WebRTC connection to either OpenAI or the self-hosted PersonaPlex instance.
+
+2. Engineering the "Prayer Capture" Workflow
+
+Prayer capture tolerates long silences, ends only by explicit control, and then saves the transcript.
+
+Architectural Design: This workflow must be completely decoupled from the conversational voice session. An active full-duplex session (whether OpenAI or PersonaPlex) expects a conversational cadence and will attempt to fill long silences or close the connection to save resources.
+
+When the user initiates "Prayer Capture," the app should disable the full-duplex routing. Instead, it should utilize a local streaming transcription model (like a heavily quantized Whisper running via CoreML) or stream the audio to a low-cost batch-processing endpoint. The audio buffer is kept open indefinitely until the user explicitly stops it, at which point the final text transcript is bundled and saved as a source product.
+
+3. Proactive Speech and Calendar Transitions
+
+Outside of quiet/prayer states, the system must proactively speak to cover calendar preparation, departure, and project phases needing input.
+
+Architectural Design: Because a paid voice session does not remain open continuously, the RLM-ADK backend must possess a signaling mechanism to wake the iOS application.
+
+When the RLM-ADK server determines that a calendar event requires proactive preparation, it sends a silent push notification to the iOS device. The SwiftUI app receives the notification in the background, activates the AVAudioSession, establishes the WebRTC connection to gpt-live-1 or PersonaPlex, and initiates the conversation by passing a specific text prompt to the model (e.g., "Inform the user they need to leave for their meeting in 10 minutes and ask if they need context on the project phase.").
+
+4. Durable Action Items and Theographic Context
+
+Long research and creative requests become durable action items producing actual reviewable outputs (websites, books, reports) after voice sessions end. Source pipelines are independent of execution, and there is no consolidated knowledge backend—meaning Theographic data, Neo4j graphs, and temporal frameworks must be queried individually.
+
+Architectural Design: Full-duplex voice models (like gpt-live-1's frontend or PersonaPlex's Helium backbone) are optimized for acoustic naturalness and low latency, not deep multi-stage database querying.
+
+The system must utilize rigorous Tool Calling / Function Calling. When the user asks a complex theological question during a voice session, the voice model must emit a JSON tool call (e.g., query_theographic_schema(parameters)).
+
+Using OpenAI's Realtime API, this is natively supported via the Remote Model Context Protocol (MCP) server integration. The API handles the tool call asynchronously, passing it to the RLM-ADK backend. The voice session keeps the conversation fluid ("Let me look that up...") while the RLM-ADK backend runs the complex Neo4j or Theographic query using a dedicated, high-reasoning text model (like gpt-5.6-sol). Once the backend completes the task, it injects the resulting context back into the ongoing voice session.
+
+For durable action items, the tool call simply acts as a webhook, transferring the task parameters to the RLM-ADK queue for asynchronous processing long after the voice session has terminated.
+
+Important Unresolved Facts and Evidence Gaps
+
+While the strategic path is clear, several technical unknowns require bounded investigation:
+
+On-Device L3 Memory Constraints: The official Kyutai Moshi repository contains a moshi_mlx/ directory explicitly for iPhone and Mac on-device inference. However, the exact memory footprint of running a 7B-parameter L3 model concurrently with iOS background audio processing is undocumented in the literature. If the application exceeds the ~2-3GB active memory limit enforced by the iOS watchdog, it will crash.
+
+PersonaPlex Structured Output Fidelity: PersonaPlex achieves excellent naturalness using its 7B Helium backbone. However, its reliability in consistently generating strictly formatted JSON tool calls for the RLM-ADK backend during a rapid, overlapping conversation has not been benchmarked against OpenAI's proprietary tool-calling success rates.
+
+SwiftUI Background WebRTC Stability: Maintaining a persistent WebRTC connection for the gpt-live-1 API while the iPhone screen is locked and transitioning between cellular and Wi-Fi networks poses significant stability challenges. The ephemeral client keys expire every 60 seconds, requiring robust reconnection logic.
+
+Bounded Comparison Plan
+
+To definitively choose between the OpenAI gpt-live-1 API and a self-hosted PersonaPlex implementation, the following non-destructive proof-of-concept plan should be executed without deploying production software or purchasing excessive credits:
+
+Phase 1: API Cost and Logic Validation (OpenAI)
+
+Write a minimal Python script to open a WebSocket connection to the gpt-live-1 endpoint.
+
+Simulate a 10-minute conversational session, injecting a mock Remote MCP tool call representing a Theographic database query.
+
+Measurement: Verify the exact billing deduction on the OpenAI dashboard to confirm the $0.05/minute voice layer cost isolates effectively from the backend token costs, and confirm that asynchronous tool calls do not freeze the audio playback.
+
+Phase 2: Local Hardware Viability Assessment (PersonaPlex)
+
+Clone the kyutai-labs/moshi repository onto a local Apple Silicon Mac.
+
+Utilize the moshi_mlx directory to load the CC-BY-4.0 PersonaPlex weights.
+
+Measurement: Run the model locally and monitor the Mac's Activity Monitor for Unified Memory consumption and CPU/GPU load. If the memory footprint exceeds the RAM capacity of the target iPhone, local device execution must be abandoned in favor of hosting the model on the Mac and operating the iPhone as a remote client over the local network.
+
+Phase 3: Hybrid Prompting and Persona Transition Testing
+
+Inject varying text prompts into the PersonaPlex pipeline ("You are a solemn devotional reader" vs. "You are an aggressive project manager") alongside the same voice prompt.
+
+Measurement: Assess the time taken for the model to successfully switch contexts without requiring a full model reload, verifying its suitability for transitioning between the app's disparate workflows.
+
+Primary Source Evaluation and Methodological Assessment
+
+The independent research supporting this report relies on primary repositories, official pricing documentation, and academic architecture papers sourced through October 2026. The evaluation of these sources distinguishes between publisher claims and documented structural realities.
+
+The baseline pricing and infrastructure for the OpenAI target experience are derived directly from the OpenAI Developer Pricing documentation and official API release notes. These sources confirm the $0.05 per minute time-based billing for the gpt-live-1 frontend and the token-based structure of gpt-realtime-2.1 with its 80x prompt caching discount. The strict separation between consumer ChatGPT Pro subscriptions ($200/month) and API infrastructure is corroborated by independent cost analyses and official support documentation, proving the subscription cannot be utilized for the RLM-ADK backend.
+
+The architectural taxonomy used to classify the open-weight models is grounded in the Speaking While Listening survey (arXiv:2606.19453), which formally defines the L0–L3 hierarchy and the T x I x R (Time, Interruption, Role) interaction ontology, moving beyond simplistic "speech-to-speech" marketing terminology.
+
+For the open-weight models, primary GitHub repositories and Hugging Face model cards were assessed. The Kyutai Moshi repository (kyutai-labs/moshi) provides evidence of the L3 dual-stream architecture, the Mimi codec's 80ms latency, and the crucial moshi_mlx directory enabling Apple Silicon execution. The NVIDIA PersonaPlex release (NVIDIA/personaplex), published in January 2026, builds upon this framework, introducing the "Hybrid System Prompts" that allow dynamic text-based role control over a fixed audio identity.
+
+Further analysis of streaming turn-based models includes the Qwen2.5-Omni technical report (arXiv:2503.20215), which details the sliding-window DiT mechanism and AWQ 4-bit quantization. The STITCH paradigm (Simultaneous Thinking and Talking with Chunked Reasoning) is sourced from the GLM-4-Voice repository, providing the foundational logic for hiding reasoning latency behind physical audio playback. Finally, the codec analysis relies on the SNAC repository (hubertsiuzdak/snac), which confirms the multi-scale temporal resolution approach and MIT licensing.

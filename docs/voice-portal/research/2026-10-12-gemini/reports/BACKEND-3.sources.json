@@ -1,0 +1,442 @@
+[
+  {
+    "text": "arxiv.org\nzep:atemporal knowledge graph architecture for agent memory - arXiv\nOpens in a new window",
+    "url": "https://arxiv.org/pdf/2501.13956"
+  },
+  {
+    "text": "getzep.com\nWhat Is a Temporal Knowledge Graph? Definition - Zep\nOpens in a new window",
+    "url": "https://www.getzep.com/ai-agents/temporal-knowledge-graph/"
+  },
+  {
+    "text": "arxiv.org\nZep: A Temporal Knowledge Graph Architecture for Agent Memory\nOpens in a new window",
+    "url": "https://arxiv.org/html/2501.13956v1"
+  },
+  {
+    "text": "caura.ai\n6 Graphiti Alternatives for Agent Memory Without Graph Ops (2026)\nOpens in a new window",
+    "url": "https://caura.ai/blog/graphiti-alternatives/"
+  },
+  {
+    "text": "stanleycyang.com\nTemporal RAG: Answer Questions Using the Correct Historical Version\nOpens in a new window",
+    "url": "https://stanleycyang.com/writing/temporal-rag-versioned-knowledge"
+  },
+  {
+    "text": "red-gate.com\nPostgreSQL Temporal Tables: INSERT, UPDATE & DELETE\nOpens in a new window",
+    "url": "https://www.red-gate.com/simple-talk/databases/postgresql/making-temporal-databases-work-part-3-saving-data/"
+  },
+  {
+    "text": "news.ycombinator.com\nPoor man's bitemporal data system in SQLite and Clojure\nOpens in a new window",
+    "url": "https://news.ycombinator.com/item?id=45118585"
+  },
+  {
+    "text": "stackoverflow.com\nAVAudioRecorder not recording in background after audio session\nOpens in a new window",
+    "url": "https://stackoverflow.com/questions/29036294/avaudiorecorder-not-recording-in-background-after-audio-session-interruption-end"
+  },
+  {
+    "text": "blog.csdn.net\nAVAudioSession - Category、Model、Options、Error参数详解原创\nOpens in a new window",
+    "url": "https://blog.csdn.net/BUG_delete/article/details/123990617"
+  },
+  {
+    "text": "learn.microsoft.com\nUse the GPT Realtime API for speech and audio with Azure OpenAI\nOpens in a new window",
+    "url": "https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/realtime-audio"
+  },
+  {
+    "text": "community.openai.com\nI want to know how to set the prompt of the realtime API - API\nOpens in a new window",
+    "url": "https://community.openai.com/t/i-want-to-know-how-to-set-the-prompt-of-the-realtime-api/1125873"
+  },
+  {
+    "text": "burncloud.com\nGPT-4o Realtime - BurnCloud\nOpens in a new window",
+    "url": "https://www.burncloud.com/aiapi-detail/gpt-4o-realtime.html"
+  },
+  {
+    "text": "economize.cloud\ngpt-4o pricing - OpenAI - Economize Cloud\nOpens in a new window",
+    "url": "https://www.economize.cloud/resources/open-ai/pricing/gpt-4o/"
+  },
+  {
+    "text": "github.com\nGitHub - Azure-Samples/aoai-realtime-audio-sdk: Azure OpenAI\nOpens in a new window",
+    "url": "https://github.com/azure-samples/aoai-realtime-audio-sdk"
+  },
+  {
+    "text": "forasoft.medium.com\nOpenAI Realtime API: Production Voice Agents (2026) - Medium\nOpens in a new window",
+    "url": "https://forasoft.medium.com/openai-realtime-api-production-voice-agents-2026-9d4e861a6dcc"
+  },
+  {
+    "text": "docs.helicone.ai\nOpenAI Realtime API - Helicone OSS LLM Observability\nOpens in a new window",
+    "url": "https://docs.helicone.ai/integrations/openai/realtime"
+  },
+  {
+    "text": "dev.to\nCreating a realtime voice agent using OpenAI's new gpt-realtime\nOpens in a new window",
+    "url": "https://dev.to/matthewmascord/creating-a-realtime-voice-agent-using-openais-new-gpt-realtime-speech-to-speech-model-2ehb"
+  },
+  {
+    "text": "learn.microsoft.com\nUse the GPT Realtime API via WebSockets - Microsoft Foundry\nOpens in a new window",
+    "url": "https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/realtime-audio-websockets"
+  },
+  {
+    "text": "medium.com\nGPT Realtime API: Redefining Human-AI Voice Interaction - Medium\nOpens in a new window",
+    "url": "https://medium.com/@ranjanunicode22/gpt-realtime-api-redefining-human-ai-voice-interaction-63d74c66fd3c"
+  },
+  {
+    "text": "speaches.ai\nRealtime API - Speaches Documentation\nOpens in a new window",
+    "url": "https://speaches.ai/usage/realtime-api/"
+  },
+  {
+    "text": "note.com\nIntroduction to OpenAI Realtime API (3) - Real-time Transcription\nOpens in a new window",
+    "url": "https://note.com/npaka/n/n19ebd7a90cde?hl=en"
+  },
+  {
+    "text": "developers.openai.com\nCreate transcription session | OpenAI API Reference\nOpens in a new window",
+    "url": "https://developers.openai.com/api/reference/resources/realtime/subresources/transcription_sessions/methods/create"
+  },
+  {
+    "text": "community.openai.com\n[Realtime API] Input audio transcription is not showing - Bugs\nOpens in a new window",
+    "url": "https://community.openai.com/t/realtime-api-input-audio-transcription-is-not-showing/971804"
+  },
+  {
+    "text": "docs.llmgateway.io\nRealtime API | LLM Gateway Docs\nOpens in a new window",
+    "url": "https://docs.llmgateway.io/features/realtime"
+  },
+  {
+    "text": "developer.apple.com\nplayAndRecord | Apple Developer Documentation\nOpens in a new window",
+    "url": "https://developer.apple.com/documentation/avfaudio/avaudiosession/category-swift.struct/playandrecord"
+  },
+  {
+    "text": "github.com\nAVFAudio iOS xcode26.0 b1 · dotnet/macios Wiki - GitHub\nOpens in a new window",
+    "url": "https://github.com/dotnet/macios/wiki/AVFAudio-iOS-xcode26.0-b1"
+  },
+  {
+    "text": "ggasoon2.tistory.com\nAudioEngine setCategory 속성값\nOpens in a new window",
+    "url": "https://ggasoon2.tistory.com/56"
+  },
+  {
+    "text": "community.openai.com\nError in committing input audio buffer because buffer has 0ms of audio\nOpens in a new window",
+    "url": "https://community.openai.com/t/error-in-committing-input-audio-buffer-because-buffer-has-0ms-of-audio/1032360"
+  },
+  {
+    "text": "forum.letta.com\nAgent memory solutions: Letta vs Mem0 vs Zep vs Cognee - General\nOpens in a new window",
+    "url": "https://forum.letta.com/t/agent-memory-solutions-letta-vs-mem0-vs-zep-vs-cognee/85"
+  },
+  {
+    "text": "arxiv.org\nZep: A Temporal Knowledge Graph Architecture for Agent Memory\nOpens in a new window",
+    "url": "https://arxiv.org/abs/2501.13956"
+  },
+  {
+    "text": "medium.com\nSemantic Showdown: GraphRAG vs Graphiti in the Race ... - Medium\nOpens in a new window",
+    "url": "https://medium.com/@dipanjann/semantic-showdown-graphrag-vs-graphiti-in-the-race-for-intelligent-memory-d71401e216ae"
+  },
+  {
+    "text": "cyberelectro.hu\nGraphiti: temporal knowledge graphs for agent memory - CyberElectro\nOpens in a new window",
+    "url": "https://cyberelectro.hu/en/tools/graphiti/"
+  },
+  {
+    "text": "graphrag.com\nZep: A Temporal Knowledge Graph Architecture for Agent Memory\nOpens in a new window",
+    "url": "https://graphrag.com/appendices/research/2501.13956/"
+  },
+  {
+    "text": "callsphere.ai\nGraphRAG in Production: Neo4j, Microsoft, and Graphiti\nOpens in a new window",
+    "url": "https://callsphere.ai/blog/graphrag-production-neo4j-microsoft-graphiti-2026"
+  },
+  {
+    "text": "digitalapplied.com\nOpen-Source Agent Memory: Mem0 vs Letta vs Zep - Digital Applied\nOpens in a new window",
+    "url": "https://www.digitalapplied.com/blog/open-source-agent-memory-mem0-letta-zep-compared"
+  },
+  {
+    "text": "arxiv.org\nMem0: Building Production-Ready AI Agents with Scalable Long\nOpens in a new window",
+    "url": "https://arxiv.org/html/2504.19413v1"
+  },
+  {
+    "text": "aiplusinfo.com\nAI Agent Memory Architecture - Artificial Intelligence +\nOpens in a new window",
+    "url": "https://www.aiplusinfo.com/blog/ai-agent-memory-architecture-explained/"
+  },
+  {
+    "text": "mnemoverse.com\nKnowledge-Graph Memory for AI Agents | Mnemoverse Docs\nOpens in a new window",
+    "url": "https://mnemoverse.com/docs/library/knowledge-graph-memory-for-agents"
+  },
+  {
+    "text": "kmail.at\nGraphiti: the temporal knowledge graph that gives agents a memory\nOpens in a new window",
+    "url": "https://kmail.at/blog/graphiti-temporal-knowledge-graphs-agents"
+  },
+  {
+    "text": "alphaxiv.org\nNarrative World Model: Narratology-Grounded Writer Memory for\nOpens in a new window",
+    "url": "https://www.alphaxiv.org/abs/2607.05577"
+  },
+  {
+    "text": "bytez.com\nNarrative World Model: Narratology-Grounded Writer ... - Bytez\nOpens in a new window",
+    "url": "https://bytez.com/docs/arxiv/2607.05577/paper"
+  },
+  {
+    "text": "public.dhe.ibm.com\nTemporal Data Management with DB2 - IBM\nOpens in a new window",
+    "url": "https://public.dhe.ibm.com/ps/products/db2/info/devWorks_pdfs/Best_practices/DB2BP_Temporal_Data_Management_1012.pdf"
+  },
+  {
+    "text": "mdpi.com\nBiTE: A Bitemporal Event-Centered Database Framework for ... - MDPI\nOpens in a new window",
+    "url": "https://www.mdpi.com/2078-2489/17/7/710"
+  },
+  {
+    "text": "jooq.org\nThe jOOQ Release Note History\nOpens in a new window",
+    "url": "https://www.jooq.org/notes"
+  },
+  {
+    "text": "cssnepal.com\nEnhanced Data Models: Active, Temporal, Spatial, Multimedia\nOpens in a new window",
+    "url": "https://cssnepal.com/enhanced-data-models/"
+  },
+  {
+    "text": "depesz.com\nAdd temporal PRIMARY KEY and UNIQUE constraints - Depesz\nOpens in a new window",
+    "url": "https://www.depesz.com/2024/09/30/waiting-for-postgresql-18-add-temporal-primary-key-and-unique-constraints/"
+  },
+  {
+    "text": "mcpservers.org\nbible-mcp - Awesome MCP Servers\nOpens in a new window",
+    "url": "https://mcpservers.org/servers/nirajagarwal/bible-mcp"
+  },
+  {
+    "text": "getproselytized.com\nAbout - Bible Cross-Reference Explorer\nOpens in a new window",
+    "url": "https://getproselytized.com/about"
+  },
+  {
+    "text": "github.com\nbible · GitHub Topics\nOpens in a new window",
+    "url": "https://github.com/topics/bible"
+  },
+  {
+    "text": "ferratrab.com\nBookmarks\nOpens in a new window",
+    "url": "https://ferratrab.com/"
+  },
+  {
+    "text": "tonsofskills.com\nExplore Plugins & Skills - Tons of Skills\nOpens in a new window",
+    "url": "https://tonsofskills.com/explore/"
+  },
+  {
+    "text": "lists.opensuse.org\nJanuary 2019 - openSUSE Factory\nOpens in a new window",
+    "url": "https://lists.opensuse.org/archives/list/factory@lists.opensuse.org/2019/1/?count=200"
+  },
+  {
+    "text": "skillsdirectory.com\nDb Temporal Data (Grade A) - Claude Skill | Skills Directory\nOpens in a new window",
+    "url": "https://www.skillsdirectory.com/skills/intense-visions-db-temporal-data"
+  },
+  {
+    "text": "developer.apple.com\ninterruptionNotification | Apple Developer Documentation\nOpens in a new window",
+    "url": "https://developer.apple.com/documentation/avfaudio/avaudiosession/interruptionnotification"
+  },
+  {
+    "text": "developers.openai.com\nRealtime conversations | OpenAI API\nOpens in a new window",
+    "url": "https://developers.openai.com/api/docs/guides/realtime-conversations"
+  },
+  {
+    "text": "mem0.ai\nMem0 vs Zep Which AI Memory Platform Is Better for Production\nOpens in a new window",
+    "url": "https://mem0.ai/library/agent-memory/mem0-vs-zep"
+  },
+  {
+    "text": "github.com\ngetzep/graphiti: Build Real-Time Knowledge Graphs for AI Agents\nOpens in a new window",
+    "url": "https://github.com/getzep/graphiti"
+  },
+  {
+    "text": "github.com\ngetzep/graphiti at dailydoseofds.com - GitHub\nOpens in a new window",
+    "url": "https://github.com/getzep/graphiti?ref=dailydoseofds.com"
+  },
+  {
+    "text": "help.getzep.com\nWelcome to Graphiti! - Zep Documentation\nOpens in a new window",
+    "url": "https://help.getzep.com/graphiti/getting-started/welcome"
+  },
+  {
+    "text": "getzep.com\nGraphiti | Zep\nOpens in a new window",
+    "url": "https://www.getzep.com/platform/graphiti/"
+  },
+  {
+    "text": "github.com\nGraphZep: A temporal knowledge graph memory system for ... - GitHub\nOpens in a new window",
+    "url": "https://github.com/aexy-io/graphzep"
+  },
+  {
+    "text": "sentra.app\nGraphiti Explained: Zep's Temporal Graph · Sentra\nOpens in a new window",
+    "url": "https://www.sentra.app/articles/graphiti-explained"
+  },
+  {
+    "text": "github.com\npinakes/docs/graph/graphiti.md at main · lucagattoni/pinakes · GitHub\nOpens in a new window",
+    "url": "https://github.com/lucagattoni/Pinakes/blob/main/docs/graph/graphiti.md"
+  },
+  {
+    "text": "neo4j.com\nGraphiti: Knowledge graph memory for an agentic world - Neo4j\nOpens in a new window",
+    "url": "https://neo4j.com/blog/developer/graphiti-knowledge-graph-memory/"
+  },
+  {
+    "text": "reddit.com\nGraphiti Temporal Knowledge Graph with Local LLMs : r/LocalLLaMA\nOpens in a new window",
+    "url": "https://www.reddit.com/r/LocalLLaMA/comments/1hft9va/graphiti_temporal_knowledge_graph_with_local_llms/"
+  },
+  {
+    "text": "openrouter.ai\nGPT-4o - API Pricing & Benchmarks - OpenRouter\nOpens in a new window",
+    "url": "https://openrouter.ai/openai/gpt-4o"
+  },
+  {
+    "text": "developers.openai.com\nGPT-4o Realtime Model | OpenAI API\nOpens in a new window",
+    "url": "https://developers.openai.com/api/docs/models/gpt-4o-realtime-preview"
+  },
+  {
+    "text": "developers.openai.com\nPricing | OpenAI API\nOpens in a new window",
+    "url": "https://developers.openai.com/api/docs/pricing"
+  },
+  {
+    "text": "music.youtube.com\nZep: Temporal Knowledge Graphs for AI Agent Memory\nOpens in a new window",
+    "url": "https://music.youtube.com/podcast/2V-zMRF7lL0"
+  },
+  {
+    "text": "semanticscholar.org\nZep: A Temporal Knowledge Graph Architecture for Agent Memory\nOpens in a new window",
+    "url": "https://www.semanticscholar.org/paper/Zep%3A-A-Temporal-Knowledge-Graph-Architecture-for-Rasmussen-Paliychuk/12407be490a4e4633da7f25a93af000be573a288"
+  },
+  {
+    "text": "paperswelove.org\nRylan Talerico on Zep: A Temporal Knowledge Graph Architecture\nOpens in a new window",
+    "url": "https://paperswelove.org/videos/rylan-talerico-on-zep-a-temporal-knowledge-graph-architecture-for-agent-memory-p/"
+  },
+  {
+    "text": "huggingface.co\nZep: A Temporal Knowledge Graph Architecture for Agent Memory\nOpens in a new window",
+    "url": "https://huggingface.co/papers/2501.13956"
+  },
+  {
+    "text": "github.com\nGitHub - gusheng/MetaV: MetaV contains the “Who, Where, and\nOpens in a new window",
+    "url": "https://github.com/gusheng/MetaV"
+  },
+  {
+    "text": "lobehub.com\nbible-mcp | MCP Servers · LobeHub\nOpens in a new window",
+    "url": "https://lobehub.com/pt-BR/mcp/nirajagarwal-bible-mcp"
+  },
+  {
+    "text": "github.com\nstudybible-mcp/README.md at main · djayatillake ... - GitHub\nOpens in a new window",
+    "url": "https://github.com/djayatillake/studybible-mcp/blob/main/README.md"
+  },
+  {
+    "text": "hugh.thejourneyler.org\nRDF Ontologies for the Bible - The Journeyler\nOpens in a new window",
+    "url": "https://hugh.thejourneyler.org/2012/rdf-ontologies-for-the-bible/"
+  },
+  {
+    "text": "seminal.ai\nGPT-4o Realtime Preview - Seminal AI\nOpens in a new window",
+    "url": "https://seminal.ai/reference/models/openai-gpt-4o-realtime-preview/"
+  },
+  {
+    "text": "forasoft.com\nOpenAI Realtime API Pricing 2026: $0.02–$0.11 Per Minute - Fora Soft\nOpens in a new window",
+    "url": "https://www.forasoft.com/blog/article/openai-realtime-api-pricing"
+  },
+  {
+    "text": "download.bibis.ir\nAgentic GraphRAG - bibis.ir\nOpens in a new window",
+    "url": "https://download.bibis.ir/Books/2026/08/Agentic%20GraphRAG%20(Anthony%20Alcaraz)_bibis.ir.pdf"
+  },
+  {
+    "text": "docsity.com\nC182 SQL DIKW APPLICATION SYSTEMS QUIZZES WITH RIGHT\nOpens in a new window",
+    "url": "https://www.docsity.com/en/docs/c182-sql-dikw-application-systems-quizzes-with-right-verified-answers-124-questions-3/19464598/"
+  },
+  {
+    "text": "philipkgunning.com\nTime Travel Query – Temporal Tables for DB2 LUW\nOpens in a new window",
+    "url": "https://philipkgunning.com/wp-content/uploads/2013/02/traveling-through-time-with-db2-time-travel-query3apr13.pdf"
+  },
+  {
+    "text": "developer.apple.com\nAVAudioSession | Apple Developer Documentation\nOpens in a new window",
+    "url": "https://developer.apple.com/documentation/avfaudio/avaudiosession"
+  },
+  {
+    "text": "iotdigitaltwinplm.com\nEvent Sourcing and Bitemporal Data for Financial Audit Trail\nOpens in a new window",
+    "url": "https://iotdigitaltwinplm.com/event-sourcing-bitemporal-data-financial-audit-trail-cqrs-ledger-2026/"
+  },
+  {
+    "text": "skillsdirectory.com\nDb Temporal Data (Grade A) - Claude Skill | Skills Directory\nOpens in a new window",
+    "url": "https://www.skillsdirectory.com/skills/intense-visions-db-temporal-data-231eb8d7"
+  },
+  {
+    "text": "aimarketly.com\nPostgreSQL 18 Database Architecture - AIMarketly\nOpens in a new window",
+    "url": "https://www.aimarketly.com/skill/majiayu000--database-architecture-troykelly-claude-skills"
+  },
+  {
+    "text": "api-docs.uniapi.ai\nRealtimeServerEventSessionUp\nOpens in a new window",
+    "url": "https://api-docs.uniapi.ai/schema-168995103"
+  },
+  {
+    "text": "community.openai.com\nRealtime API Tool calling problems - no response when a Tool is\nOpens in a new window",
+    "url": "https://community.openai.com/t/realtime-api-tool-calling-problems-no-response-when-a-tool-is-included-in-the-session/966495"
+  },
+  {
+    "text": "braintrust.dev\nBest AI agent memory tools in 2026 - Articles - Braintrust\nOpens in a new window",
+    "url": "https://www.braintrust.dev/articles/best-ai-agent-memory-tools-2026"
+  },
+  {
+    "text": "mem0.ai\nAI Agent Memory: Complete Guide & Architecture - Mem0\nOpens in a new window",
+    "url": "https://mem0.ai/library/agent-memory/memory-in-agents-what-why-and-how"
+  },
+  {
+    "text": "cognee.ai\nAI Agent Memory Solutions by Lifecycle, Not Label | Cognee\nOpens in a new window",
+    "url": "https://www.cognee.ai/ai-agent-memory-solutions-by-lifecycle"
+  },
+  {
+    "text": "mdpi.com\nA Task-Adaptive Two-Layer Knowledge Architecture for LLM Agents\nOpens in a new window",
+    "url": "https://www.mdpi.com/2504-4990/8/10/322"
+  },
+  {
+    "text": "openreview.net\nRevisions | OpenReview\nOpens in a new window",
+    "url": "https://openreview.net/revisions?id=zDOrhCwSbO"
+  },
+  {
+    "text": "getzep.com\nStop Using RAG for Agent Memory | Zep Blog\nOpens in a new window",
+    "url": "https://www.getzep.com/blog/stop-using-rag-for-agent-memory/"
+  },
+  {
+    "text": "issues.qgis.org\nQGIS Application - Issues\nOpens in a new window",
+    "url": "https://issues.qgis.org/projects/qgis/issues.pdf?fixed_version_id=125&per_page=50&set_filter=1&sort=tracker%2Cpriority%2Cassigned_to&status_id=o&subproject_id=%21%2A"
+  },
+  {
+    "text": "isis.astrogeology.usgs.gov\nIsis 3 Programmer Reference: History\nOpens in a new window",
+    "url": "https://isis.astrogeology.usgs.gov/8.3.0/Object/Programmer/history.html"
+  },
+  {
+    "text": "issues.qgis.org\nIssues\nOpens in a new window",
+    "url": "https://issues.qgis.org/issues.pdf?set_filter=1&sort=status%2Cupdated_on%2Cid"
+  },
+  {
+    "text": "audiokinetic.com\n_aki_o_s_sound_engine_8h_source - Audiokinetic\nOpens in a new window",
+    "url": "https://www.audiokinetic.com/en/public-library/2025.1.9_9197/?source=SDK&id=_aki_o_s_sound_engine_8h_source.html"
+  },
+  {
+    "text": "stackoverflow.com\nios - AVAudioRecorder not recording in background after audio\nOpens in a new window",
+    "url": "http://stackoverflow.com/questions/29036294/avaudiorecorder-not-recording-in-background-after-audio-session-interruption-end?rq=1"
+  },
+  {
+    "text": "github.com\nUse speaker of media instead of use speaker of calling #1542 - GitHub\nOpens in a new window",
+    "url": "https://github.com/react-native-webrtc/react-native-webrtc/issues/1542"
+  },
+  {
+    "text": "stackoverflow.com\niphone - Sound effect that quiets other audio iOS AVAudio - Stack\nOpens in a new window",
+    "url": "https://stackoverflow.com/questions/20023850/sound-effect-that-quiets-other-audio-ios-avaudio"
+  },
+  {
+    "text": "developer.apple.com\nSound Analysis | Apple Developer Forums\nOpens in a new window",
+    "url": "https://developer.apple.com/forums/tags/soundanalysis"
+  },
+  {
+    "text": "learn.microsoft.com\nVoice Live API reference 2026-07-15 - Foundry Tools | Microsoft Learn\nOpens in a new window",
+    "url": "https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live-api-reference-2026-07-15"
+  },
+  {
+    "text": "docs.vllm.ai\nrealtime - vLLM-Omni\nOpens in a new window",
+    "url": "https://docs.vllm.ai/projects/vllm-omni/en/latest/api/vllm_omni/protocol/realtime/"
+  },
+  {
+    "text": "research-collection.ethz.ch\nStoring and Processing Temporal Data in Main Memory Column\nOpens in a new window",
+    "url": "https://www.research-collection.ethz.ch/bitstreams/68c434f8-28bc-4808-bf01-79282fb77f6e/download"
+  },
+  {
+    "text": "scribd.com\nTemporal Tables in PostgreSQL | PDF | Postgre Sql - Scribd\nOpens in a new window",
+    "url": "https://www.scribd.com/document/351459447/Fosdem20150130PostgresqlTemporal"
+  },
+  {
+    "text": "wiki.postgresql.org\nTemporal Data & Time Travel in PostgreSQL\nOpens in a new window",
+    "url": "https://wiki.postgresql.org/images/6/64/Fosdem20150130PostgresqlTemporal.pdf"
+  },
+  {
+    "text": "community.openai.com\nInput_audio_transcription in realtime-api\nOpens in a new window",
+    "url": "https://community.openai.com/t/input-audio-transcription-in-realtime-api/1007401"
+  },
+  {
+    "text": "developers.openai.com\nRealtime client events | OpenAI API Reference\nOpens in a new window",
+    "url": "https://developers.openai.com/api/reference/resources/realtime/client-events"
+  },
+  {
+    "text": "medium.com\nOpenAI's Realtime API in Python(Text-to-Speech/Text) - Medium\nOpens in a new window",
+    "url": "https://medium.com/@csakash03/openais-realtime-api-in-python-text-to-speech-text-62911f527ab1"
+  },
+  {
+    "text": "developers.openai.com\nTranscribing User Audio with a Separate Realtime Request\nOpens in a new window",
+    "url": "https://developers.openai.com/cookbook/examples/realtime_out_of_band_transcription"
+  }
+]

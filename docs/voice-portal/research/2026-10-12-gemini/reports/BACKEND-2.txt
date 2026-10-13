@@ -1,0 +1,218 @@
+Gemini-generated research; source claims not independently validated.
+Conversation: https://gemini.google.com/app/8996b7b9e6b74ba3
+
+BACKEND-2 Theographic Scripture schema and integration
+Executive Recommendation
+
+The orchestration of a private, single-user native SwiftUI portal connecting to an RLM-ADK execution backend necessitates a robust synthesis of local iOS audio management, dynamic voice AI bridging, and stringent scriptural data isolation. The primary engineering imperative is seamlessly blending continuous environmental recording—accommodating explicitly requested quiet and unbounded prayer captures—with the high-fidelity conversational capabilities of the October 2026 OpenAI Realtime API. Simultaneously, the semantic backend must ingest and project biblical metadata from the open-source Theographic dataset without inadvertently polluting the user's private entity graphs or violating the restrictive ShareAlike licensing of the source material.
+
+To achieve the desired OpenAI live voice performance standard, the architecture must deploy gpt-realtime-2.1-mini as the default duplex conversational engine, relying on extensive prompt caching to suppress marginal costs during prolonged background sessions. This must be dynamically escalated to the flagship gpt-realtime-2.1 model only for complex reasoning and creative workflow generation. The integration strictly requires API-level billing; end-user ChatGPT Pro subscriptions cannot natively support continuous, custom-routed WebSocket audio streams within a private iOS application context without violating terms of service or encountering hard rate limits.
+
+At the device level within the RawleySM/rlm-adk-ios workspace, the iOS audio session must exclusively utilize AVAudioSessionCategoryPlayAndRecord combined with explicit background mixing and Bluetooth routing overrides to prevent the operating system from suspending the application during extended periods of explicit quiet. The system must write continuously to a local ring buffer to satisfy iOS background execution heuristics, transmitting to the remote API only upon localized wake detection or the conclusion of a silent prayer capture.
+
+Regarding the scriptural schema, the robertrouse/theographic-bible-metadata repository provides an accessible topological graph of biographical and geographic interconnectivity, representing roughly 3,067 people and 450 events. However, it lacks the rigorous morphological and scholarly disambiguation required for advanced theological processing. Consequently, the architecture must ingest Theographic data exclusively as a supplementary relational layer, cross-referenced against the more authoritative STEPBible TIPNR (Translators Individualised Proper Names) dataset and the OpenBible spatial geocoding polygons. To preserve the integrity of the single-user portal, all external biblical datasets must be projected through strict source-qualified entity schemas, preventing superficial name-only merges between ancient scriptural figures and the user’s personal calendar data. A hybrid storage projection utilizing an isolated Neo4j container for topological pathfinding and relational SQL for durable pipeline execution is the recommended path forward to firewall copyleft data from proprietary user logic.
+
+Target Voice Performance and OpenAI API Economics
+
+The foundational user experience relies upon a fluid, interruptible, and deeply contextual voice interface capable of executing spoken transitions among distinct activities, scheduling tasks, and providing scriptural devotionals. Based on October 2026 official documentation, the OpenAI Realtime API represents the explicit performance gold standard for this speech-to-speech interaction. This modern architecture bypasses legacy cascading systems that inefficiently wired standalone speech-to-text (STT), large language models (LLM), and text-to-speech (TTS) services together sequentially, which historically introduced 300–800 milliseconds of latency.
+
+The integration relies upon WebRTC, WebSocket, or SIP connections to maintain a continuous duplex stream of audio tokens directly between the iOS client and the model endpoint. The distinction between end-user consumer products and the developer interface is paramount here: a ChatGPT Pro subscription provides user-facing application access but does not provide the programmable WebSocket connections required for a native SwiftUI backend integration. The developer must rely on API billing, which meters usage by the token rather than offering a flat monthly rate.
+
+Model Tiers and Token Caching
+
+The OpenAI Realtime API ecosystem in late 2026 centers around two primary duplex models: gpt-realtime-2.1 (the flagship) and gpt-realtime-2.1-mini. The economic viability of continuous or semi-continuous recording hinges entirely on the API's caching mechanics. The flagship model incurs a base cost of $32.00 per one million input audio tokens and $64.00 per one million output audio tokens. Without optimization, prolonged conversational sessions covering ordinary status requests and calendar preparations become prohibitively expensive, escalating to approximately $0.06 to $0.11 per conversation minute.
+
+However, the introduction of prompt caching alters the architectural viability significantly. When the system prompt, historical audio, and tool definitions are successfully cached by the model edge, the input token cost drops drastically from $32.00 to $0.40 per million tokens on the flagship model. This caching mechanism dictates a specific design imperative for the iOS backend integration. The system prompt, calendar constraints, and core tool definitions must remain entirely static at the head of the context window. Any dynamic data injection—such as real-time GPS updates or rapidly changing physiological metrics—must be strictly appended to the end of the context payload to preserve the cache prefix across conversational turns.
+
+Furthermore, the architecture should default to the gpt-realtime-2.1-mini model for baseline operations. The mini variant features a significantly lower base cost of $10.00 for input and $20.00 for output audio tokens, dropping to an exceptional $0.30 per million for cached input. The mini model, operating at roughly $0.02 to $0.05 per conversation minute, is structurally sufficient for proactive calendar briefings, routine status queries, and basic scriptural playback. The system should only route to the flagship gpt-realtime-2.1 when semantic routers detect a complex theological inquiry or a multifaceted creative workflow request.
+
+OpenAI Realtime Model	Audio Input (per 1M)	Cached Input (per 1M)	Audio Output (per 1M)	Estimated Cost per Minute
+gpt-realtime-2.1	$32.00	$0.40	$64.00	$0.06 – $0.11
+gpt-realtime-2.1-mini	$10.00	$0.30	$20.00	$0.02 – $0.05
+Gemini 3.1 Flash Live (Preview)	N/A	N/A	N/A	~$0.01 – $0.03
+Legacy STT+LLM+TTS Cascade	Variable	Variable	Variable	$0.02 – $0.04
+Decoupling Durable Action Items and Text Modalities
+
+Long research and creative requests eventually become durable action items, producing actual reviewable outputs after the synchronous voice sessions end. While the audio tokens drive the real-time interaction, the generation of these durable texts relies on standard text reasoning. Under the 2.1 model specifications, text input and output are billed concurrently with audio if utilized in the same session. Text input on the flagship is billed at $4.00 per million tokens (or $24.00 for output), while the mini model processes text at $0.60 per million input and $2.40 per million output. Every function definition and tool result sits in the context and bills as text on each turn. Therefore, tool payloads returned from the Theographic or STEPBible databases must be heavily minimized, projecting only necessary node attributes to prevent text-token bloat.
+
+For scenarios requiring textual transcripts of the user for durable action items, the Realtime API allows simultaneous transcription utilizing the gpt-realtime-whisper or gpt-live-transcribe models at an additional $0.017 per minute of audio. The legacy whisper-1 and gpt-4o-transcribe models are slated for deprecation by early 2027, rendering reliance on them an immediate technical debt. For off-cycle, non-realtime transcription (such as processing a saved prayer capture), batch gpt-transcribe endpoints offer a reduced rate of $0.0045 per minute.
+
+For massive asynchronous reasoning tasks that do not require voice—such as drafting a sermon storyboard, synthesizing a book chapter, or processing historical timelines—the backend should offload the work from the Realtime API entirely and utilize the standard Responses API. In this domain, the October 2026 GPT-6 family of models is available. The gpt-6.1-sol model operates at $2.00 per million input text tokens and $10.00 per million output, providing near-Astra performance for complex workflow automation. For extremely high-volume, cost-sensitive classification or routing tasks (e.g., categorizing thousands of historical journal entries), the efficient gpt-6-luna model operates at $0.10 per million input and $0.50 per million output.
+
+Text-Centric Responses API Model	Input Text (per 1M)	Cached Input (per 1M)	Output Text (per 1M)	Ideal Backend Pipeline Use Case
+gpt-6-astra	$10.00	$1.00	$50.00	Deepest theological synthesis, high-stakes coding
+gpt-6.1-sol	$2.00	$0.10	$10.00	Agentic workflows, document-heavy project phases
+gpt-6-luna	$0.10	$0.01	$0.50	High-volume semantic routing, simple classification
+Continuous Device Recording and Explicit Quiet Decoupling
+
+A core product requirement is the implementation of continuous device recording combined with the concept of "explicit quiet." Quiet suppresses all speech until an explicit wake command is detected, and calendar timers must not override it. Furthermore, prayer capture tolerates long silences, ending only by explicit manual control, after which the system saves the capture and waits.
+
+Because the OpenAI API charges for all processed tokens—including silence, which still bills as active audio input if transmitted over a WebSocket—streaming hours of explicit quiet or prayer capture directly to the Realtime API would accrue massive, unnecessary costs. Therefore, recording, transcription, and conversational voice sessions must be treated as mechanically independent pipelines.
+
+The iOS client must implement local Voice Activity Detection (VAD) and semantic gating. During explicit quiet periods, the physical microphone hardware remains active locally on the iPhone, but the WebSocket transmission to the OpenAI endpoint must be completely suppressed. A localized, on-device machine learning model (such as an embedded CoreML wake-word detector or a highly quantized audio classifier) must monitor the local buffer. Until this local model detects the specific wake phrase or manual user interruption, no audio leaves the device.
+
+Prayer capture introduces a different paradigm. Because it tolerates long silences and relies on explicit termination, this audio should be streamed directly to local non-volatile storage as a standard M4A or WAV file, bypassing the generative Realtime API completely. Upon explicit termination of the prayer session, the native iOS client closes the file handle. The saved file can then be uploaded to the asynchronous gpt-transcribe batch endpoint at the heavily discounted $0.0045 per minute rate, converting the prayer into a text transcript suitable for the user's personal-context sources. This architecture completely avoids the generative audio token costs associated with live duplex models during silent contemplation.
+
+Outside of quiet or prayer modes, the system enters its proactive state. The initial proactive speech covering calendar preparation, departure logistics, and project phases needing input requires the iOS client to open the Realtime API WebSocket, pass the static system prompt and the dynamic daily context, and prompt the model to speak first. Because background work continues independently of the voice session, a paid voice session need not remain open merely because local recording continues. The native app can close the expensive WebRTC/WebSocket connection when a conversation naturally concludes, falling back to local VAD monitoring to trigger the next session.
+
+Native iOS Background Audio Constraints (RawleySM/rlm-adk-ios)
+
+The execution of continuous background recording and selective wake capabilities relies heavily on the underlying iOS operating system's handling of the AVAudioSession. The native workspace within RawleySM/rlm-adk-ios must navigate strict constraints imposed by Apple's sandboxing and aggressive power-management heuristics. Paid membership in the Apple Developer Program allows for deployment and provisioning, but it offers zero exemptions from OS-level audio constraints.
+
+The AVAudioSessionCategoryPlayAndRecord Imperative
+
+To enable simultaneous playback of scriptural devotionals and the uninterrupted recording of the user's voice for interruption and correction, the application must configure the shared audio instance with AVAudioSessionCategoryPlayAndRecord. However, simply declaring this category is insufficient for background longevity. The application must possess the necessary capabilities within the UIBackgroundModes array of its Info.plist file, specifically the "Audio, AirPlay, and Picture in Picture" flag.
+
+Furthermore, the OS imposes strict rules regarding audio routing and interruption. Because the user is highly likely to utilize Bluetooth peripherals (e.g., AirPods, car audio systems), the audio session must be explicitly configured with appropriate option flags. If the developer utilizes AVAudioSessionCategoryOptionAllowBluetooth, iOS defaults to the Hands-Free Profile (HFP), which heavily degrades audio quality to an 8,000 Hz sample rate. To maintain high-fidelity audio playback for devotions while retaining microphone access, the session must request AVAudioSessionCategoryOptionAllowBluetoothA2DP for advanced distribution profiling.
+
+The Background Suspension Challenge
+
+The decoupling of explicit quiet from active transmission introduces a severe engineering challenge. The device must maintain an active, hot audio session to capture the eventual wake command or the termination of a prayer session. Apple's documentation and developer consensus indicate that iOS aggressively monitors background audio applications. If an app declares AVAudioSessionCategoryPlayAndRecord but fails to actively process audio buffers, or attempts to activate the session while completely in the background without prior foreground authorization, the OS will block the activation or terminate the process.
+
+Developers have documented behaviors where iOS terminates processes with a SIGKILL signal at approximately 50 seconds of continuous background time if the application is not actively utilizing the audio hardware in a manner recognized by the system. If the application merely suspends its audio engine during quiet periods to save battery, iOS will classify the application as idle and terminate the background process entirely, completely defeating the continuous recording requirement.
+
+Therefore, the native Swift client must continuously write silent or ambient audio buffers to a local null sink or a temporary ring buffer to maintain the active AVAudioSession lease. The AVAudioEngine must remain running. By keeping the hardware engaged in a continuous loop, the application satisfies the operating system's requirement for active background processing, thereby holding the process awake to monitor for wake words without necessitating continuous network transmission.
+
+Network Permissions and Routing Irregularities
+
+Modern iOS versions also enforce strict local network permissions. Applications integrating complex audio bridging or inter-app audio must include NSLocalNetworkUsageDescription and NSBonjourServices entries to prevent the OS from blocking localized audio routing protocols. Additionally, hardware routing events can trigger unexpected session behaviors. For example, connecting to certain automotive systems via Bluetooth can cause the vehicle to interpret the active PlayAndRecord session as a phone call, muting native Digital Audio Broadcasting (DAB) radio and altering volume controls. The iOS developer must implement robust AVAudioSession.routeChangeNotification observers to gracefully handle these peripheral transitions without dropping the ongoing prayer capture or active voice session.
+
+Theographic Publisher Repository and JSON Schema
+
+The semantic backend requires a durable, expansive scriptural dataset. The user has identified Theographic as a primary candidate, distinguishing it from general architectural frameworks like Neo4j or Microsoft GraphRAG. Deep research into the actual publisher repository, robertrouse/theographic-bible-metadata, reveals a comprehensive knowledge graph designed to weave data about biblical people, places, and periods into a cohesive narrative structure.
+
+Repository Structure and Documentation
+
+The repository is hosted on GitHub and partitioned into distinct schema formats. The publisher explicitly notes that while flat CSV files are provided for legacy SQL imports, the nested JSON objects within the json directory represent the preferred, authoritative source for databases capable of handling complex document schemas. The core schema revolves around discrete JSON files: people.json, places.json, events.json, and periods.json.
+
+The total coverage spans approximately 3,067 distinct people and 450 major events, cross-referenced against nearly 53,000 verse links. This breadth makes it highly suitable for visual storytelling and generating chronological timelines. The geographic dimension of Theographic, specifically within places.json, embeds standard decimal latitude and longitude coordinates directly into the entity records (e.g., "latitude": 33.511612, "longitude": 36.309102).
+
+Native IDs and Schema Irregularities
+
+A defining characteristic of the Theographic schema is its reliance on proprietary native string identifiers. Rather than utilizing standard UUIDs (Universally Unique Identifiers) or purely semantic English labels, entities carry a primary lowercase string designation appended with an underscore and a unique numeric identifier. Examples extracted from the dataset include hadad-rimmon_501, gederothaim_454, and jether_654.
+
+This systematic suffixing is a deliberate design choice to mitigate the rampant name collisions inherent in ancient texts, where multiple distinct individuals or regional towns share a single moniker. By enforcing this native ID structure, Theographic prevents graph edges from unintentionally collapsing distinct personas into a single node.
+
+However, the schema exhibits several irregularities and limitations. First, it relies entirely on OSIS (Open Scripture Information Standard) versification for its passage linkages. The schema defines OsisRef arrays formatted as Book.Chapter.Verse to anchor entities to the text. This introduces a significant limitation regarding historical assertions and historic certainty. An edge connecting a person to an OSIS reference in Theographic signifies mere presence or participation in the text; it does not infer historical certainty, the precise nature of the interaction, or the theological weight of the passage. The OSIS string alone does not guarantee uniform semantic alignment across different translations, as chapter and verse divisions fluctuate heavily between the Masoretic Text, the Septuagint, and modern English vernaculars. The geographic points are also highly simplified; embedding a single coordinate pair fails to account for the physical expansion of cities over centuries or the ambiguous nature of certain historical ruins.
+
+The CC BY-SA 4.0 License Implications
+
+Perhaps the most critical technical constraint surrounding the robertrouse/theographic-bible-metadata repository is its code and data license. The repository is distributed under the Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0) license.
+
+The ShareAlike clause introduces viral, copyleft licensing implications. According to the terms, any derivative database or application that semantically merges, alters, or builds upon the dataset must distribute its contributions under the exact same license. If the execution backend structurally fuses the user's highly private, personal-context sources (such as subjective devotional notes, prayer transcripts, or personal calendar data) with the core Theographic graph in a unified database table, that resulting dataset could theoretically be forced into the public domain if ever distributed.
+
+Because this iOS application is designed as a private, single-user portal, the immediate legal risk of forced distribution is negated—ShareAlike clauses trigger upon public distribution, not private internal use. However, standard architectural hygiene dictates strict boundary preservation. The source pipelines must remain strictly independent of execution. The architecture must treat Theographic as a read-only, external projection, maintaining distinct boundaries to ensure personal action items never permanently contaminate the copyleft metadata layer.
+
+Comparative Scripture Reference and Metadata Verification
+
+Theographic's role within the backend is best defined as a topological index—excellent for tracing family lineages or mapping the geographic path of an apostle. However, its limits for theological comparisons and deep lexical study are evident. It lacks the rigorous morphological tagging, original language parsing, and scholarly disambiguation required for advanced interpretations. Therefore, it cannot stand as the sole consolidated knowledge backend. The architecture must integrate parallel, more authoritative datasets to verify coverage and supply missing context.
+
+STEPBible TIPNR (Tyndale House)
+
+For authoritative lexical and entity disambiguation, the system must cross-reference Theographic with the STEPBible datasets curated by Tyndale House, Cambridge. Specifically, the Translators Individualised Proper Names (TIPNR) dataset provides a highly authoritative matrix that exceeds Theographic's depth in scholarly precision.
+
+The TIPNR dataset encompasses 4,143 discrete entities and 6,824 distinct name variations, mapping them to disambiguated Strong's numbers. Unlike Theographic's JSON arrays, STEPBible-Data is distributed as multi-line, tab-separated text files designed for academic analysis. A critical advantage of the STEPBible repository is its extensive normalization logic. It systematically handles Hebrew glyphs (separating consonants, sin/shin dots, dagesh, vowels, and metheg markers) while filtering complex diacritics in Koine Greek to ensure deterministic, programmatic search capabilities across ancient manuscripts.
+
+Crucially, the STEPBible datasets are distributed under the standard Creative Commons Attribution 4.0 International (CC BY 4.0) license. This permissive license requires attribution but drops the viral ShareAlike provision found in Theographic, making it significantly safer to integrate intimately with proprietary logic. By executing semantic joins that map a Theographic native ID (e.g., hadad-rimmon_501) to its corresponding STEPBible TIPNR reference (Hadad-rimmon@Zec.12.11), the backend achieves the relational graph of the former combined with the lexical certainty of the latter.
+
+OpenBible.info Geocoding Data
+
+To rectify Theographic's simplistic single-coordinate approach to geography, the backend should query the OpenBible.info Bible Geocoding Data, curated by Stephen Smith. Also licensed under CC BY 4.0, this repository defines precise geometries using the GeoJSON format.
+
+Rather than assuming every location is a discrete, pinpointed coordinate, the OpenBible schema introduces the lonlat_type field. This categorizes spatial data into distinct classifications:
+
+center: The coordinates act as the center of a defined bounding circle, with an accompanying geometry_radius_meters parameter.
+
+point: A highly precise, known location.
+
+representative point: A generalized coordinate falling somewhere within a broader region or along a path (e.g., an entire province or a migration route).
+
+settlement: A generalized marker inside a known city limits.
+
+This level of geographic ambiguity resolution is essential when the execution backend processes creative workflows that require accurate contextual staging for historical events. A generative AI instructed to storyboard a scene based on a representative point will understand the vastness of the region, whereas a rigid coordinate might artificially constrict the generated narrative.
+
+Dataset Name	Primary Publisher	Open License	Core Schema Focus & Strength	Entity / Reference Volume
+Theographic	Robert Rouse	CC BY-SA 4.0	Knowledge graph, relationships, visual storytelling	~3,067 people, 450 events
+STEPBible TIPNR	Tyndale House	CC BY 4.0	Lexical disambiguation, glyph normalization	4,143 entities, 6,824 names
+OpenBible Geo	Stephen Smith	CC BY 4.0	GeoJSON polygons, spatial confidence indexing	Geospatial bounding arrays
+Source-Qualified Entity Design and Domain Projections
+
+The native workspace requires an architecture that treats source pipelines as strictly independent of execution. Because domain projections belong entirely to the consuming projects, there is no single monolithic database asserting universal scriptural truth. The backend must implement a source-qualified entity schema to manage updates, version semantics, and data provenance.
+
+Preventing Name-Only Merges
+
+A primary risk in metadata ingestion, particularly when utilizing a powerful LLM to synthesize data, is the conflation of identities based on shared string values. If the user possesses a personal calendar contact named "David," the backend must never automatically link modern calendar events involving this contact to the scriptural King David.
+
+To enforce this isolation, every entity within the execution backend must be wrapped in a source-qualification envelope. An entity object must possess a strictly typed provenance field indicating its absolute origin (e.g., source: theographic, source: stepbible, source: personal_calendar). Internal system identifiers must be generated via composite keys linking the origin source and the source's native ID. For example, Theographic's hadad-rimmon_501 is projected into the backend as urn:rlm:theographic:hadad-rimmon_501, ensuring absolute cryptographic and semantic distance from personal data.
+
+When designing passage mappings and aliases, evidence spans—the specific OSIS passage references justifying a relationship edge—must be retained immutably alongside the edge definition. If an upstream repository issues a correction, the update semantic dictates that the backend does not overwrite the existing node in a destructive manner. Instead, it increments a source-version tag on the entity envelope. When the user initiates a voice session requesting a summary, the LLM is provided with these fully namespaced contexts. By supplying the model with urn:rlm:theographic:david_123 instead of the bare string "David", the system prevents hallucinatory cross-contamination between modern daily planning and ancient biblical history.
+
+Projection Alternatives: SQL vs. Neo4j
+
+Theographic's publisher explicitly provides Python import scripts designed for Neo4j, a native graph database utilizing the Cypher query language. Deploying a Neo4j projection is optimal for topological analysis. When a creative workflow requires finding the shortest relational path between two biblical figures, or extracting a visual tree of descendants, Neo4j calculates these traversals with high efficiency by walking the pre-established edge pointers without complex recursive joins.
+
+However, the user's primary execution backend (RLM-ADK) relies heavily on durable action items, chronological personal schedules, and rigid workflow state machines. For these operational components, traditional relational SQL projections remain vastly superior. Importing Theographic's array-based JSON fields directly into a flat SQL table violates first normal form and creates inefficient querying scenarios. Therefore, an SQL projection necessitates normalizing the nested arrays into dedicated relational lookup tables.
+
+A dual-projection strategy is the recommended architecture. The core execution state, personal calendar data, prayer transcripts, and durable action items reside securely in encrypted relational SQL tables. When a research request is initiated via voice, the execution backend asynchronously queries the isolated, read-only Neo4j container to retrieve the scriptural graph paths. The resulting graph traversal is serialized into standard JSON and appended to the prompt context passed to the OpenAI API. This dual-model approach satisfies the requirement that domain projections remain separated while allowing the consuming project to leverage the strengths of both storage paradigms.
+
+Concrete Implementation and Narrow Validation Plan
+
+The implementation of this complex audio architecture and dual-schema ingestion requires a phased validation plan strictly isolated from live deployment until fundamental hardware and pipeline assumptions are verified. Because the user explicitly requested no live deployment, software installation, or credit purchases during this research phase, the following steps represent a controlled verification protocol designed for execution within the Swift developer environment.
+
+Nearest Alternative and Shifting Conditions
+
+The selected decision is an iOS-native background audio loop feeding into the OpenAI Realtime 2.1 API, querying a hybrid Neo4j/SQL backend.
+
+The Nearest Alternative: A managed orchestration platform like Vapi or Retell AI. These platforms encapsulate the STT, LLM, TTS, and telephony layers into a single SDK.
+
+Conditions Changing the Decision: Managed platforms charge significant premiums, often resulting in $0.07–$0.31 per minute all-in costs. They also obscure the raw audio stream, making custom VAD gating and explicit quiet protocols difficult to implement. If the iOS SIGKILL background termination bug proves insurmountable with local buffering, the architecture must abandon the native TCP/WebSocket approach and fall back to registering the app as a standard VoIP telephony client, connecting to the backend via a SIP trunk.
+
+Validation Phase 1: Background Audio Tenacity
+
+The most critical unknown is the exact behavior of the iOS background execution limits when handling extended silence.
+
+The developer must build a minimal Swift test harness utilizing AVAudioSessionCategoryPlayAndRecord with the AVAudioSessionCategoryOptionMixWithOthers and AVAudioSessionCategoryOptionAllowBluetoothA2DP options.
+
+The application must initialize an AVAudioEngine and write empty audio buffers locally for a period exceeding two hours while the device is locked and the application is firmly in the background.
+
+The developer must simulate hardware interrupts, such as a telephone call routing through a connected Bluetooth headset, and verify whether the AVAudioSession successfully recovers its state via standard OS callbacks. If the OS terminates the application silently after 50 seconds, the local buffering mechanism must be modified to continuously overwrite a temporary file to force disk I/O, which historically prevents iOS from classifying the audio session as idle.
+
+Validation Phase 2: Schema Ingestion and Disambiguation
+
+The second validation phase tests the source-qualified entity design and the feasibility of semantic bridging.
+
+A localized, read-only graph database (Neo4j) should be populated using the Theographic Python ingestion script against the publisher's JSON arrays.
+
+A secondary pipeline must parse the multi-line, tab-separated text files of the STEPBible TIPNR dataset, applying the documented glyph normalization rules.
+
+The validation requires executing a semantic SQL join based on OSIS references, attempting to map Theographic's native IDs (e.g., hadad-rimmon_501) to their corresponding TIPNR entities to evaluate the exact volume of mismatches or null returns. The success metric is not perfect alignment, but rather the backend's ability to gracefully instantiate the urn:rlm:theographic envelope without encountering fatal foreign-key constraint failures.
+
+Validation Phase 3: Token Economy and Prompt Caching
+
+The final validation evaluates the OpenAI Realtime 2.1 API economics through dry-run token counting.
+
+Formulate the static system prompt, including the JSON schemas for the required tool calls (e.g., get_passage, find_similar, get_entity, explore_genealogy).
+
+Establish a test WebSocket connection simulating intermittent conversation interspersed with periods of absolute silence.
+
+Observe the API billing metrics dashboard to confirm that the static system prompt is successfully triggering the $0.30 per million cached input rate on the mini model. Any deviation in the prompt head structure that forces a cache miss will immediately reveal itself in a massive token burn rate spike, allowing the developer to tune the contextual assembly before wide-scale deployment.
+
+Important Unresolved Facts
+
+Several constraints remain undefined based on current public web sources and require hardware-specific empirical testing:
+
+The iOS longFormAudio Interference: While the standard dictates AVAudioSessionCategoryPlayAndRecord, modern Apple Developer forums note conflicts between Bluetooth routing and AirPlay 2 long-form audio synchronization. The exact degradation of Bluetooth voice quality when simultaneously capturing ambient audio and processing high-fidelity playback remains a hardware-specific unknown that cannot be resolved solely through documentation.
+
+Theographic Deuterocanonical Completeness: The dataset explicitly omits certain theological nuances and focuses heavily on Protestant narrative entities. The exact percentage of the Apocrypha or deuterocanonical texts covered by the native IDs and OSIS mappings is not definitively cataloged in the core repository readmes.
+
+Realtime API Compounding Latency: While the OpenAI Realtime API aims for an impressive ~300ms latency, the introduction of extensive JSON tool calls and large context retrieval from the Neo4j backend will introduce pipeline delays. The exact threshold at which this compounding database latency breaks the psychological illusion of a conversational interface is highly subjective and must be physically experienced by the user.
+
+Annotated Primary-Source List
+Source ID	Publisher / Repository	Relevance to Architecture	Access Context & License
+	GitHub: robertrouse/theographic-bible-metadata	The core graph data repository containing JSON files, CSVs, and Neo4j Cypher imports detailing biblical people, places, and events.	Accessed Oct 2026. Licensed under CC BY-SA 4.0. Confirms structural layout and array nesting.
+	GitHub: STEPBible/STEPBible-Data	Tyndale House dataset (TIPNR) supplying critical morphological and lexical disambiguation to supplement Theographic limits.	Accessed Oct 2026. Licensed under CC BY 4.0. Outlines multi-line text format and complex glyph normalization.
+	GitHub: openbibleinfo/Bible-Geocoding-Data	Provides highly accurate GeoJSON polygons and representative point logic for geospatial scriptural analysis.	Accessed Oct 2026. Licensed under CC BY 4.0. Details the lonlat_type schema necessary for nuanced location mapping.
+	OpenAI Official Documentation	Defines the exact Realtime API pricing, input/output token costs, prompt caching economics, and WebRTC integration endpoints.	Accessed Oct 2026. Confirms the $0.40/$0.30 cached rates and the distinction between the 2.1 flagship and mini models.
+	OpenAI Official Documentation	Details the Responses API for text generation and reasoning tasks across the GPT-6 model family.	Accessed Oct 2026. Verifies the capabilities and pricing of gpt-6.1-sol and gpt-6-luna for backend durable action items.
+	Apple / Audiobus Developer Forums	Documents the low-level constraints of AVAudioSessionCategoryPlayAndRecord, background modes, and Bluetooth routing caveats.	Accessed Oct 2026. Details the necessity of allowBluetoothA2DP options and the critical risks of OS-level SIGKILL termination.
+	MCP Server Implementations	Provides evidence of community integrations (e.g., studybible-mcp) utilizing Theographic data for tool calls and mermaid graph generation.	Accessed Oct 2026. Demonstrates the functional capacity of combining LLMs with Theographic graph traversal.

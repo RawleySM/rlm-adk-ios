@@ -16,6 +16,9 @@ the existing pipeline products and connect them to durable tasks, projects, and 
 - [Architecture research](architecture-research.md): source inventory, native audio considerations,
   Theographic and retrieval comparisons, proposed components and interfaces, and a phased proof plan.
 
+- [Gemini research report archive](research/2026-10-12-gemini/README.md): seven completed reports,
+  source lists, all twelve independent prompts, and links/status for the remaining studies.
+
 The research distinguishes existing source products and simulator evidence from proposed
 integrations and device behavior still needing proof. Its recommendation remains provisional
 until the native audio and retrieval evaluations are completed.

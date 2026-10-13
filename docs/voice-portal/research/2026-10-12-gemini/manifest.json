@@ -1,0 +1,290 @@
+{
+  "title": "RLM-ADK voice portal Gemini research",
+  "batch_date": "2026-10-12",
+  "archived_at_utc": "2026-10-13T00:31:31+00:00",
+  "report_count": 12,
+  "completed_count": 7,
+  "reports": [
+    {
+      "id": "IOS-1",
+      "topic_id": "ios",
+      "topic": "Native iOS front end and interaction",
+      "angle": "audio",
+      "title": "IOS-1 Native iPhone continuous audio feasibility",
+      "status": "completed",
+      "conversation_url": "https://gemini.google.com/app/e891f613a99e4ae3",
+      "prompt_file": "prompts/ios-1-audio.md",
+      "review_notes": "reports/IOS-1-review-notes.md",
+      "report_html": "reports/IOS-1.html",
+      "report_text": "reports/IOS-1.txt",
+      "sources": "reports/IOS-1.sources.md",
+      "source_link_count": 67,
+      "artifacts": {
+        "reports/IOS-1.html": {
+          "sha256": "42522f95b3e919e0caf434bea5490060639d57d58eac59e3759cbe3d1771edad",
+          "bytes": 309263
+        },
+        "reports/IOS-1.txt": {
+          "sha256": "cb3e5e213ecc72ee058bb4fa81e49133000b8d03ca454e9bfa841f95ae22ec4b",
+          "bytes": 29436
+        },
+        "reports/IOS-1.sources.md": {
+          "sha256": "ea7202f32c5ab8db4d12859b0df70f0964f9c165b6c0094f342ffd063d838ce8",
+          "bytes": 10546
+        },
+        "reports/IOS-1.sources.json": {
+          "sha256": "fcf391d8403b0b695b897848f4436d8de4cf5f0a51650e62914d6fc840476f3d",
+          "bytes": 13887
+        }
+      }
+    },
+    {
+      "id": "IOS-2",
+      "topic_id": "ios",
+      "topic": "Native iOS front end and interaction",
+      "angle": "interaction",
+      "title": "IOS-2 Natural voice interaction and prayer mode design",
+      "status": "completed",
+      "conversation_url": "https://gemini.google.com/app/8b7f6dc01612ad41",
+      "prompt_file": "prompts/ios-2-interaction.md",
+      "retryCount": 1,
+      "report_html": "reports/IOS-2.html",
+      "report_text": "reports/IOS-2.txt",
+      "sources": "reports/IOS-2.sources.md",
+      "source_link_count": 89,
+      "artifacts": {
+        "reports/IOS-2.html": {
+          "sha256": "452c6739bde6c27ec3fd644a0f1a6078e538795d92069517a73ab26423155ff0",
+          "bytes": 341645
+        },
+        "reports/IOS-2.txt": {
+          "sha256": "6960eed73ce45751bd656250b973a1d9ed7ca1907a8727d13fea977a51db3ab6",
+          "bytes": 39405
+        },
+        "reports/IOS-2.sources.md": {
+          "sha256": "6c1ef2fe85ba7722042c80e3e415d7804fd53d3c1635b84005a30f1163956156",
+          "bytes": 12736
+        },
+        "reports/IOS-2.sources.json": {
+          "sha256": "0b2ed1aa5681704f925d626cc57b743d87f605bc3425d8e4c8f6cbdb9d05d3f6",
+          "bytes": 17273
+        }
+      }
+    },
+    {
+      "id": "IOS-3",
+      "topic_id": "ios",
+      "topic": "Native iOS front end and interaction",
+      "angle": "integration",
+      "title": "IOS-3 Swift voice transport and RLM-ADK integration",
+      "status": "research_accepted",
+      "conversation_url": "https://gemini.google.com/app/76771051e7305275",
+      "prompt_file": "prompts/ios-3-integration.md",
+      "verificationCleared": true
+    },
+    {
+      "id": "IOS-4",
+      "topic_id": "ios",
+      "topic": "Native iOS front end and interaction",
+      "angle": "reliability",
+      "title": "IOS-4 Recording and voice continuity under daily failures",
+      "status": "completed",
+      "conversation_url": "https://gemini.google.com/app/a2b2e43090f14582",
+      "prompt_file": "prompts/ios-4-reliability.md",
+      "restartCount": 1,
+      "verificationCleared": true,
+      "report_html": "reports/IOS-4.html",
+      "report_text": "reports/IOS-4.txt",
+      "sources": "reports/IOS-4.sources.md",
+      "source_link_count": 59,
+      "artifacts": {
+        "reports/IOS-4.html": {
+          "sha256": "5358ea3a915dc6aa791ca74136cf3cbea7d4976f7ca48a400844b903b451c989",
+          "bytes": 297253
+        },
+        "reports/IOS-4.txt": {
+          "sha256": "b8e5527f32a5f0c3496c47ec31f7855a23af520c9b69417fc2de0245ad744213",
+          "bytes": 36760
+        },
+        "reports/IOS-4.sources.md": {
+          "sha256": "181fb8de141006dcd3ff46f98d9354baf7dbf945177f937451ee7766a065517e",
+          "bytes": 9165
+        },
+        "reports/IOS-4.sources.json": {
+          "sha256": "7ee08403121f096aef5b0693fb5b8f984dd90b5f7f64ba187b1d28d90e8d124f",
+          "bytes": 12142
+        }
+      }
+    },
+    {
+      "id": "VOICE-1",
+      "topic_id": "voice",
+      "topic": "Recent live voice tooling and cost",
+      "angle": "models",
+      "title": "VOICE-1 Recent open speech-to-speech and full-duplex models",
+      "status": "completed",
+      "conversation_url": "https://gemini.google.com/app/6828661b9fed492f",
+      "prompt_file": "prompts/voice-1-models.md",
+      "report_html": "reports/VOICE-1.html",
+      "report_text": "reports/VOICE-1.txt",
+      "sources": "reports/VOICE-1.sources.md",
+      "source_link_count": 97,
+      "artifacts": {
+        "reports/VOICE-1.html": {
+          "sha256": "0265774c91d21b7a7f5adc9e0c9855b99fe234d2b5ab70aa4db2d199f63048e1",
+          "bytes": 353493
+        },
+        "reports/VOICE-1.txt": {
+          "sha256": "bf5d972813a7d81a4490ef80c20fb9932dc7d38e6b58b8b280139da5b2897cb5",
+          "bytes": 46529
+        },
+        "reports/VOICE-1.sources.md": {
+          "sha256": "b6dec2d936fc2ba4ad1392d40996a124126651b0ac52057eeac62f26a6986b22",
+          "bytes": 13476
+        },
+        "reports/VOICE-1.sources.json": {
+          "sha256": "96db9067d80865a633cdc62bbaa75a3f2fbfd7ccc9c38cfad9fac2f52a7738b6",
+          "bytes": 18427
+        }
+      }
+    },
+    {
+      "id": "VOICE-2",
+      "topic_id": "voice",
+      "topic": "Recent live voice tooling and cost",
+      "angle": "frameworks",
+      "title": "VOICE-2 Recent voice frameworks and native transport ecosystem",
+      "status": "completed",
+      "conversation_url": "https://gemini.google.com/app/ce7831be9952e4fa",
+      "prompt_file": "prompts/voice-2-frameworks.md",
+      "report_html": "reports/VOICE-2.html",
+      "report_text": "reports/VOICE-2.txt",
+      "sources": "reports/VOICE-2.sources.md",
+      "source_link_count": 81,
+      "artifacts": {
+        "reports/VOICE-2.html": {
+          "sha256": "0e639bdf5c15d17f91a44043d93ce63f01fa9201d833a946b44616557ff4905c",
+          "bytes": 328082
+        },
+        "reports/VOICE-2.txt": {
+          "sha256": "cf279e55a1e1b587793b700e52192cf5d4a63e22ab22611b56d9c71c87091956",
+          "bytes": 31872
+        },
+        "reports/VOICE-2.sources.md": {
+          "sha256": "f6e13293a47cf5cba510a53112537213e6590bace20bc1054b4b3403be5e3386",
+          "bytes": 10508
+        },
+        "reports/VOICE-2.sources.json": {
+          "sha256": "0d6859512631bb6417ca7c5670159565da9c085d693c72d791580ee72b9a3d71",
+          "bytes": 14627
+        }
+      }
+    },
+    {
+      "id": "VOICE-3",
+      "topic_id": "voice",
+      "topic": "Recent live voice tooling and cost",
+      "angle": "economics",
+      "title": "VOICE-3 Daily voice economics and cost-sensitive architecture",
+      "status": "research_accepted",
+      "conversation_url": "https://gemini.google.com/app/249d5392685ebd1f",
+      "prompt_file": "prompts/voice-3-economics.md"
+    },
+    {
+      "id": "VOICE-4",
+      "topic_id": "voice",
+      "topic": "Recent live voice tooling and cost",
+      "angle": "evaluation",
+      "title": "VOICE-4 Evidence-based comparison of live voice alternatives",
+      "status": "researching",
+      "conversation_url": "https://gemini.google.com/app/da4deb5d78eaa6c2",
+      "prompt_file": "prompts/voice-4-evaluation.md"
+    },
+    {
+      "id": "BACKEND-1",
+      "topic_id": "backend",
+      "topic": "Knowledge organization and durable backend work",
+      "angle": "retrieval",
+      "title": "BACKEND-1 Hybrid retrieval versus GraphRAG knowledge architecture",
+      "status": "researching",
+      "conversation_url": "https://gemini.google.com/app/b3f65e23388a1008",
+      "prompt_file": "prompts/backend-1-retrieval.md"
+    },
+    {
+      "id": "BACKEND-2",
+      "topic_id": "backend",
+      "topic": "Knowledge organization and durable backend work",
+      "angle": "theographic",
+      "title": "BACKEND-2 Theographic Scripture schema and integration",
+      "status": "completed",
+      "conversation_url": "https://gemini.google.com/app/8996b7b9e6b74ba3",
+      "prompt_file": "prompts/backend-2-theographic.md",
+      "report_html": "reports/BACKEND-2.html",
+      "report_text": "reports/BACKEND-2.txt",
+      "sources": "reports/BACKEND-2.sources.md",
+      "source_link_count": 46,
+      "artifacts": {
+        "reports/BACKEND-2.html": {
+          "sha256": "a14e8aa173b317cae322663649c877c945c6cef7e17a7081eb83f8b4665e897a",
+          "bytes": 274647
+        },
+        "reports/BACKEND-2.txt": {
+          "sha256": "61ecf2a2300ad6730789d59e5f0e42243b8a876dc7f22ae39d7666fe55ec9371",
+          "bytes": 36723
+        },
+        "reports/BACKEND-2.sources.md": {
+          "sha256": "7619d76d194efbd7037722fc3c1fbdfa1360f274ee8b36467554b87a81c5da71",
+          "bytes": 6011
+        },
+        "reports/BACKEND-2.sources.json": {
+          "sha256": "01df5114589f754256cc2d3f657667eb36570e72b25987c060cfaf89a7ea1582",
+          "bytes": 8308
+        }
+      }
+    },
+    {
+      "id": "BACKEND-3",
+      "topic_id": "backend",
+      "topic": "Knowledge organization and durable backend work",
+      "angle": "temporal",
+      "title": "BACKEND-3 Personal temporal context and source correction architecture",
+      "status": "completed",
+      "conversation_url": "https://gemini.google.com/app/592486bb7d3a2cc8",
+      "prompt_file": "prompts/backend-3-temporal.md",
+      "retryCount": 1,
+      "report_html": "reports/BACKEND-3.html",
+      "report_text": "reports/BACKEND-3.txt",
+      "sources": "reports/BACKEND-3.sources.md",
+      "source_link_count": 110,
+      "artifacts": {
+        "reports/BACKEND-3.html": {
+          "sha256": "558da54d7a99d598da1fc075f47c781db31603e53b9a3dbab6f3e0e96d488d08",
+          "bytes": 375569
+        },
+        "reports/BACKEND-3.txt": {
+          "sha256": "689d4b01ffcb071b4ce7621c2ff7686ad3110bbd17511625e03ef74f2572ae4d",
+          "bytes": 61060
+        },
+        "reports/BACKEND-3.sources.md": {
+          "sha256": "511e9cb223ccbe1cc53132c638ca07e6af649b3b057e766b83df8de83c4b2bd1",
+          "bytes": 16355
+        },
+        "reports/BACKEND-3.sources.json": {
+          "sha256": "fcc71e9c357e1e51adbc6527f93831d0186b114d640e4f9d0a026d62d469e80a",
+          "bytes": 21980
+        }
+      }
+    },
+    {
+      "id": "BACKEND-4",
+      "topic_id": "backend",
+      "topic": "Knowledge organization and durable backend work",
+      "angle": "work",
+      "title": "BACKEND-4 Durable tasks projects and proactive schedule coordination",
+      "status": "research_accepted",
+      "conversation_url": "https://gemini.google.com/app/6bb0e2bbed973de8",
+      "prompt_file": "prompts/backend-4-work.md",
+      "restartCount": 1
+    }
+  ]
+}
