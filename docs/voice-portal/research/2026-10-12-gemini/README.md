@@ -4,6 +4,8 @@ Twelve independently prompted studies cover the native iOS frontend, recent live
 
 Each completed report includes the rendered HTML, extracted plain text, and the source links displayed by Gemini. Trailing whitespace in the exports is normalized for repository formatting. The original prompts for all twelve studies are included. Conversation links use stable URLs. The [machine-readable manifest](manifest.json) records archive time, status, and SHA-256 hashes for the saved report artifacts.
 
+Start with the consolidated [Top candidates decision brief](../../top-candidates.md) for the ranked shortlist, selectively verified primary-source claims, research corrections, and proposed selection tests.
+
 ## Reports
 
 | ID | Research angle | Observed status | Saved report | Sources | Gemini |

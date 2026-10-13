@@ -5,6 +5,8 @@ personal voice portal. Native SwiftUI/iOS is the intended front end, using this 
 the reported Apple Developer Program purchase. The backend research compares ways to organize
 the existing pipeline products and connect them to durable tasks, projects, and deliverables.
 
+- [Top candidates](top-candidates.md): the consolidated shortlist, recommended combination,
+  cost implications, corrected research claims, and the tests that would change the rankings.
 - [User needs and requirements](user-needs-and-requirements.md): voice interactions, continuous
   recording, prayer and quiet/wake behavior, proactive reminders, project workflows, native-device
   requirements, and backend knowledge organization.
