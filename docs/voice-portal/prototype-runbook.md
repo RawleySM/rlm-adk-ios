@@ -181,7 +181,11 @@ Repository variable `APPLE_TEAM_ID=4PJBKY2WQR`. The small API client used for th
   (`COMPLETE`) and taken to `PROCESSING` by Apple, which then **failed validation** with `90022`
   (missing 120x120 icon) and `90713` (missing `CFBundleIconName`). The fix is the asset catalog
   `RLMADK/Assets.xcassets/AppIcon.appiconset` (generated opaque 1024 px icon) plus
-  `ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon`; build 3 is spent and build 4 carries the icon.
+  `ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon` and a top-level `CFBundleIconName`; build 3 is spent.
+  Build 4 (0.2.0) went through the same path and processed to `VALID` / `READY_FOR_BETA_TESTING`
+  (build `3d99fc47-22f2-407a-8bef-9bbb369a5a8d`). The internal TestFlight group "Prototype
+  internal" (`93dc08e3-…`) holds the account holder only; install on the phone through the
+  TestFlight app signed in as `rawley.stanhope@gmail.com`.
 
 Manual upload from a machine that holds the key and a signed IPA:
 
@@ -209,4 +213,5 @@ the run number.
 - `iphone-12` is on the tailnet (state `-`); the only owned Mac with a device path (`macbook-rawley`,
   macOS 12.7.6) cannot run current Xcode, so a cabled install is not available.
 - Physical-device voice behaviour (microphone, on-device recognition, Bluetooth, lock screen,
-  interruptions) remains unverified until a TestFlight build is installed on the phone.
+  interruptions) remains unverified until the TestFlight build is installed and exercised on the phone.
+  Next build numbers must be > 4 (`testflight.yml` uses its input or the run number).
