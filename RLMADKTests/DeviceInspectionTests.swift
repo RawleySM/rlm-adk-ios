@@ -110,16 +110,19 @@ final class DeviceInspectionTests: XCTestCase {
         XCTAssertEqual(got().last?.payload()["command_id"] as? String, "k3")
     }
 
-    func testImageCommandFailsWithReasonWithoutForegroundScene() async {
+    func testImageCommandNeverReportsAppliedWithoutAVerifiedUpload() async {
         let model = PortalModel()
+        model.setBackendURL("http://127.0.0.1:1") // refused at once, so a render that succeeds fails fast on upload
         let got = results(model)
         model.handleCommand(["type": "command", "command_id": "img", "kind": "image"])
-        await waitUntil { got().count == 1 }
-        if case .failure(let error) = model.renderAppWindow() {
-            XCTAssertEqual(got().last?.status, .failed)
-            XCTAssertEqual(got().last?.detail["reason"], error.reason)
-        } else {
-            XCTAssertEqual(got().last?.status, .failed, "no backend: the upload fails, never applied")
+        await waitUntil(10) { got().count == 1 }
+        XCTAssertEqual(got().count, 1, "the image command reports exactly once")
+        XCTAssertEqual(got().last?.status, .failed)
+        switch model.renderAppWindow() {
+        case .failure(let error):
+            XCTAssertEqual(got().last?.detail["reason"], error.reason, "no foreground scene: the render reason is reported")
+        case .success:
+            XCTAssertTrue(got().last!.detail["reason"]!.hasPrefix("image upload:"), "rendered, but the backend never verified it: \(got().last!.detail)")
         }
     }
 
