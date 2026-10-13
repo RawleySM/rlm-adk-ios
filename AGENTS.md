@@ -28,5 +28,7 @@ Xcode, so all Xcode work happens on GitHub-hosted macOS runners.
 
 - Apple Developer, Individual: KeePassXC entry
   "Apple Developer + App Store Connect - Individual - Enrollment 9Z9523324Y".
-- Device builds, signing and TestFlight wait for the Team ID and an App Store Connect API key,
-  which are created after Apple activates the membership.
+- Membership is active. Team `4PJBKY2WQR`, signing assets and the App Store Connect API key are
+  configured; build `0.2.0 (4)` is available for internal TestFlight testing. Reuse the existing
+  assets and the workflow in `docs/voice-portal/prototype-runbook.md`. TestFlight installation
+  does not require registering a device UDID; physical-device voice validation remains pending.

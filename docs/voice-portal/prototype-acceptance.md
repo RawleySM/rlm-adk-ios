@@ -9,7 +9,7 @@ in Git). Simulator screenshots are in [`evidence/`](evidence/). Every item below
 
 | Area | Status | Evidence |
 | --- | --- | --- |
-| Backend unit tests (40, stdlib unittest) | built/exercised | `python3 -m unittest discover -s tests -t .` → `OK`, locally and on the cloud Mac (Python 3.12/3.13); CI job `backend-tests` |
+| Backend and upload-helper tests (48, stdlib unittest) | built/exercised | `python3 -m unittest discover -s tests -t .` → `Ran 48 tests`, `OK`; final implementation CI run `38341345480`, commit `d756deef`, retained `backend-tests.log` independently checked by Codex. Includes 40 backend and 8 upload-helper tests |
 | Real-data import (desktop) | built/exercised | 209 prayers (4,749 chunks), 100 teaching records (50 Desiring God + 50 Eleven22, 5,087 chunks), 1,189 WEB chapters (6,934 chunks), Theographic 3,069 people / 1,274 places / 31,102 verses; `GET /sources` receipts with store paths, catalog `v3-c4ac5f4b`, manifest `c4ac5f4b…` |
 | Citation resolution on real data | built/exercised | Psalm 23 `810:c39fdb164db6:0` (entry `5f254b497a…`, `eng/json/19.content.json`, verified), Eleven22 sermon `284:b962d1770db1:12` (`source_document_observations:505`, observed 2026-10-06), prayer `78:60325cf9377d:1` (`prayer_corpus_v1:historical-5959…`, `recorded_at_basis=historical_source`); malformed and unknown ids return explicit `available:false` |
 | Theographic join | built/exercised | Gen 12 verses → Abraham (58), God (1324), Lot (1830), Sarah (2473); Haran (527), Canaan (272), Shechem (1069), Moreh (817), Bethel (202), Ai (36); no unresolved keys; Ps 23 → God only |
@@ -26,7 +26,7 @@ in Git). Simulator screenshots are in [`evidence/`](evidence/). Every item below
 | Signed archive | built/exercised | manual Apple Distribution signing on the cloud Mac; `codesign --verify --deep --strict` passes; chain Apple Distribution: Rawley Stanhope (4PJBKY2WQR) → WWDR → Apple Root; IPA Info.plist `0.2.0` / build `3` after the XcodeGen version fix (first archive carried the literal `1.0`/`1`) |
 | Upload to App Store Connect (transport) | built/exercised | `xcodebuild` upload: `No Accounts with App Store Connect Access`; `altool`: `Defaults.properties` missing; `iTMSTransporter`: needs the Transporter app. Build Upload API via `scripts/asc_build_upload.py`: record `cce73538-7d53-4cf1-b6ce-0e985b01215e`, file `f9dbb5e8-99cd-4c5e-a17d-2f89cf7873b2`, one part 582,394 bytes HTTP 200, commit `COMPLETE`, Apple state `PROCESSING` (receipt `fable-evidence/signed/v3/upload-receipt.json`); 8 fake-service tests cover the official payloads, retained ids, resumed-PROCESSING polling and the no-resend rule |
 | Apple validation | built/exercised | build 3 failed (`90022` missing 120x120 icon, `90713` missing `CFBundleIconName`); build 4 with the asset-catalog icon processed to `VALID` / `READY_FOR_BETA_TESTING`; see "TestFlight upload" below |
-| Device install | blocked (no registered device) | no UDID is known, so no development/ad-hoc profile; the private route is TestFlight internal testing once a build has processed |
+| Device install | built/unverified (invitation pending) | build 4 is `VALID` and `IN_BETA_TESTING`; the internal group contains the build and Rawley's account (`INVITED`), independently read from App Store Connect at 2026-10-13 03:22 UTC. Acceptance and installation on the phone remain unverified. This TestFlight route requires no device UDID |
 | `spark-small` on Spark-B | blocked (owner condition) | two cold starts failed in ~100 ms with `engine_start_error`, owner log `Docker GET failed: HTTP 404` for the profile image; circuit opened (consecutive_failures 2). Spark-A: `insufficient_memory_for_envelope`. Not an action this prototype may take |
 
 ## What was exercised, in order
@@ -98,7 +98,8 @@ in Git). Simulator screenshots are in [`evidence/`](evidence/). Every item below
 
 - Simulator runs prove app/service connectivity, state rendering and the typed turn path. They do not
   prove live voice, microphone capture quality, background or lock-screen behaviour, or Bluetooth.
-  CI screenshots run in fixture mode (no permission prompts, fake owner, synthetic corpus).
+  CI screenshots run in fixture mode (no permission prompts, audio owner not started, fake reasoning
+  owner, synthetic corpus).
 - The TestFlight build proves the signing, packaging and upload path and Apple's processing; it does
   not prove anything about the app running on the phone until it is installed there.
 - The intake test run proves the segment/finalize contract with the real service; publication of a

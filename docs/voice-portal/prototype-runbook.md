@@ -207,9 +207,9 @@ the run number.
 
 ### Device
 
-- No device is registered (UDID unknown). The private install route is TestFlight internal testing
-  (no UDID needed); Rawley's Apple ID is the account holder and can be added as an internal tester
-  once a build has processed.
+- The private install route is TestFlight internal testing (no device UDID needed). Build 4 is
+  `VALID` and `IN_BETA_TESTING`; Rawley's account is already the internal tester (`INVITED`, verified
+  2026-10-13 03:22 UTC). Accept the invitation and install through TestFlight on the phone.
 - `iphone-12` is on the tailnet (state `-`); the only owned Mac with a device path (`macbook-rawley`,
   macOS 12.7.6) cannot run current Xcode, so a cabled install is not available.
 - Physical-device voice behaviour (microphone, on-device recognition, Bluetooth, lock screen,

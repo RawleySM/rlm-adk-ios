@@ -1,5 +1,5 @@
 # Builds, tests and runs the app on a GitHub-hosted Mac. No Apple Developer team or signing is needed
-# for the iOS Simulator; device builds and TestFlight uploads wait for the Team ID.
+# for the iOS Simulator; signed device builds use the separate testflight.yml workflow.
 # The screenshot step runs the Python backend on the runner in FIXTURE mode (synthetic data, fake
 # reasoning owner) so the simulator shows real connected/devotional/turn states. It is not real-data
 # evidence; the desktop deployment in docs/voice-portal/prototype-acceptance.md is.
@@ -103,9 +103,8 @@ jobs:
           UDID="${{ steps.sim.outputs.udid }}"
           APP=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 1 -name 'RLMADK.app' | head -1)
           xcrun simctl install "$UDID" "$APP"
-          # Fixture mode: microphone granted through simctl, speech recognition never requested, so no
-          # permission dialog covers the screenshots. This is not live-voice evidence.
-          xcrun simctl privacy "$UDID" grant microphone com.rawleystanhope.rlmadk || true
+          # Fixture mode: the app requests neither speech recognition nor the microphone and does not
+          # start the audio owner, so no permission dialog covers the screenshots. Not live-voice evidence.
           SIMCTL_CHILD_RLMADK_BACKEND_URL=http://127.0.0.1:8765 SIMCTL_CHILD_RLMADK_CI_DEMO=1 SIMCTL_CHILD_RLMADK_SKIP_PERMISSION_PROMPTS=1 \
             xcrun simctl launch "$UDID" com.rawleystanhope.rlmadk
           sleep 12
