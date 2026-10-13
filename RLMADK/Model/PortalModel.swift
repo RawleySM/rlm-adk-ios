@@ -119,8 +119,13 @@ final class PortalModel: ObservableObject {
         wire()
         observeKeyboard()
         for id in relabelled { logLine("retained prayer \(id) closed with no audio; relabelled Failed: no audio captured (nothing deleted)") }
-        // Relaunch: mode (including quiet and an open prayer) is restored, never reset.
+        // Relaunch: mode (including quiet and an open prayer) is restored, never reset. A restored
+        // open prayer owns every recognition request from the first one on.
         apply(.relaunch)
+        if let restoredPrayer = mode.prayerCaptureId {
+            recognizer.rebindOwner(restoredPrayer)
+            if asrJournals[restoredPrayer] == nil { asrJournals[restoredPrayer] = PrayerASRJournal(captureId: restoredPrayer) }
+        }
         logLine("launched; mode=\(mode.label) quiet=\(mode.quiet) prayer=\(mode.prayerCaptureId ?? "-")")
     }
 
@@ -359,17 +364,24 @@ final class PortalModel: ObservableObject {
         if let owner {
             // A request opened under a prayer capture: its text belongs to that capture, however
             // late it settles and whatever the mode is now. Journaled raw BEFORE any control phrase
-            // acts (a line ending in "end prayer" is kept as recognized); never a turn.
+            // acts (a line ending in "end prayer" is kept as recognized); never a turn. Control
+            // phrases act only when that capture is still the open prayer: words from an ended
+            // prayer never end or alter a newer one.
             journalPrayerASR(captureId: owner, text: cleaned)
-            _ = handleVoiceCommand(cleaned)
+            if owner == mode.prayerCaptureId {
+                _ = handleVoiceCommand(cleaned)
+            } else {
+                logLine("final from ended prayer \(owner) journaled; control phrases not applied to the current mode")
+            }
+            return
+        }
+        if mode.isPraying {
+            // A conversation request that settled after prayer began: not prayer text, not a turn,
+            // and its control phrases do not touch the prayer.
+            logLine("conversation final during prayer ignored (request opened before the prayer); control phrases not applied")
             return
         }
         if handleVoiceCommand(cleaned) { return }
-        if mode.isPraying {
-            // A conversation request that settled after prayer began: not prayer text, not a turn.
-            logLine("conversation final during prayer ignored (request opened before the prayer)")
-            return
-        }
         let turnId = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         apply(.finalTranscript(turnId: turnId))
     }

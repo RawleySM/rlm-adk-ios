@@ -202,11 +202,11 @@ final class DeviceInspectionTests: XCTestCase {
         model.deliveryProbe = { false }
         model.beginPrayer()
         let captureId = model.mode.prayerCaptureId!
-        XCTAssertEqual(model.recognizer.ledger.nextOwner, captureId, "every request opened from now on belongs to this prayer")
+        XCTAssertEqual(model.recognizer.nextOwner, captureId, "every request opened from now on belongs to this prayer")
         model.finalTranscriptReceived("Lord keep my son safe tonight", owner: captureId)
         model.finalTranscriptReceived("and give us peace amen end prayer", owner: captureId)
         XCTAssertFalse(model.mode.isPraying, "the end phrase still ends the prayer")
-        XCTAssertNil(model.recognizer.ledger.nextOwner)
+        XCTAssertNil(model.recognizer.nextOwner)
         XCTAssertEqual(model.prayerASRJournal(captureId)?.lines.map(\.text), ["Lord keep my son safe tonight", "and give us peace amen end prayer"], "raw recognized text, including the control phrase, journaled before the control acted")
         XCTAssertNil(model.mode.currentTurnId)
     }
@@ -220,7 +220,7 @@ final class DeviceInspectionTests: XCTestCase {
         // The new conversation request (owner nil) settles immediately: a turn, never prayer text.
         model.finalTranscriptReceived("what does the shepherd psalm say about rest", owner: nil)
         XCTAssertNotNil(model.mode.currentTurnId, "conversation right after End prayer is a turn")
-        XCTAssertNil(model.prayerASRJournal(captureId), "and is not journaled as prayer")
+        XCTAssertTrue(model.prayerASRJournal(captureId)?.lines.isEmpty ?? false, "and is not journaled as prayer")
         // The prayer request's own final settles well after the ordinary endpoint window (> 3 s):
         // it is identified by the request it came from, not by when it arrives.
         try? await Task.sleep(nanoseconds: 3_500_000_000)
@@ -240,7 +240,7 @@ final class DeviceInspectionTests: XCTestCase {
         model.beginPrayer()
         let second = model.mode.prayerCaptureId!
         XCTAssertNotEqual(first, second)
-        XCTAssertEqual(model.recognizer.ledger.nextOwner, second)
+        XCTAssertEqual(model.recognizer.nextOwner, second)
         model.finalTranscriptReceived("thank you for today", owner: first)   // first prayer's request settles late
         model.finalTranscriptReceived("bless this night", owner: second)
         XCTAssertEqual(model.prayerASRJournal(first)?.lines.map(\.text), ["thank you for today"])
@@ -253,25 +253,43 @@ final class DeviceInspectionTests: XCTestCase {
         model.endPrayer()
     }
 
-    func testUtteranceLedgerBindsRequestsToTheOwnerTheyOpenedUnder() {
-        var ledger = UtteranceLedger()
-        ledger.opened(id: 1)                       // conversation request open
-        XCTAssertNil(ledger.owner(of: 1))
-        XCTAssertTrue(ledger.rebind("prayer-A"), "begin prayer must end the open conversation request")
-        XCTAssertNil(ledger.owner(of: 1), "its final still belongs to the conversation")
-        ledger.closed(id: 1)
-        ledger.opened(id: 2)                       // next request opens under the prayer
-        XCTAssertEqual(ledger.owner(of: 2), "prayer-A")
-        XCTAssertTrue(ledger.rebind(nil), "end prayer ends the open prayer request")
-        XCTAssertEqual(ledger.owner(of: 2), "prayer-A", "the prayer final keeps its identity however late it settles")
-        ledger.opened(id: 3)                       // the restart reopened before request 2 settled: both distinct
-        XCTAssertNil(ledger.owner(of: 3))
-        XCTAssertFalse(ledger.rebind(nil), "same owner: nothing to end")
-        XCTAssertTrue(ledger.rebind("prayer-B"))
-        ledger.closed(id: 3)
-        ledger.opened(id: 4)
-        XCTAssertEqual(ledger.owner(of: 4), "prayer-B")
-        XCTAssertNil(ledger.owner(of: 2), "a settled request has no owner left to claim")
+    func testControlPhrasesFromAnEndedPrayerOrAStaleConversationNeverTouchTheCurrentPrayer() {
+        let model = PortalModel()
+        model.deliveryProbe = { false }
+        model.beginPrayer()
+        let first = model.mode.prayerCaptureId!
+        model.endPrayer()
+        model.beginPrayer()
+        let second = model.mode.prayerCaptureId!
+        // The first prayer's request settles late and happens to end with the control phrase.
+        model.finalTranscriptReceived("thank you amen end prayer", owner: first)
+        XCTAssertEqual(model.prayerASRJournal(first)?.lines.map(\.text), ["thank you amen end prayer"], "raw text kept with the first prayer")
+        XCTAssertTrue(model.mode.isPraying)
+        XCTAssertEqual(model.mode.prayerCaptureId, second, "the second prayer stays open")
+        // A conversation request that was open before Begin prayer settles with the same phrase.
+        model.finalTranscriptReceived("end prayer", owner: nil)
+        XCTAssertEqual(model.mode.prayerCaptureId, second)
+        XCTAssertNil(model.mode.currentTurnId)
+        XCTAssertTrue(model.prayerASRJournal(second)?.lines.isEmpty ?? false)
+        // The current prayer's own end phrase works.
+        model.finalTranscriptReceived("amen end prayer", owner: second)
+        XCTAssertFalse(model.mode.isPraying)
+        XCTAssertEqual(model.prayerASRJournal(second)?.lines.map(\.text), ["amen end prayer"])
+    }
+
+    func testRelaunchWithAnOpenPrayerRestoresTheRecognitionOwner() {
+        let model = PortalModel()
+        model.deliveryProbe = { false }
+        model.beginPrayer()
+        let captureId = model.mode.prayerCaptureId!
+        model.finalTranscriptReceived("Lord before the relaunch", owner: captureId)
+        let relaunched = PortalModel() // mode.json restores the open prayer
+        XCTAssertEqual(relaunched.mode.prayerCaptureId, captureId)
+        XCTAssertEqual(relaunched.recognizer.nextOwner, captureId, "every request after relaunch belongs to the restored prayer")
+        relaunched.finalTranscriptReceived("and after it", owner: relaunched.recognizer.nextOwner)
+        XCTAssertEqual(relaunched.prayerASRJournal(captureId)?.lines.map(\.text), ["Lord before the relaunch", "and after it"])
+        relaunched.endPrayer()
+        XCTAssertNil(relaunched.recognizer.nextOwner)
     }
 
     func testZeroSegmentSettleIsAFailureNotSavedLocally() {

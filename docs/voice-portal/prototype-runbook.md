@@ -224,12 +224,17 @@ evidence for listening and dating, kept out of the prayer intake. `sync_manifest
 manifest with segment identities and lists closed WAVs on disk that no manifest knows (orphans).
 During prayer, the on-device provisional ASR text is appended to
 `Documents/prayer-asr/<capture>.jsonl` with capture id and sequence BEFORE any control phrase acts
-(a line ending in "end prayer" is kept as recognized). Each recognition request is bound to the
-capture it was opened under: Begin prayer and End prayer end the open request (its final is still
-delivered under the owner it was opened with, however late it settles) and the next request opens
-under the new owner, so a prayer final can never become a conversational turn or land in a later
-prayer, and a conversation final is never journaled as prayer. No time window is involved. Journal
-write failures are shown on the Portal tab and in the snapshot, and lines sync on reconnect. The app log
+(a line ending in "end prayer" is kept as recognized). Each recognition request is bound, for its
+whole life, to the capture it was opened under: Begin prayer and End prayer end the accepting
+request (no more audio is appended to it; its final is still delivered under the owner it was
+opened with, however late it settles) and open the next request at once under the new owner, so
+no audio is lost between the two, a prayer final can never become a conversational turn or land in
+a later prayer, and a conversation final is never journaled as prayer. Control phrases in a final
+act only when its owner is still the open prayer (or it is a conversation final outside prayer);
+words from an ended prayer or from a conversation request that was open before Begin prayer never
+end or alter the current prayer. A relaunch with an open prayer rebinds the recognizer to that
+capture before any request opens. No time window is involved. Journal write failures are shown on
+the Portal tab and in the snapshot, and lines sync on reconnect. The app log
 is durable (`Documents/recent-log.txt`, bounded) and reloaded on launch.
 
 Honest capture status: a prayer that settles with zero segments is `Failed: no audio captured`,
