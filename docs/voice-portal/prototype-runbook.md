@@ -138,6 +138,30 @@ the real-backend simulator run a reverse tunnel from Spark-A was used:
 `ssh -N -R 18765:100.90.105.30:8765 runner@rlm-adk-ios-mac.tail0ec4a5.ts.net`, with the app
 launched as `SIMCTL_CHILD_RLMADK_BACKEND_URL=http://127.0.0.1:18765`.
 
+## Recovering locally retained captures (issue #4)
+
+Capture files never leave the phone unless a prayer is explicitly ended and uploaded. They live in
+the app container: `Documents/captures/<captureId>/NNNNNNNN.wav` (60-second WAV segments),
+`Documents/captures.json` (per-segment `startedAt`/`endedAt`, bytes, sha256, gaps) and
+`Documents/mode.json`. Builds that include `UIFileSharingEnabled` and
+`LSSupportsOpeningDocumentsInPlace` expose that directory as **Files > On My iPhone > RLM-ADK** and
+in Finder's file sharing.
+
+1. Update the app through TestFlight (same bundle id). Do **not** uninstall: deleting the app deletes
+   the container and every capture with it.
+2. In Files, open On My iPhone > RLM-ADK, select `captures.json` and the `captures/` folder, and
+   copy (share/AirDrop/Finder copy) to the Mac or desktop. Copy; do not move or delete.
+3. Hash the copied WAVs (`sha256sum`) and compare with `captures.json` before anything else.
+4. Decide coverage from evidence, not counts: a segment's `startedAt`/`endedAt` and its WAV header
+   (sample rate, data length) say what wall-clock span it holds; gaps mark missing spans. Only
+   listening confirms what a span contains.
+5. Transcribe only the segments that evidence places in the window of interest, through the existing
+   batch transcription route; never upload the whole ambient capture as prayers, and never finalize
+   ambient audio as a prayer recording without listening.
+
+Proof boundary: this update makes the bytes reachable; it does not fix why a prayer capture can
+close with zero segments, and it does not establish that any ambient segment contains the prayer.
+
 ## Signing, TestFlight and device
 
 Verified on 2026-10-13 through the existing authenticated Chrome session (no password or two-factor

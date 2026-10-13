@@ -26,6 +26,11 @@ targets:
         NSMicrophoneUsageDescription: Continuous local recording, prayer capture and live voice turns.
         NSSpeechRecognitionUsageDescription: On-device transcription of your voice turns; audio is not sent to a speech service.
         UIBackgroundModes: [audio]
+        # Recovery of locally retained captures (issue #4): expose the app's Documents directory
+        # (captures/<id>/NNNNNNNN.wav, captures.json, mode.json) in the Files app and Finder so the
+        # bytes can be copied out without uninstalling. No runtime or persistence change.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
         # TestFlight: no non-exempt encryption (HTTPS/standard system crypto only).
         ITSAppUsesNonExemptEncryption: false
         # Private tailnet backend over plain HTTP/WS (prototype); no public endpoints.
