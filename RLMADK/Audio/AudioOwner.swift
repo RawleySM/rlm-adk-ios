@@ -31,6 +31,23 @@ final class AudioOwner: NSObject {
     var maxSegmentSeconds: Double = 60
     private var openGap: GapRecord?
     private(set) var inputFormat: AVAudioFormat?
+    /// Observability for "is audio actually arriving": the engine's own running flag and the time
+    /// of the last tap buffer. `state == .running` is the owner's intent; these are the facts.
+    private let factsLock = NSLock()
+    private var lastBufferUptime: TimeInterval?
+    private var lastWriteErrorText: String?
+    var onWriteError: ((String) -> Void)?
+
+    var isRunning: Bool { engine.isRunning }
+    var lastBufferAge: TimeInterval? {
+        factsLock.lock(); defer { factsLock.unlock() }
+        return lastBufferUptime.map { ProcessInfo.processInfo.systemUptime - $0 }
+    }
+    var lastWriteError: String? { factsLock.lock(); defer { factsLock.unlock() }; return lastWriteErrorText }
+    /// True when the engine runs and a buffer arrived within the last two seconds.
+    var isDelivering: Bool { engine.isRunning && (lastBufferAge ?? .infinity) < 2 }
+    /// The segment file currently being written (not closed, not hashed, must not be copied as complete).
+    var openSegmentURL: URL? { writer?.openFileURL }
 
     override init() {
         super.init()
@@ -61,12 +78,12 @@ final class AudioOwner: NSObject {
                 throw NSError(domain: "AudioOwner", code: 1, userInfo: [NSLocalizedDescriptionKey: "no input format (no microphone on this device/simulator)"])
             }
             inputFormat = format
-            let writer = SegmentWriter(captureId: captureId, directory: directory, format: format, maxSeconds: maxSegmentSeconds, queue: writeQueue, startIndex: startIndex)
-            writer.onSegmentClosed = { [weak self] seg in self?.onSegmentClosed?(captureId, seg) }
+            let writer = makeWriter(captureId: captureId, directory: directory, format: format, startIndex: startIndex)
             self.writer = writer
             input.removeTap(onBus: 0)
             input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, time in
                 guard let self else { return }
+                self.factsLock.lock(); self.lastBufferUptime = ProcessInfo.processInfo.systemUptime; self.factsLock.unlock()
                 self.writer?.append(buffer)
                 self.onBuffer?(buffer, time)
             }
@@ -85,8 +102,7 @@ final class AudioOwner: NSObject {
     func beginCapture(captureId: String, directory: URL, startIndex: Int, settled: ((Int) -> Void)? = nil) {
         guard let format = inputFormat else { settled?(0); return }
         let old = writer
-        let writer = SegmentWriter(captureId: captureId, directory: directory, format: format, maxSeconds: maxSegmentSeconds, queue: writeQueue, startIndex: startIndex)
-        writer.onSegmentClosed = { [weak self] seg in self?.onSegmentClosed?(captureId, seg) }
+        let writer = makeWriter(captureId: captureId, directory: directory, format: format, startIndex: startIndex)
         self.writer = writer
         if let old {
             old.close(settled: settled)
@@ -95,8 +111,35 @@ final class AudioOwner: NSObject {
         }
     }
 
+    private func makeWriter(captureId: String, directory: URL, format: AVAudioFormat, startIndex: Int) -> SegmentWriter {
+        let writer = SegmentWriter(captureId: captureId, directory: directory, format: format, maxSeconds: maxSegmentSeconds, queue: writeQueue, startIndex: startIndex)
+        writer.onSegmentClosed = { [weak self] seg in self?.onSegmentClosed?(captureId, seg) }
+        writer.onWriteError = { [weak self] text in
+            guard let self else { return }
+            self.factsLock.lock(); self.lastWriteErrorText = text; self.factsLock.unlock()
+            self.onWriteError?(text)
+        }
+        return writer
+    }
+
     /// Closes the current segment so it can be hashed and uploaded.
     func rotateSegment() { writer?.rotate() }
+
+    /// Restarts a stopped engine while the owner intends to run (interruption, route change, media
+    /// reset, return to foreground). A failed restart is reported as `.failed`, never hidden.
+    @discardableResult
+    func restartIfNeeded(reason: String) -> Bool {
+        guard state == .running, !engine.isRunning else { return engine.isRunning }
+        do {
+            try AVAudioSession.sharedInstance().setActive(true)
+            try engine.start()
+            return true
+        } catch {
+            setState(.failed("restart after \(reason) failed: \(error.localizedDescription)"))
+            onGap?(GapRecord(startedAt: Date(), endedAt: nil, reason: "engine_restart_failed_\(reason)", kind: "capture"))
+            return false
+        }
+    }
 
     func stop(settled: ((Int) -> Void)? = nil) {
         engine.inputNode.removeTap(onBus: 0)
@@ -129,10 +172,7 @@ final class AudioOwner: NSObject {
         case .began:
             beginGap("interruption_began")
         case .ended:
-            if state == .running, !engine.isRunning {
-                try? AVAudioSession.sharedInstance().setActive(true)
-                try? engine.start()
-            }
+            restartIfNeeded(reason: "interruption")
             endGap()
         @unknown default:
             break
@@ -143,13 +183,13 @@ final class AudioOwner: NSObject {
         guard let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt, let reason = AVAudioSession.RouteChangeReason(rawValue: raw) else { return }
         if reason == .oldDeviceUnavailable || reason == .newDeviceAvailable {
             onGap?(GapRecord(startedAt: Date(), endedAt: Date(), reason: "route_change_\(reason.rawValue)", kind: "capture"))
-            if state == .running, !engine.isRunning { try? engine.start() }
+            restartIfNeeded(reason: "route_change")
         }
     }
 
     @objc private func handleReset(_ note: Notification) {
         onGap?(GapRecord(startedAt: Date(), endedAt: Date(), reason: "media_services_reset", kind: "capture"))
-        if state == .running { try? engine.start() }
+        restartIfNeeded(reason: "media_services_reset")
     }
 }
 
@@ -161,12 +201,17 @@ final class SegmentWriter {
     let maxSeconds: Double
     private let queue: DispatchQueue
     private var file: AVAudioFile?
+    private let openLock = NSLock()
+    private var openURL: URL?
+    /// URL of the segment being written, readable from any thread; nil between segments.
+    var openFileURL: URL? { openLock.lock(); defer { openLock.unlock() }; return openURL }
     private var closed = false // set on the write queue by close(); later appends are dropped
     private var index: Int
     private let firstIndex: Int
     private var startedAt = Date()
     private var frames: AVAudioFramePosition = 0
     var onSegmentClosed: ((SegmentRecord) -> Void)?
+    var onWriteError: ((String) -> Void)?
 
     init(captureId: String, directory: URL, format: AVAudioFormat, maxSeconds: Double, queue: DispatchQueue, startIndex: Int) {
         self.captureId = captureId
@@ -221,6 +266,7 @@ final class SegmentWriter {
                         AVLinearPCMIsNonInterleaved: false,
                     ]
                     file = try AVAudioFile(forWriting: currentURL, settings: settings, commonFormat: format.commonFormat, interleaved: format.isInterleaved)
+                    openLock.lock(); openURL = currentURL; openLock.unlock()
                     startedAt = Date()
                     frames = 0
                 }
@@ -229,6 +275,8 @@ final class SegmentWriter {
                 if Double(frames) / format.sampleRate >= maxSeconds { closeCurrent() }
             } catch {
                 NSLog("segment write failed: \(error)")
+                let text = "segment \(index) write failed: \(error.localizedDescription)"
+                DispatchQueue.main.async { [self] in onWriteError?(text) }
             }
         }
     }
@@ -253,6 +301,7 @@ final class SegmentWriter {
         guard file != nil else { return }
         let url = currentURL
         file = nil // AVAudioFile flushes on deinit
+        openLock.lock(); openURL = nil; openLock.unlock()
         let data = (try? Data(contentsOf: url)) ?? Data()
         let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
         let record = SegmentRecord(index: index, filename: url.lastPathComponent, bytes: data.count, sha256: digest, startedAt: startedAt, endedAt: Date())

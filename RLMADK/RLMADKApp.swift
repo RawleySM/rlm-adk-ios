@@ -4,6 +4,7 @@ import SwiftUI
 @main
 struct RLMADKApp: App {
     @StateObject private var model = PortalModel()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -16,6 +17,7 @@ struct RLMADKApp: App {
                         model.startAll()
                     }
                 }
+                .onChange(of: scenePhase) { _, phase in model.scenePhaseChanged(phase) }
         }
     }
 }

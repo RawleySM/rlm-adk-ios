@@ -126,6 +126,77 @@ CREATE TABLE IF NOT EXISTS prayer_segments (
 CREATE TABLE IF NOT EXISTS sessions (
   session_id TEXT PRIMARY KEY, started_at REAL NOT NULL, ended_at REAL, client_mode TEXT, remote TEXT
 );
+CREATE TABLE IF NOT EXISTS devices (
+  install_id TEXT PRIMARY KEY,
+  first_seen REAL NOT NULL,
+  last_seen REAL NOT NULL,
+  last_session_id TEXT,
+  app_version TEXT,
+  build TEXT,
+  connected INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS device_snapshots (
+  snapshot_id INTEGER PRIMARY KEY,
+  install_id TEXT NOT NULL,
+  session_id TEXT,
+  client_time REAL,
+  server_time REAL NOT NULL,
+  reason TEXT,
+  snapshot_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_device_snapshots ON device_snapshots(install_id, snapshot_id);
+CREATE TABLE IF NOT EXISTS device_commands (
+  command_id TEXT PRIMARY KEY,
+  install_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  args_json TEXT NOT NULL DEFAULT '{}',
+  created_at REAL NOT NULL,
+  delivered_at REAL,
+  result_at REAL,
+  status TEXT NOT NULL,
+  result_json TEXT
+);
+CREATE TABLE IF NOT EXISTS device_files (
+  install_id TEXT NOT NULL,
+  capture_id TEXT NOT NULL,
+  segment_index INTEGER NOT NULL,
+  filename TEXT,
+  bytes INTEGER NOT NULL,
+  sha256 TEXT NOT NULL,
+  path TEXT NOT NULL,
+  received_at REAL NOT NULL,
+  command_id TEXT,
+  PRIMARY KEY(install_id, capture_id, segment_index)
+);
+CREATE TABLE IF NOT EXISTS device_manifests (
+  manifest_id INTEGER PRIMARY KEY,
+  install_id TEXT NOT NULL,
+  client_time REAL,
+  received_at REAL NOT NULL,
+  manifest_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS device_images (
+  image_id INTEGER PRIMARY KEY,
+  install_id TEXT NOT NULL,
+  session_id TEXT,
+  command_id TEXT,
+  client_time REAL,
+  server_time REAL NOT NULL,
+  scope TEXT,
+  path TEXT NOT NULL,
+  bytes INTEGER NOT NULL,
+  sha256 TEXT NOT NULL,
+  snapshot_json TEXT
+);
+CREATE TABLE IF NOT EXISTS prayer_asr (
+  install_id TEXT NOT NULL,
+  capture_id TEXT NOT NULL,
+  sequence INTEGER NOT NULL,
+  client_time REAL,
+  text TEXT NOT NULL,
+  received_at REAL NOT NULL,
+  PRIMARY KEY(install_id, capture_id, sequence)
+);
 CREATE TABLE IF NOT EXISTS turns (
   turn_id TEXT PRIMARY KEY,
   session_id TEXT,

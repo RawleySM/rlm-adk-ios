@@ -157,5 +157,13 @@ reference in the transcript). Real-data evidence: `fable-explicit-passage-status
   real prayer (Cohere transcription, corpus membership) was not exercised in this slice.
 - `directive_posted` and `artifact_available` were exercised only with the stub CLI in tests; the
   real allocator has no live run, so only `backend_unavailable` and reconciliation were observed.
+- Phone inspection shows app-rendered UI and app-owned state only (no keyboard, alerts or other
+  apps in the image; the snapshot reports keyboard frame/focus). A suspended app reports nothing
+  and the backend labels the last snapshot stale or offline. Commands count as executed only when
+  the phone reports `applied`. The CI remote-inspection run and the keyboard XCUITest are simulator
+  evidence against the fixture backend; nothing here is physical-device proof until the build is
+  installed on the phone and the same commands are observed there.
+- Capture file copies are original bytes verified by digest; whether a copied ambient segment
+  contains the prayer is decided by timestamps and listening, not by the copy.
 - No GPT-Live or provider comparison was made; the reasoning numbers are for `qwen-coding-b` on
   Spark-B through the desktop's existing loopback forward.

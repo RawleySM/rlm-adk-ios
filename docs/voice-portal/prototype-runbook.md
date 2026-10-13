@@ -122,9 +122,10 @@ Capture files are retained; nothing deletes them automatically.
 ### Cloud Mac
 
 Every push runs `.github/workflows/cloud-mac.yml`: backend unit tests on Ubuntu; on macOS the
-unsigned simulator build, the XCTest suite, a fixture backend plus fake reasoning owner on the
-runner, launch, and screenshots of the Portal (before/after a typed CI demo turn), Work and
-Diagnostics tabs. Full `xcodebuild` logs are uploaded. For hands-on work dispatch the session
+unsigned simulator build, the XCTest suite plus the keyboard navigation XCUITest, a fixture backend
+plus fake reasoning owner on the runner, launch, screenshots of the Portal (before/after a typed CI
+demo turn), Work and Diagnostics tabs, and the remote inspection exercise (snapshot, image, tab
+select, keyboard dismiss, manifest sync, capture file copy) reported by the simulator client. Full `xcodebuild` logs are uploaded. For hands-on work dispatch the session
 workflow on this branch (the helper defaults to `main`):
 
 ```bash
@@ -163,6 +164,93 @@ in Finder's file sharing.
 
 Proof boundary: this update makes the bytes reachable; it does not fix why a prayer capture can
 close with zero segments, and it does not establish that any ambient segment contains the prayer.
+
+## Seeing what the phone sees: inspection, keyboard, remote recovery
+
+Builds from this change report app-owned state to the backend and accept a small set of remote
+commands over the existing text/control WebSocket. This is not screen mirroring: the keyboard,
+permission alerts, Control Center and other apps are outside what the app can render; the
+snapshot carries keyboard visible/frame and the focused field so a reviewer knows what covers
+the UI. A backgrounded or suspended app sends nothing, and the backend reports that honestly.
+
+Keyboard: the typed-input and backend-URL fields have a Done button above the keyboard, dismiss
+on Send/submit, on interactive scroll, on any tab change, and on the Begin prayer / Quiet / Stop
+buttons; a `dismiss_keyboard` command resigns the first responder remotely.
+
+Each install has a stable id (`Diagnostics` shows the first eight characters; `ios-…`). The
+phone sends a bounded snapshot on connect, tab change, mode change, capture events, keyboard
+show/hide, return to foreground and every 30 s while in the foreground: tab, connection, mode,
+audio owner state, whether the engine is actually running and the age of the last audio buffer,
+the last write error, recognizer state, keyboard frame/focus, typed/partial/last text, the tail of
+the assistant text, capture summaries and the last 40 log lines.
+
+```bash
+B=http://100.90.105.30:8765
+curl -s $B/devices | python3 -m json.tool                       # known phones, freshness, connected
+curl -s $B/devices/$ID/snapshot | python3 -m json.tool          # freshness: live | connected_background | stale | offline | no_snapshot
+curl -s $B/devices/$ID | python3 -m json.tool                   # snapshot + recent commands + latest image/manifest
+curl -s -X POST $B/devices/$ID/commands -H 'Content-Type: application/json' -d '{"kind":"snapshot"}'
+curl -s -X POST $B/devices/$ID/commands -H 'Content-Type: application/json' -d '{"kind":"image"}'
+curl -s -o phone.jpg -D - $B/devices/$ID/images/latest           # app-rendered window; X-Image-Age-S header
+curl -s -X POST $B/devices/$ID/commands -H 'Content-Type: application/json' -d '{"kind":"dismiss_keyboard"}'
+curl -s -X POST $B/devices/$ID/commands -H 'Content-Type: application/json' -d '{"kind":"select_tab","args":{"tab":"diagnostics"}}'
+curl -s -X POST $B/devices/$ID/commands -H 'Content-Type: application/json' -d '{"kind":"sync_manifest"}'
+curl -s $B/devices/$ID/manifest | python3 -m json.tool          # every capture, segment identities, orphan WAVs
+curl -s -X POST $B/devices/$ID/commands -H 'Content-Type: application/json' \
+  -d '{"kind":"copy_capture_files","args":{"capture_id":"ambient-1791887853-9d265072","indexes":[48,49,50]}}'
+curl -s $B/devices/$ID/commands/$COMMAND_ID                      # queued | delivered | applied | failed | unsupported
+curl -s $B/devices/$ID/captures/ambient-1791887853-9d265072       # copied files (bytes, sha256, path) + ASR lines
+```
+
+Command states mean exactly this: `queued` is stored and not yet on the phone (offline, or the
+socket write failed, which also marks the device offline); `delivered` was actually written to a
+live socket; `applied`, `failed` and `unsupported` are the phone's own report, keyed by command
+id. Queue acceptance is never execution. A command still without a result when the phone says
+hello again (queued, or delivered on a socket that died) is pushed again; the phone keeps a
+bounded persisted cache of results it already reported and answers a re-pushed command from it
+without running it twice. `connected` comes from the service's live socket registry (a restart
+forgets every connection); `connected_background` means the socket is up but the app last said it
+left the foreground, so its state is not live.
+
+Recovery transfers: `copy_capture_files` sends the named closed segment files of one capture
+(every closed file on disk for that capture when `indexes` is omitted, including files no manifest
+lists; a capture known only by its directory works too), bytes unchanged, read and re-hashed off
+the UI thread, verified by digest and size on the backend, into
+`<state root>/evidence/devices/<install id>/captures/<capture id>/`. The file a writer is still
+appending to is never named or copied as complete. The result is `applied` only when every named
+file was verified; otherwise `failed` with the exact copied, failed and missing indexes. Identical
+re-sends are idempotent; different bytes for an already stored index are refused. These copies are
+evidence for listening and dating, kept out of the prayer intake. `sync_manifest` uploads every
+manifest with segment identities and lists closed WAVs on disk that no manifest knows (orphans).
+During prayer, the on-device provisional ASR text is appended to
+`Documents/prayer-asr/<capture>.jsonl` with capture id and sequence BEFORE any control phrase acts
+(a line ending in "end prayer" is kept as recognized). Each recognition request is bound, for its
+whole life, to the capture it was opened under: Begin prayer and End prayer end the accepting
+request (no more audio is appended to it; its final is still delivered under the owner it was
+opened with, however late it settles) and open the next request at once under the new owner, so
+no audio is lost between the two, a prayer final can never become a conversational turn or land in
+a later prayer, and a conversation final is never journaled as prayer. Control phrases in a final
+act only when its owner is still the open prayer (or it is a conversation final outside prayer);
+words from an ended prayer or from a conversation request that was open before Begin prayer never
+end or alter the current prayer. A relaunch with an open prayer rebinds the recognizer to that
+capture before any request opens. No time window is involved. Journal write failures are shown on
+the Portal tab and in the snapshot, and lines sync on reconnect. The app log
+is durable (`Documents/recent-log.txt`, bounded) and reloaded on launch.
+
+Honest capture status: a prayer that settles with zero segments is `Failed: no audio captured`,
+never "Saved locally", and retained manifests from earlier builds in that state are relabelled on
+launch (nothing deleted). During prayer the app checks every second whether audio actually reaches
+the recorder (engine running, a buffer in the last two seconds); the warning states what was
+observed and when, clears itself when buffers resume, and never claims the prayer is lost. A
+failed restart after an interruption, route change, media reset or return to foreground sets the
+owner to Failed instead of pretending to record.
+
+CI exercises all of this against the fixture backend with the real simulator client
+(`scripts/ci_remote_inspection.py`, artifact `remote-inspection.json`, `simulator-remote-image.jpg`)
+including a byte-for-byte copy of a seeded capture file, a portal-to-work tab transition observed
+in the snapshots, and the image matched to its command id; the keyboard navigation XCUITest
+requires the software keyboard (the hardware keyboard is disabled before the simulator boots).
+Simulator evidence only; the phone must install the new build (over TestFlight, not an uninstall).
 
 ## Signing, TestFlight and device
 

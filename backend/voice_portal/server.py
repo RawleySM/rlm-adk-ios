@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import sqlite3
@@ -11,7 +12,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from . import __version__, conversation, outbox, prayer_intake, retrieval
+from . import __version__, conversation, devices, outbox, prayer_intake, retrieval
 from .config import Config
 from .db import connect, now
 from .importer import family_counts, latest_receipts
@@ -74,6 +75,13 @@ class PortalService:
         self.started_at = now()
         self.active_turns: dict[str, threading.Event] = {}
         self.active_lock = threading.Lock()
+        # install_id -> (session_id, send) for the phone's live WebSocket, so HTTP can push commands.
+        # `send` raises on transport failure (unlike the best-effort `emit` used for conversation).
+        self.device_sessions: dict[str, tuple[str, callable]] = {}
+        self.device_lock = threading.Lock()
+        reset = devices.reset_connections(self.conn())  # nothing survives a restart as "connected"
+        if reset:
+            log.info("device connections reset on start: %d", reset)
         recovered = outbox.recover_stale_posting(self.conn(), cfg, all_rows=True)
         if recovered:
             log.warning("recovered stale posting operations as delivery_unknown: %s", recovered)
@@ -102,6 +110,34 @@ class PortalService:
             "imports": latest_receipts(conn),
             "active_turns": sorted(self.active_turns),
         }
+
+    def push_command(self, install_id: str, command: dict) -> bool:
+        """Deliver a command to the phone's live session; True only if the frame was written. A
+        transport failure leaves the command queued, drops the dead registration and marks the
+        device disconnected, so the next hello pushes it again."""
+        with self.device_lock:
+            entry = self.device_sessions.get(install_id)
+        if entry is None:
+            return False
+        session_id, send = entry
+        try:
+            send({"type": "command", "command_id": command["command_id"], "kind": command["kind"], "args": command["args"]})
+        except Exception as exc:  # WebSocketClosed, OSError, or any broken transport
+            log.warning("command %s to %s not sent: %s", command["command_id"], install_id, exc)
+            self.drop_device_session(install_id, session_id)
+            return False
+        devices.mark_delivered(self.conn(), command["command_id"])
+        return True
+
+    def drop_device_session(self, install_id: str, session_id: str) -> None:
+        with self.device_lock:
+            if self.device_sessions.get(install_id, (None, None))[0] == session_id:
+                self.device_sessions.pop(install_id, None)
+                devices.record_disconnect(self.conn(), install_id)
+
+    def live_device_ids(self) -> set[str]:
+        with self.device_lock:
+            return set(self.device_sessions)
 
     def cancel_turn(self, turn_id: str) -> bool:
         with self.active_lock:
@@ -220,6 +256,69 @@ class Handler(BaseHTTPRequestHandler):
                     self.end_headers()
                     self.wfile.write(data)
                     return None
+            # ----- phone inspection and recovery -----
+            if parts and parts[0] == "devices":
+                if method == "GET" and len(parts) == 1:
+                    return self._json(200, {"devices": devices.list_devices(conn, svc.live_device_ids())})
+                if len(parts) >= 2:
+                    install_id = parts[1]
+                    live = install_id in svc.live_device_ids()
+                    if method == "GET" and len(parts) == 2:
+                        return self._json(200, {**devices.latest_snapshot(conn, install_id, live=live), "commands": devices.recent_commands(conn, install_id), "latest_image": devices.latest_image(conn, install_id), "latest_manifest": (devices.latest_manifest(conn, install_id) or {}).get("received_at")})
+                    if method == "GET" and parts[2:] == ["snapshot"]:
+                        return self._json(200, devices.latest_snapshot(conn, install_id, live=live))
+                    if method == "POST" and parts[2:] == ["commands"]:
+                        payload = self._read_json()
+                        try:
+                            command = devices.create_command(conn, install_id, payload.get("kind", ""), payload.get("args"))
+                        except ValueError as exc:
+                            return self._json(400, {"error": str(exc)})
+                        pushed = svc.push_command(install_id, command)
+                        return self._json(201, {**devices.get_command(conn, command["command_id"]), "pushed": pushed, "note": "status becomes applied/failed/unsupported only when the phone reports the result"})
+                    if method == "GET" and len(parts) == 4 and parts[2] == "commands":
+                        cmd = devices.get_command(conn, parts[3])
+                        return self._json(200 if cmd else 404, cmd or {"error": "not_found"})
+                    if method == "POST" and parts[2:] == ["images"]:
+                        data = self._read_body()
+                        snap_b64 = self.headers.get("X-Snapshot-B64")
+                        try:
+                            snap = json.loads(base64.b64decode(snap_b64)) if snap_b64 else None
+                        except (ValueError, json.JSONDecodeError):
+                            snap = {"undecodable": True}
+                        return self._json(200, devices.store_image(conn, cfg.root, install_id, data=data, client_sha256=self.headers.get("X-SHA256", ""), session_id=self.headers.get("X-Session-Id"), command_id=self.headers.get("X-Command-Id"), client_time=float(self.headers.get("X-Client-Time") or 0) or None, scope=self.headers.get("X-Scope") or "app_window", snapshot=snap))
+                    if method == "GET" and parts[2:] == ["images", "latest", "meta"]:
+                        meta = devices.latest_image(conn, install_id)
+                        return self._json(200 if meta else 404, meta or {"error": "no_image"})
+                    if method == "GET" and parts[2:] == ["images", "latest"]:
+                        meta = devices.latest_image(conn, install_id)
+                        if meta is None or not meta["available"]:
+                            return self._json(404, {"error": "no_image"})
+                        from pathlib import Path
+
+                        data = Path(meta["path"]).read_bytes()
+                        self.send_response(200)
+                        self.send_header("Content-Type", "image/jpeg")
+                        self.send_header("X-Image-Age-S", str(meta["age_s"]))
+                        self.send_header("X-Image-Scope", meta["scope"] or "")
+                        self.send_header("Content-Length", str(len(data)))
+                        self.end_headers()
+                        self.wfile.write(data)
+                        return None
+                    if method == "POST" and parts[2:] == ["manifest"]:
+                        return self._json(200, devices.store_manifest(conn, install_id, self._read_json()))
+                    if method == "GET" and parts[2:] == ["manifest"]:
+                        m = devices.latest_manifest(conn, install_id)
+                        return self._json(200 if m else 404, m or {"error": "no_manifest"})
+                    if len(parts) >= 4 and parts[2] == "captures":
+                        capture_id = parts[3]
+                        if method == "POST" and len(parts) == 6 and parts[4] == "files":
+                            data = self._read_body()
+                            return self._json(200, devices.store_file(conn, cfg.root, install_id, capture_id, int(parts[5]), data=data, client_sha256=self.headers.get("X-SHA256", ""), filename=self.headers.get("X-Filename"), command_id=self.headers.get("X-Command-Id")))
+                        if method == "POST" and parts[4:] == ["asr"]:
+                            payload = self._read_json()
+                            return self._json(200, devices.store_prayer_asr(conn, install_id, capture_id, payload.get("items") or []))
+                        if method == "GET" and len(parts) == 4:
+                            return self._json(200, devices.capture_evidence(conn, install_id, capture_id))
             # ----- prayer intake relay -----
             if len(parts) >= 3 and parts[0] == "prayer" and parts[1] == "captures":
                 cid = parts[2]
@@ -279,11 +378,16 @@ class Handler(BaseHTTPRequestHandler):
         ws.send_json({"type": "session", "session_id": session_id, "server_time": now(), "model": cfg.inference_model, "inference_base_url": cfg.inference_base_url, "source_commit": cfg.source_commit or None})
         session_turns = SessionTurns()
         send_lock = threading.Lock()
+        device_install_id: str | None = None
+
+        def send_strict(event: dict) -> None:
+            """Raises on transport failure; used for command delivery, where silence must not pass as sent."""
+            with send_lock:
+                ws.send_json(event)
 
         def emit(event: dict) -> None:
             try:
-                with send_lock:
-                    ws.send_json(event)
+                send_strict(event)
             except (WebSocketClosed, OSError):
                 pass
 
@@ -314,7 +418,37 @@ class Handler(BaseHTTPRequestHandler):
                 if kind == "hello":
                     with conn:
                         conn.execute("UPDATE sessions SET client_mode = ? WHERE session_id = ?", (json.dumps(event.get("mode")), session_id))
-                    emit({"type": "hello_ack", "session_id": session_id, "mode": event.get("mode")})
+                    install_id = event.get("install_id")
+                    if install_id:
+                        # Registered before the ack so an inspector that reads /devices right after the
+                        # phone reports connected sees the device.
+                        try:
+                            devices.record_hello(conn, install_id, session_id=session_id, app_version=event.get("app_version"), build=event.get("build"))
+                        except ValueError as exc:
+                            emit({"type": "error", "message": str(exc)})
+                            continue
+                        device_install_id = install_id
+                        with svc.device_lock:
+                            svc.device_sessions[install_id] = (session_id, send_strict)
+                    emit({"type": "hello_ack", "session_id": session_id, "mode": event.get("mode"), "install_id": install_id})
+                    if install_id:
+                        for pending in devices.pending_commands(conn, install_id):
+                            svc.push_command(install_id, pending)
+                elif kind == "snapshot":
+                    if device_install_id:
+                        devices.store_snapshot(conn, device_install_id, session_id=session_id, snapshot=event.get("snapshot") or {}, reason=event.get("reason"))
+                        emit({"type": "snapshot_ack", "reason": event.get("reason")})
+                elif kind == "command_result":
+                    if device_install_id:
+                        try:
+                            cmd = devices.record_result(conn, device_install_id, event.get("command_id") or "", event.get("status") or "", event.get("result"))
+                        except ValueError as exc:
+                            emit({"type": "error", "message": str(exc)})
+                            continue
+                        emit({"type": "command_result_ack", "command_id": event.get("command_id"), "status": (cmd or {}).get("status")})
+                elif kind == "prayer_asr":
+                    if device_install_id:
+                        emit({"type": "prayer_asr_ack", "capture_id": event.get("capture_id"), **devices.store_prayer_asr(conn, device_install_id, event.get("capture_id") or "", event.get("items") or [])})
                 elif kind == "ping":
                     emit({"type": "pong", "t": event.get("t"), "server_time": now()})
                 elif kind == "partial_transcript":
@@ -351,6 +485,8 @@ class Handler(BaseHTTPRequestHandler):
             pass
         finally:
             session_turns.cancel_all()  # disconnect settles the requests this session owns
+            if device_install_id:
+                svc.drop_device_session(device_install_id, session_id)
             with conn:
                 conn.execute("UPDATE sessions SET ended_at = ? WHERE session_id = ?", (now(), session_id))
             ws.close()
