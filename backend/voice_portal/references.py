@@ -5,8 +5,9 @@ Deliberately small: canonical book names from the Scripture projection's own `BO
 numbered forms with written or spoken ordinals, and a few spoken aliases (Psalm/Ps). A reference is
 book + chapter with an optional verse or verse range. Resolution reports exactly what the retained
 edition supplies: whole chapter, only the chunks holding the named verses, a partial verse range, a
-chapter longer than the supplied chunk cap, or nothing (unknown book, chapter not retained, invalid
-verse numbers). Nothing is invented.
+or nothing (unknown book, chapter not retained, invalid verse numbers). Whole retained chapters are
+always supplied in full: the largest in the real store (Psalm 119) is about 12.8k characters.
+Nothing is invented.
 """
 
 from __future__ import annotations
@@ -17,9 +18,6 @@ import sqlite3
 
 from .retrieval import cite_id
 from .sources.scripture import BOOK_NAMES
-
-# Chunks of one chapter supplied as explicit evidence before coverage is reported as partial.
-CHUNK_CAP = 8
 
 ORDINALS = {"1": "1", "2": "2", "3": "3", "first": "1", "second": "2", "third": "3", "i": "1", "ii": "2", "iii": "3"}
 ALIASES = {"psalm": "PSA", "psalms": "PSA", "ps": "PSA", "song of solomon": "SNG", "revelations": "REV"}
@@ -93,12 +91,13 @@ def _hit(doc, chunk, locators, edition) -> dict:
     }
 
 
-def resolve_reference(conn: sqlite3.Connection, ref: dict, chunk_cap: int = CHUNK_CAP) -> tuple[list[dict], dict]:
+def resolve_reference(conn: sqlite3.Connection, ref: dict) -> tuple[list[dict], dict]:
     """Return (hits, report). `report.coverage` is one of:
-    - "full": every requested verse (or the whole chapter) is in the supplied chunks;
-    - "partial": some requested verses are missing, or the chapter has more chunks than `chunk_cap`;
+    - "full": the whole chapter, or every requested verse, is in the supplied chunks;
+    - "partial": the chunks holding every retained requested verse are supplied, but some requested
+      verse numbers are not in the retained chapter (`verses_missing`);
     - "none": nothing supplied (unknown book, chapter not retained, invalid/absent verses).
-    `verses_found` / `verses_missing` and `chunks_supplied` / `chunks_total` say exactly what happened.
+    `chunks_supplied` / `chunks_total` count the chapter's chunks actually included.
     """
     report = {**ref, "supplied": False, "coverage": "none", "verses_found": [], "verses_missing": [], "chunks_supplied": 0, "chunks_total": 0, "reason": ref.get("invalid")}
     if ref.get("invalid"):
@@ -132,10 +131,6 @@ def resolve_reference(conn: sqlite3.Connection, ref: dict, chunk_cap: int = CHUN
     else:
         wanted = chunks
         coverage = "full"
-    if len(wanted) > chunk_cap:
-        wanted = wanted[:chunk_cap]
-        coverage = "partial"
-        report["reason"] = report["reason"] or "chapter_longer_than_supplied_chunks"
     hits = [_hit(doc, c, locators, edition) for c in wanted]
     report["chunks_supplied"] = len(hits)
     report["supplied"] = bool(hits)
@@ -169,8 +164,6 @@ def coverage_note(report: dict) -> str:
         return f"The question names {name}, which is not in the retained Scripture edition; say so and do not quote it."
     if report["coverage"] == "full":
         return f"The question names {name}; that passage is included in the evidence."
-    if report["verses_missing"]:
-        found = ", ".join(report["verses_found"])
-        missing = _compress([int(v.split(":")[-1]) for v in report["verses_missing"]])
-        return f"The question names {name}; only {found} are in the retained chapter and included; verses {missing} are not in it."
-    return f"The question names {name}; only the first {report['chunks_supplied']} of {report['chunks_total']} parts of that chapter are included."
+    found = _compress([int(v.rsplit(".", 1)[-1]) for v in report["verses_found"]])
+    missing = _compress([int(v.split(":")[-1]) for v in report["verses_missing"]])
+    return f"The question names {name}; verses {found} are in the retained chapter and included; verses {missing} are not in it."

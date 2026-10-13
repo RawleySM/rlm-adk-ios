@@ -106,7 +106,7 @@ class ExplicitReferenceTests(unittest.TestCase):
 
     def test_valid_verse_narrows_to_the_chunk_holding_it_in_a_multi_chunk_chapter(self):
         ids = chunk_ids(self.conn, "PSA", 119)
-        self.assertGreater(len(ids), 8, "fixture chapter must span more chunks than the cap")
+        self.assertGreater(len(ids), 8, "fixture chapter must span many chunks")
         hits, scope = self._evidence("What does Psalm 119:25 mean?")
         ex = [h for h in hits if h["strategy"] == "explicit_reference"]
         self.assertEqual(len(ex), 1)
@@ -130,7 +130,7 @@ class ExplicitReferenceTests(unittest.TestCase):
         self.assertEqual(rep["reason"], "some_verses_not_in_retained_chapter")
         from voice_portal.references import coverage_note
         note = coverage_note(rep)
-        self.assertIn("only Ps.23.5, Ps.23.6", note)
+        self.assertIn("verses 5-6 are in the retained chapter and included", note)
         self.assertIn("verses 7-99 are not in it", note)
         self.assertNotIn("that passage is included", note)
 
@@ -145,19 +145,29 @@ class ExplicitReferenceTests(unittest.TestCase):
         rep = scope["explicit_references"][0]
         self.assertEqual((rep["supplied"], rep["coverage"], rep["reason"], rep["verses_missing"]), (False, "none", "verses_not_in_retained_chapter", ["1PE.5:7"]))
 
-    def test_long_chapter_reports_partial_coverage_tied_to_supplied_chunks(self):
+    def test_long_chapter_is_supplied_in_full(self):
         ids = chunk_ids(self.conn, "PSA", 119)
         hits, scope = self._evidence("Read Psalm 119")
         ex = [h for h in hits if h["strategy"] == "explicit_reference"]
         rep = scope["explicit_references"][0]
-        self.assertEqual(len(ex), 8)
-        self.assertEqual([h["cite_id"] for h in ex], ids[:8])
-        self.assertEqual((rep["coverage"], rep["chunks_supplied"], rep["chunks_total"], rep["reason"]), ("partial", 8, len(ids), "chapter_longer_than_supplied_chunks"))
+        self.assertEqual([h["cite_id"] for h in ex], ids, "every chunk of the retained chapter, in order")
+        self.assertEqual((rep["coverage"], rep["chunks_supplied"], rep["chunks_total"], rep["reason"]), ("full", len(ids), len(ids), None))
+        self.assertTrue(all(retrieval.resolve_citation(self.conn, h["cite_id"])["verified"] for h in ex))
+
+    def test_oversized_range_supplies_every_retained_verse_and_reports_the_rest(self):
+        hits, scope = self._evidence("Read Psalm 119:1-99")
+        ex = [h for h in hits if h["strategy"] == "explicit_reference"]
+        rep = scope["explicit_references"][0]
+        self.assertEqual(rep["verses_found"], [f"Ps.119.{n}" for n in range(1, 71)])
+        self.assertEqual(rep["verses_missing"], [f"PSA.119:{n}" for n in range(71, 100)])
+        supplied_verses = {v for h in ex for v in h["verse_refs"]}
+        self.assertTrue(set(rep["verses_found"]) <= supplied_verses, "every retained requested verse must be in a supplied chunk")
+        self.assertEqual([h["cite_id"] for h in ex], chunk_ids(self.conn, "PSA", 119))
+        self.assertEqual((rep["coverage"], rep["reason"]), ("partial", "some_verses_not_in_retained_chapter"))
         from voice_portal.references import coverage_note
-        self.assertIn(f"first 8 of {len(ids)} parts", coverage_note(rep))
-        # a small chapter is supplied whole
-        hits, scope = self._evidence("Read Psalm 23")
-        self.assertEqual(scope["explicit_references"][0]["coverage"], "full")
+        note = coverage_note(rep)
+        self.assertIn("verses 1-70 are in the retained chapter and included", note)
+        self.assertIn("verses 71-99 are not in it", note)
 
     def test_unavailable_chapter_invents_nothing(self):
         hits, scope = self._evidence("What does Genesis 51 say?")

@@ -130,10 +130,9 @@ chapter. Coverage is reported exactly in `scope.explicit_references[]` and in th
 
 | Case | `supplied` | `coverage` | `reason` |
 | --- | --- | --- | --- |
-| whole chapter, up to 8 chunks | true | full | – |
-| chapter longer than 8 chunks | true (first 8) | partial | `chapter_longer_than_supplied_chunks` |
+| whole chapter (always supplied in full; the largest retained chapter, Psalm 119, is 20 chunks / 12.8k chars) | true | full | – |
 | verse or range fully in the chapter | true (chunks holding them) | full | – |
-| range partly beyond the chapter (e.g. 23:5-99) | true (chunks holding 5–6) | partial | `some_verses_not_in_retained_chapter`, `verses_missing` listed |
+| range partly beyond the chapter (e.g. 23:5-99, 119:1-99) | true (chunks holding every retained requested verse) | partial | `some_verses_not_in_retained_chapter`, `verses_missing` listed |
 | verses entirely beyond the chapter (e.g. 1 Peter 5:7 in a 4-verse fixture) | false | none | `verses_not_in_retained_chapter` |
 | chapter not retained (e.g. Genesis 51) | false | none | `chapter_not_in_retained_edition` |
 | verse 0, chapter 0, reversed range | false | none | `invalid_verse` / `invalid_chapter` / `reversed_range` |
@@ -141,8 +140,8 @@ chapter. Coverage is reported exactly in `scope.explicit_references[]` and in th
 
 Heard-passage evidence still comes first at its exact revision; focus-first topic retrieval and the
 Scripture/teaching/prayer distinction are unchanged. Tests (`tests/test_explicit_reference.py`, 15)
-cover the parser forms above, each coverage row, a valid verse inside a multi-chunk chapter, the
-chunk-cap partial case tied to the supplied cite ids, the heard-passage ordering, and two
+cover the parser forms above, each coverage row, a valid verse inside a multi-chunk chapter, a long
+chapter supplied in full with every cite id, an oversized range, the heard-passage ordering, and two
 `run_turn`-level cases (a historical heard citation with "Why?" plus a heard title; an explicit
 reference in the transcript). Real-data evidence: `fable-explicit-passage-status.md`.
 
