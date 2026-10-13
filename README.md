@@ -12,8 +12,8 @@ SwiftUI app for Rawley's iPhone that will connect to rlm-adk over the Tailscale 
   signs builds for the registered iPhone for direct installation (`.github/workflows/direct-install.yml`,
   manual dispatch, no App Store Connect upload); TestFlight (`testflight.yml`) is the fallback.
   The phone needs Developer Mode for IPA installs, and the Ad Hoc profile and certificate expire
-  (profile expiry is in each build's receipt). Device registration and the first direct installation
-  are still pending the phone connection. Details in
+  (profile expiry is in each build's receipt). Device registration and the first direct installation (Build 7) completed over Spark-A USB
+  on 2026-10-13, with retained audio verified afterward. Details in
   `docs/voice-portal/prototype-runbook.md`.
 - Hands-on cloud Mac over the tailnet: `scripts/cloud-mac start`, then `cloud-mac ssh`. See `AGENTS.md`.
 

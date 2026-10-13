@@ -76,6 +76,10 @@ final class PortalModel: ObservableObject {
     private var silenceTimer: Timer?
     private var endpoint = EndpointClock()
     private var sessionId: String?
+    // MainActor reentrancy permits another callback while HTTP is awaiting. One owner per
+    // capture covers both upload and finalize; callbacks during that work request another pass.
+    private var uploadingCaptures: Set<String> = []
+    private var uploadRequested: Set<String> = []
 
     /// Voice command phrases (configuration, recorded in the runbook). Buttons are the deterministic fallback.
     static let quietPhrases = ["quiet please", "be quiet", "go quiet"]
@@ -84,8 +88,7 @@ final class PortalModel: ObservableObject {
     static let prayerEndPhrases = ["end prayer", "amen end prayer"]
     static let defaultBackendURL = ProcessInfo.processInfo.environment["RLMADK_BACKEND_URL"] ?? "http://100.90.105.30:8765"
 
-    init() {
-        let store = LocalStore()
+    init(store: LocalStore = LocalStore(), client suppliedClient: PortalClient? = nil) {
         let loadedMode = store.loadMode() ?? PortalMode()
         var loadedCaptures = store.loadCaptures()
         let envURL = ProcessInfo.processInfo.environment["RLMADK_BACKEND_URL"]
@@ -108,7 +111,7 @@ final class PortalModel: ObservableObject {
         progress = store.loadProgress()
         recognizer = rec
         recognizerAvailability = rec.availability
-        client = PortalClient(baseURL: URL(string: urlString) ?? URL(string: PortalModel.defaultBackendURL)!)
+        client = suppliedClient ?? PortalClient(baseURL: URL(string: urlString) ?? URL(string: PortalModel.defaultBackendURL)!)
         ambientCaptureId = ambient
         installId = PortalModel.loadOrCreateInstallId()
         if envURL != nil { backendURLString = urlString }
@@ -589,7 +592,7 @@ final class PortalModel: ObservableObject {
     /// Test seam for the settle path (the writer is not available in the simulator).
     func captureSettledForTest(_ captureId: String, produced: Int) { captureSettled(captureId, produced: produced) }
 
-    private func segmentClosed(captureId: String, _ seg: SegmentRecord) {
+    func segmentClosed(captureId: String, _ seg: SegmentRecord) {
         guard let i = captures.firstIndex(where: { $0.captureId == captureId }) else { return }
         if !captures[i].segments.contains(where: { $0.index == seg.index }) { captures[i].segments.append(seg) }
         persistCaptures()
@@ -927,6 +930,20 @@ final class PortalModel: ObservableObject {
     }
 
     func uploadPending(captureId: String) async {
+        guard connection.isConnected else { return }
+        uploadRequested.insert(captureId)
+        guard uploadingCaptures.insert(captureId).inserted else { return }
+        defer {
+            uploadingCaptures.remove(captureId)
+            uploadRequested.remove(captureId)
+        }
+        repeat {
+            uploadRequested.remove(captureId)
+            await uploadPendingPass(captureId: captureId)
+        } while connection.isConnected && uploadRequested.contains(captureId)
+    }
+
+    private func uploadPendingPass(captureId: String) async {
         guard connection.isConnected, let i = captures.firstIndex(where: { $0.captureId == captureId }) else { return }
         for seg in captures[i].pendingUploads {
             let url = store.captureDirectory(captureId).appendingPathComponent(seg.filename)
@@ -1173,9 +1190,9 @@ struct AnyDecodable: Decodable {
 final class LocalStore {
     let root: URL
 
-    init() {
-        root = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        try? FileManager.default.createDirectory(at: root.appendingPathComponent("captures"), withIntermediateDirectories: true)
+    init(root: URL? = nil) {
+        self.root = root ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        try? FileManager.default.createDirectory(at: self.root.appendingPathComponent("captures"), withIntermediateDirectories: true)
     }
 
     func captureDirectory(_ captureId: String) -> URL { root.appendingPathComponent("captures").appendingPathComponent(captureId) }
