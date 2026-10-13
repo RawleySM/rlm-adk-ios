@@ -161,6 +161,7 @@ final class SegmentWriter {
     let maxSeconds: Double
     private let queue: DispatchQueue
     private var file: AVAudioFile?
+    private var closed = false // set on the write queue by close(); later appends are dropped
     private var index: Int
     private let firstIndex: Int
     private var startedAt = Date()
@@ -206,6 +207,7 @@ final class SegmentWriter {
             for c in 0..<channels { memcpy(dst[c], src[c], Int(buffer.frameLength) * MemoryLayout<Int16>.size) }
         }
         queue.async { [self] in
+            if closed { return } // the tap may still hold this writer briefly after a capture switch
             do {
                 if file == nil {
                     // WAV with 16-bit PCM is what the prayer intake's ffmpeg path reads without issues.
@@ -238,10 +240,14 @@ final class SegmentWriter {
     func close(settled: ((Int) -> Void)? = nil) {
         queue.async { [self] in
             closeCurrent()
+            closed = true
             let last = index
             if let settled { DispatchQueue.main.async { settled(last) } }
         }
     }
+
+    /// Test seam: blocks until every queued append/close has run.
+    func drain() { queue.sync {} }
 
     private func closeCurrent() {
         guard file != nil else { return }

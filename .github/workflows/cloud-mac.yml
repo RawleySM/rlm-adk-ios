@@ -99,6 +99,7 @@ jobs:
 
       - name: Run in a simulator and take screenshots (fixture backend)
         run: |
+          export VOICE_PORTAL_STATE="$RUNNER_TEMP/voice_portal_state"
           UDID="${{ steps.sim.outputs.udid }}"
           APP=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 1 -name 'RLMADK.app' | head -1)
           xcrun simctl install "$UDID" "$APP"

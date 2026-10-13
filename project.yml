@@ -15,12 +15,17 @@ targets:
       path: RLMADK/Info.plist
       properties:
         CFBundleDisplayName: RLM-ADK
+        # Version/build come from the build settings so CI can advance CURRENT_PROJECT_VERSION.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         UILaunchScreen: {}
         NSMicrophoneUsageDescription: Continuous local recording, prayer capture and live voice turns.
         NSSpeechRecognitionUsageDescription: On-device transcription of your voice turns; audio is not sent to a speech service.
         UIBackgroundModes: [audio]
+        # TestFlight: no non-exempt encryption (HTTPS/standard system crypto only).
+        ITSAppUsesNonExemptEncryption: false
         # Private tailnet backend over plain HTTP/WS (prototype); no public endpoints.
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
@@ -32,6 +37,11 @@ targets:
         CURRENT_PROJECT_VERSION: "2"
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1"
+        # Signing: Team 4PJBKY2WQR (Individual membership verified 2026-10-13). Simulator CI passes
+        # CODE_SIGNING_ALLOWED=NO; the testflight workflow overrides to manual Apple Distribution signing
+        # (the team has no registered device, so automatic development signing cannot archive).
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 4PJBKY2WQR
   RLMADKTests:
     type: bundle.unit-test
     platform: iOS

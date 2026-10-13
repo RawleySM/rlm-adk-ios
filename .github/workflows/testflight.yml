@@ -1,0 +1,96 @@
+# Private TestFlight build: manual signing with the team's Apple Distribution identity and the App Store
+# profile (both created 2026-10-13 via the App Store Connect API), export a signed IPA, then upload it with
+# scripts/asc_build_upload.py through the App Store Connect Build Upload API (internal testing only).
+# xcodebuild's own upload, altool and iTMSTransporter were all tried on Xcode 26.6 and do not work with an
+# API key there (see docs/voice-portal/prototype-runbook.md). Manual dispatch; nothing public.
+# Secrets: DIST_P12_BASE64, DIST_P12_PASSWORD, APPSTORE_PROFILE_BASE64, ASC_KEY_ID, ASC_ISSUER_ID, ASC_PRIVATE_KEY.
+name: testflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: "CURRENT_PROJECT_VERSION override (empty = run number)"
+        default: ""
+      build_upload_id:
+        description: "Reuse an existing AWAITING_UPLOAD buildUploads record (optional)"
+        default: ""
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  upload:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Install signing assets (build keychain, profile, API key)
+        env:
+          DIST_P12_BASE64: ${{ secrets.DIST_P12_BASE64 }}
+          DIST_P12_PASSWORD: ${{ secrets.DIST_P12_PASSWORD }}
+          APPSTORE_PROFILE_BASE64: ${{ secrets.APPSTORE_PROFILE_BASE64 }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: |
+          set -o pipefail
+          mkdir -p ~/private_keys "$HOME/Library/MobileDevice/Provisioning Profiles" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+          printf '%s\n' "$ASC_PRIVATE_KEY" > ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
+          echo "$DIST_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/dist.p12"
+          echo "$APPSTORE_PROFILE_BASE64" | base64 --decode > "$RUNNER_TEMP/appstore.mobileprovision"
+          UUID=$(security cms -D -i "$RUNNER_TEMP/appstore.mobileprovision" | plutil -extract UUID raw -)
+          cp "$RUNNER_TEMP/appstore.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$UUID.mobileprovision"
+          cp "$RUNNER_TEMP/appstore.mobileprovision" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/$UUID.mobileprovision"
+          KPW=$(uuidgen)
+          security create-keychain -p "$KPW" build.keychain
+          security set-keychain-settings -lut 21600 build.keychain
+          security unlock-keychain -p "$KPW" build.keychain
+          security import "$RUNNER_TEMP/dist.p12" -k build.keychain -P "$DIST_P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/xcodebuild
+          curl -sS -o "$RUNNER_TEMP/wwdr.cer" https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer
+          security import "$RUNNER_TEMP/wwdr.cer" -k build.keychain -T /usr/bin/codesign || true
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KPW" build.keychain >/dev/null
+          security list-keychains -d user -s build.keychain ~/Library/Keychains/login.keychain-db
+          security find-identity -v -p codesigning build.keychain
+      - name: Archive (manual distribution signing)
+        env:
+          BUILD_NUMBER: ${{ inputs.build_number }}
+        run: |
+          set -o pipefail
+          xcodebuild -project RLMADK.xcodeproj -scheme RLMADK -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath build/RLMADK.xcarchive \
+            CURRENT_PROJECT_VERSION="${BUILD_NUMBER:-$GITHUB_RUN_NUMBER}" \
+            CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=4PJBKY2WQR CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="rlm-adk-ios appstore" \
+            archive 2>&1 | tee xcodebuild-archive.log | { grep -E "error:|Signing Identity|Provisioning Profile|\*\* ARCHIVE" || true; }
+      - name: Export signed IPA
+        run: |
+          set -o pipefail
+          xcodebuild -exportArchive -archivePath build/RLMADK.xcarchive -exportPath build/export \
+            -exportOptionsPlist ExportOptions.plist \
+            2>&1 | tee xcodebuild-export.log | { grep -E "error:|EXPORT" || true; }
+          codesign --verify --deep --strict build/RLMADK.xcarchive/Products/Applications/RLMADK.app
+          ls -la build/export
+      - name: Upload to App Store Connect (Build Upload API)
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          BUILD_UPLOAD_ID: ${{ inputs.build_upload_id }}
+        run: |
+          python3 scripts/asc_build_upload.py --ipa build/export/RLMADK.ipa --app-id 6822129536 \
+            --key-id "$ASC_KEY_ID" --issuer-id "$ASC_ISSUER_ID" --key-path ~/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
+            ${BUILD_UPLOAD_ID:+--build-upload-id "$BUILD_UPLOAD_ID"} --receipt upload-receipt.json | tee upload.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: testflight-logs
+          path: |
+            xcodebuild-archive.log
+            xcodebuild-export.log
+            upload.log
+            upload-receipt.json
+            build/export/*.plist

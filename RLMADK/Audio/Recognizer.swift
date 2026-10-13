@@ -59,7 +59,9 @@ final class Recognizer: NSObject {
     }
 
     /// Keeps a recognition request open continuously (restarted per utterance) until `stop()`.
+    /// Idempotent: a second call while already listening continuously is a no-op.
     func startContinuous() {
+        if continuous, isListening { return }
         continuous = true
         start()
     }

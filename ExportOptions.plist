@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Private TestFlight distribution only: export a signed IPA which scripts/asc_build_upload.py sends to
+       App Store Connect; never a public release.
+       Manual signing with the team's Apple Distribution identity and the "rlm-adk-ios appstore" profile
+       (created 2026-10-13 through the App Store Connect API; see docs/voice-portal/prototype-runbook.md). -->
+  <key>method</key><string>app-store-connect</string>
+  <key>destination</key><string>export</string>
+  <key>teamID</key><string>4PJBKY2WQR</string>
+  <key>signingStyle</key><string>manual</string>
+  <key>signingCertificate</key><string>Apple Distribution</string>
+  <key>provisioningProfiles</key>
+  <dict>
+    <key>com.rawleystanhope.rlmadk</key><string>rlm-adk-ios appstore</string>
+  </dict>
+  <key>uploadSymbols</key><true/>
+  <key>manageAppVersionAndBuildNumber</key><false/>
+  <key>testFlightInternalTestingOnly</key><true/>
+</dict>
+</plist>

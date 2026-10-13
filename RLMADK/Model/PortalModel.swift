@@ -88,11 +88,11 @@ final class PortalModel: ObservableObject {
     // MARK: wiring
 
     private func wire() {
-        audio.onStateChange = { [weak self] s in Task { @MainActor in self?.audioState = s } }
+        audio.onStateChange = { [weak self] s in Task { @MainActor in self?.audioStateChanged(s) } }
         audio.onBuffer = { [weak self] buffer, _ in self?.recognizer.append(buffer) }
         audio.onGap = { [weak self] gap in Task { @MainActor in self?.recordGap(gap) } }
         audio.onSegmentClosed = { [weak self] captureId, seg in Task { @MainActor in self?.segmentClosed(captureId: captureId, seg) } }
-        recognizer.onAvailability = { [weak self] a in Task { @MainActor in self?.recognizerAvailability = a } }
+        recognizer.onAvailability = { [weak self] a in Task { @MainActor in self?.availabilityChanged(a) } }
         recognizer.onPartial = { [weak self] text in Task { @MainActor in self?.partial(text) } }
         recognizer.onFinal = { [weak self] text in Task { @MainActor in self?.final(text, source: "voice") } }
         recognizer.onGap = { [weak self] gap in Task { @MainActor in self?.recordGap(gap) } }
@@ -155,30 +155,61 @@ final class PortalModel: ObservableObject {
     }
 
     private func startAudio() {
-        guard audioState != .running else { return }
+        // The owner's own state is authoritative; the published mirror is updated through a queued Task.
+        guard audio.state != .running else { reconcileRecognition(); return }
         let captureId = mode.prayerCaptureId ?? ambientCaptureId
         let startIndex = captures.first(where: { $0.captureId == captureId })?.nextSegmentIndex ?? 0
         do {
             try audio.start(captureId: captureId, directory: store.captureDirectory(captureId), startIndex: startIndex)
             logLine("audio owner running; capture \(captureId) from segment \(startIndex)")
-            startContinuousRecognition()
         } catch {
             logLine("audio owner failed: \(error.localizedDescription)")
         }
+        reconcileRecognition()
+    }
+
+    // MARK: recognition startup (VOICE-START-1)
+
+    /// Whether continuous recognition has been requested for the current running audio session.
+    private(set) var recognitionRequested = false
+    /// Test seam: replaces `recognizer.startContinuous()` in controller tests. Returns nothing.
+    var recognitionStarter: (() -> Void)?
+    /// Authoritative audio state as last reported by the owner (not the queued published mirror).
+    private var ownerRunning: Bool { audio.state == .running || audioState == .running }
+
+    func audioStateChanged(_ state: AudioOwner.State) {
+        audioState = state
+        if state != .running { recognitionRequested = false }
+        reconcileRecognition()
+    }
+
+    func availabilityChanged(_ availability: Recognizer.Availability) {
+        recognizerAvailability = availability
+        if !availability.usable { recognitionRequested = false }
+        reconcileRecognition()
     }
 
     /// The streaming cascade: recognition stays open between exchanges and is restarted after every
-    /// final, no-speech or error without touching the recorder. Buttons remain the fallback.
-    private func startContinuousRecognition() {
-        guard audioState == .running else { return }
-        if recognizerAvailability.usable {
-            recognizer.startContinuous()
-            lastSpeechAt = Date()
-            startSilenceTimer()
-            logLine("continuous on-device recognition started")
-        } else {
-            logLine("live voice unavailable here: \(recognizerAvailability.label); typed input and buttons remain")
+    /// final, no-speech or error without touching the recorder. This is driven from BOTH the audio
+    /// running transition and the availability transition, so either callback order converges to one
+    /// continuous recognition request and never a duplicate. Buttons remain the fallback.
+    func reconcileRecognition() {
+        guard ownerRunning, recognizerAvailability.usable else {
+            if ownerRunning, !recognitionRequested {
+                logLine("live voice unavailable here: \(recognizerAvailability.label); typed input and buttons remain")
+            }
+            return
         }
+        guard !recognitionRequested else { return }
+        recognitionRequested = true
+        if let starter = recognitionStarter {
+            starter()
+        } else {
+            recognizer.startContinuous()
+        }
+        lastSpeechAt = Date()
+        startSilenceTimer()
+        logLine("continuous on-device recognition started")
     }
 
     func setBackendURL(_ s: String) {
