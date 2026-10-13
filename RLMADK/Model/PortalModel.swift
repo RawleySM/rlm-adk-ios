@@ -147,9 +147,22 @@ final class PortalModel: ObservableObject {
 
     // MARK: lifecycle
 
+    /// CI fixture/demo runs set `RLMADK_SKIP_PERMISSION_PROMPTS=1`: no speech or microphone permission
+    /// dialog is raised (the simulator cannot grant on-device recognition anyway), so screenshots show
+    /// the UI and the exact "live voice unavailable" condition. Real devices always prompt.
+    static let skipPermissionPrompts = ProcessInfo.processInfo.environment["RLMADK_SKIP_PERMISSION_PROMPTS"] == "1"
+
     func startAll() {
-        recognizer.requestAuthorization { [weak self] _ in Task { @MainActor in self?.startAudio() } }
-        AVAudioSession.sharedInstance().requestRecordPermission { [weak self] _ in Task { @MainActor in self?.startAudio() } }
+        if PortalModel.skipPermissionPrompts {
+            logLine("permission prompts skipped (fixture mode); live voice not requested")
+            var a = recognizerAvailability
+            a.detail = "not requested (fixture mode)"
+            availabilityChanged(a)
+            startAudio()
+        } else {
+            recognizer.requestAuthorization { [weak self] _ in Task { @MainActor in self?.startAudio() } }
+            AVAudioSession.sharedInstance().requestRecordPermission { [weak self] _ in Task { @MainActor in self?.startAudio() } }
+        }
         client.connect()
         Task { await refreshStatus() }
     }

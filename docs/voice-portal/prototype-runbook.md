@@ -173,9 +173,29 @@ Repository variable `APPLE_TEAM_ID=4PJBKY2WQR`. The small API client used for th
   returned an error` / `No Accounts with App Store Connect Access` for the API key.
 - `xcrun altool --upload-app` fails on Xcode 26.6 (`Defaults.properties` missing);
   `iTMSTransporter` reports it is now part of the Transporter app, which is not installed.
-- The App Store Connect **Build Upload API** (`buildUploads` / `buildUploadFiles`) is available to
-  this team; `scripts/asc_build_upload.py` implements it and refuses to re-send a build number that
-  already has a build.
+- The App Store Connect **Build Upload API** (`buildUploads` / `buildUploadFiles`, OpenAPI 4.5.1) is
+  available to this team; `scripts/asc_build_upload.py` implements it (receipt written after every
+  step, resumable by upload/file id, never re-sends a build number that already has a build, and a
+  resumed `PROCESSING` upload is polled to its real final state). It was exercised for real on
+  2026-10-13: build 3 was reserved, transferred (one 582,394-byte part, HTTP 200), committed
+  (`COMPLETE`) and taken to `PROCESSING` by Apple, which then **failed validation** with `90022`
+  (missing 120x120 icon) and `90713` (missing `CFBundleIconName`). The fix is the asset catalog
+  `RLMADK/Assets.xcassets/AppIcon.appiconset` (generated opaque 1024 px icon) plus
+  `ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon`; build 3 is spent and build 4 carries the icon.
+
+Manual upload from a machine that holds the key and a signed IPA:
+
+```bash
+python3 scripts/asc_build_upload.py --ipa build/export/RLMADK.ipa --app-id 6822129536 \
+  --key-id Z9XH3R3RV2 --issuer-id 192ea9f0-7f02-4fa4-9cac-051d567feced \
+  --key-path ~/.local/state/rlm-adk-ios-prototype-supervision/asc-key/AuthKey_Z9XH3R3RV2.p8 \
+  --receipt upload-receipt.json            # add --build-upload-id ID to resume a record
+```
+
+`testflight.yml` runs the same archive/export/upload on a standard macOS runner from the GitHub
+secrets. It is only dispatchable once the workflow file exists on the default branch (the first
+dispatch attempt returned 404 for that reason), so until the PR merges the exercised path is the
+cloud-Mac session plus this script.
 
 Version and build come from the build settings (`MARKETING_VERSION`, `CURRENT_PROJECT_VERSION`), wired
 into the generated Info.plist by XcodeGen; `testflight.yml` sets the build number from its input or

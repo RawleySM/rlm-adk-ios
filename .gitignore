@@ -7,3 +7,4 @@ __pycache__/
 backend/SOURCE_COMMIT
 RLMADK/Info.plist
 !docs/voice-portal/evidence/*.png
+!RLMADK/Assets.xcassets/**/*.png

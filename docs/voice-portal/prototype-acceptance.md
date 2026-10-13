@@ -19,10 +19,14 @@ in Git). Simulator screenshots are in [`evidence/`](evidence/). Every item below
 | Prayer intake (real service, sanctioned test run) | built/exercised | test run `9779e17af665492d8b1250e8bf8daab5`, capture `prayer-e2e-9779…`: segment 0 (194,860 bytes, sha `a9092ac0…`) uploaded and verified, repeat upload `reused`, wrong client hash refused locally, finalize → `recording_id b1e63969ae734b48924983a321fbdc3d`, status `finalized` (not published), intake verdict `passed`, hash match true |
 | Work outbox against the real inactive allocator | built/exercised | operation `c4eef2b3…`: dispatch → `backend_unavailable` with the exact refusal (`no live run; start it first`); `inbox list --all` returned retained rows from run `rlm-20260930T224441-1953105` without our id → status unchanged; source packet artifact served with `X-Artifact-Kind: source_packet`; identical state after service restart (pid 2306072) |
 | Outbox concurrency (OUTBOX-1/2) | built/exercised | regressions: two concurrent dispatches → one post, one attempt row, one directive file; forced interleaving: loser cannot touch the winner's per-attempt payload; crash-stale `posting` → `delivery_unknown`, never replayed; directive write failure → `local_write_failed`, retryable |
-| Native XCTest (32) | built/exercised | cloud Mac, Xcode 26.6 / macOS 26.6.2: reducer (quiet survives reconnect/relaunch, prayer silence, explicit finish, existing quiet, barge-in, ordinary completion), phrase queue, capture manifest (settlement, contiguous indexes, orphan reconciliation, next index), devotional progress, local work reconciliation, event decoding; `** TEST SUCCEEDED **` |
+| Native XCTest (37) | built/exercised | cloud Mac, Xcode 26.6 / macOS 26.6.2 and push CI: reducer (quiet survives reconnect/relaunch, prayer silence, explicit finish, existing quiet, barge-in, ordinary completion), phrase queue, capture manifest (settlement, contiguous indexes, orphan reconciliation, next index), devotional progress, local work reconciliation, event decoding, recognition startup wiring in both callback orders (VOICE-START-1), SegmentWriter closed guard; `** TEST SUCCEEDED **` |
 | Simulator build + launch + screenshots | built/exercised | unsigned build `** BUILD SUCCEEDED **`; app connected to the fixture backend (typed CI demo turn streamed with three citation chips) and to the real desktop backend through a reverse tunnel: John 15 (WEB) devotional with revision `5715112e39c8`, teaching found, qwen-coding-b turn first delta 785 ms; Diagnostics shows the real inference/intake/allocator state |
-| Live voice on a device | blocked | the simulator reports `speech recognition not authorized (1)`; on-device recognition, microphone, Bluetooth, lock-screen and interruption behaviour need a signed install on `iphone-12` |
-| Signing / device install | blocked | no Team ID or API key; the KeePassXC entry has metadata only; membership activation needs an interactive 2FA sign-in; no Xcode-capable Mac with a physical device path |
+| Live voice on a device | blocked (pending TestFlight install) | the simulator reports `speech recognition not authorized (1)`; on-device recognition, microphone, Bluetooth, lock-screen and interruption behaviour need the TestFlight build installed on `iphone-12` |
+| Membership, Team ID, signing assets | built/exercised | Individual membership active, Team `4PJBKY2WQR` (renewal 2027-10-12), verified in the existing authenticated browser session with no credential entry; API key `Z9XH3R3RV2`, bundle ID `87XJJ9FG5S`, Apple Distribution certificate `AUBJ7C9S7Y`, profile `rlm-adk-ios appstore` (`6SW4NCM292`), app record `6822129536`; all retained privately and as GitHub secrets (see runbook) |
+| Signed archive | built/exercised | manual Apple Distribution signing on the cloud Mac; `codesign --verify --deep --strict` passes; chain Apple Distribution: Rawley Stanhope (4PJBKY2WQR) → WWDR → Apple Root; IPA Info.plist `0.2.0` / build `3` after the XcodeGen version fix (first archive carried the literal `1.0`/`1`) |
+| Upload to App Store Connect (transport) | built/exercised | `xcodebuild` upload: `No Accounts with App Store Connect Access`; `altool`: `Defaults.properties` missing; `iTMSTransporter`: needs the Transporter app. Build Upload API via `scripts/asc_build_upload.py`: record `cce73538-7d53-4cf1-b6ce-0e985b01215e`, file `f9dbb5e8-99cd-4c5e-a17d-2f89cf7873b2`, one part 582,394 bytes HTTP 200, commit `COMPLETE`, Apple state `PROCESSING` (receipt `fable-evidence/signed/v3/upload-receipt.json`); 8 fake-service tests cover the official payloads, retained ids, resumed-PROCESSING polling and the no-resend rule |
+| Apple validation of build 3 | failed (fixed in build 4) | `90022` missing 120x120 icon, `90713` missing `CFBundleIconName`; see "TestFlight upload" below |
+| Device install | blocked (no registered device) | no UDID is known, so no development/ad-hoc profile; the private route is TestFlight internal testing once a build has processed |
 | `spark-small` on Spark-B | blocked (owner condition) | two cold starts failed in ~100 ms with `engine_start_error`, owner log `Docker GET failed: HTTP 404` for the profile image; circuit opened (consecutive_failures 2). Spark-A: `insufficient_memory_for_envelope`. Not an action this prototype may take |
 
 ## What was exercised, in order
@@ -76,6 +80,19 @@ in Git). Simulator screenshots are in [`evidence/`](evidence/). Every item below
 - Heard passage: supplied at the exact revision heard, flagged if historical; failed references are
   reported as not supplied.
 - CI: `pipefail` with wrapped greps so a build failure can never read as success; full logs uploaded.
+- VOICE-START-1: recognition startup now follows the authoritative audio-running and availability
+  transitions in either order, once per session, with controller-level tests.
+- SegmentWriter: appends after close/settlement are dropped (reproduced in a test).
+- BUILD-VERSION-1: Info.plist version/build come from `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION`.
+- UPLOAD-1: the upload helper follows the official `BuildUploadFileUpdateRequest` (plural
+  `sourceFileChecksums`), persists ids before each side effect and reconciles instead of recreating.
+
+## TestFlight upload
+
+| Build | Outcome |
+| --- | --- |
+| 0.2.0 (3), IPA md5 `a48eec019c978707a2739083eabbe18a`, signed on cloud-Mac session 38339802786 | Transport succeeded end to end through the Build Upload API; Apple validation **FAILED**: `90022` (no 120x120 icon in the bundle) and `90713` (no `CFBundleIconName`). The app had no asset catalog. Build number 3 is spent on App Store Connect. |
+| 0.2.0 (4), with `Assets.xcassets/AppIcon` | see the row below once processed |
 
 ## Proof boundaries
 

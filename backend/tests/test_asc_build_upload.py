@@ -30,6 +30,8 @@ class FakeASC:
         self.fail_part_once = fail_part_once
         self.part_count = part_count
         self.builds = []
+        self.file_get_status = {}      # file_id -> forced HTTP status for GET
+        self.upload_state_sequence = []  # successive states returned for GET buildUploads/{id}
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
         self.server.daemon_threads = True
         self.port = self.server.server_address[1]
@@ -70,9 +72,13 @@ class FakeASC:
                     uid = self.path.split("/")[3]
                     if uid not in fake.uploads:
                         return self._json(404, {"errors": [{"status": "404"}]})
+                    if fake.upload_state_sequence:
+                        fake.uploads[uid]["state"] = {"state": fake.upload_state_sequence.pop(0), "errors": [], "warnings": [], "infos": []}
                     return self._json(200, {"data": {"type": "buildUploads", "id": uid, "attributes": fake.uploads[uid]}})
                 if self.path.startswith("/v1/buildUploadFiles/"):
                     fid = self.path.split("/")[3].split("?")[0]
+                    if fid in fake.file_get_status:
+                        return self._json(fake.file_get_status[fid], {"errors": [{"status": str(fake.file_get_status[fid]), "title": "forced"}]})
                     if fid not in fake.files:
                         return self._json(404, {"errors": [{"status": "404"}]})
                     return self._json(200, {"data": {"type": "buildUploadFiles", "id": fid, "attributes": fake.files[fid]}})
@@ -203,6 +209,65 @@ class BuildUploadTests(unittest.TestCase):
             self.assertEqual([p[2]["x_part"] for p in puts], ["1", "2", "2"])  # only the failed part was re-sent
             self.assertEqual(len(fake.uploads), 1)
             self.assertEqual(len(fake.files), 1)
+        finally:
+            fake.stop()
+
+    def test_resumed_processing_upload_is_polled_not_reported_green(self):
+        """UPLOAD-2: PROCESSING is not acceptance; the resumed run polls to FAILED/deadline or COMPLETE."""
+        for sequence, expected in (("PROCESSING", "PROCESSING", "FAILED"), 1), (("PROCESSING", "PROCESSING"), 1), (("PROCESSING", "COMPLETE"), 0):
+            fake = FakeASC()
+            fake.uploads["upload-p"] = {"cfBundleShortVersionString": "0.2.0", "cfBundleVersion": "3", "state": {"state": "PROCESSING"}}
+            fake.upload_state_sequence = list(sequence)
+            try:
+                args = self._args(fake, build_upload_id="upload-p")
+                args.poll_seconds = 1
+                rc = asc.run(args, asc.Client(None, "K", "I", api=fake.url, token="t"), log=lambda s: None)
+                self.assertEqual(rc, expected, sequence)
+                self.assertFalse(any(r[0] in ("POST", "PUT", "PATCH") for r in fake.requests), "resumed upload must not re-send")
+                receipt = json.load(open(self.dir / "receipt.json"))
+                self.assertEqual(receipt["final_state"]["state"], sequence[-1])
+            finally:
+                fake.stop()
+                (self.dir / "receipt.json").unlink(missing_ok=True)
+
+    def test_unreadable_file_record_fails_and_keeps_ids(self):
+        """UPLOAD-3: a transient 500 on the recorded file must not create a replacement reservation."""
+        fake = FakeASC(fail_part_once=True)
+        try:
+            client = asc.Client(None, "K", "I", api=fake.url, token="t")
+            with self.assertRaises(Exception):
+                asc.run(self._args(fake), client, log=lambda s: None)
+            fake.file_get_status["file-1"] = 500
+            rc = asc.run(self._args(fake), client, log=lambda s: None)
+            self.assertEqual(rc, 1)
+            receipt = json.load(open(self.dir / "receipt.json"))
+            self.assertEqual(receipt["build_upload_id"], "upload-1")
+            self.assertEqual(receipt["build_upload_file_id"], "file-1")
+            self.assertEqual(sum(1 for r in fake.requests if r[0] == "POST"), 2)
+            self.assertEqual(len(fake.files), 1)
+            # once readable again, the same reservation is resumed and only the failed part is sent
+            del fake.file_get_status["file-1"]
+            rc = asc.run(self._args(fake), client, log=lambda s: None)
+            self.assertEqual(rc, 0)
+            self.assertEqual([p[2]["x_part"] for p in fake.requests if p[0] == "PUT"], ["1", "2", "2"])
+        finally:
+            fake.stop()
+
+    def test_mismatched_reservation_is_replaced_without_inheriting_part_progress(self):
+        fake = FakeASC(fail_part_once=True)
+        try:
+            client = asc.Client(None, "K", "I", api=fake.url, token="t")
+            with self.assertRaises(Exception):
+                asc.run(self._args(fake), client, log=lambda s: None)  # part 1 done, part 2 failed on file-1
+            fake.files["file-1"]["fileSize"] = 1  # the recorded reservation no longer matches this IPA
+            rc = asc.run(self._args(fake), client, log=lambda s: None)
+            self.assertEqual(rc, 0)
+            self.assertEqual(len(fake.files), 2)
+            puts = [(p[1].split("/")[2], p[2]["x_part"]) for p in fake.requests if p[0] == "PUT"]
+            self.assertEqual(puts, [("file-1", "1"), ("file-1", "2"), ("file-2", "1"), ("file-2", "2")])  # both parts re-sent for file-2
+            receipt = json.load(open(self.dir / "receipt.json"))
+            self.assertEqual(receipt["build_upload_file_id"], "file-2")
+            self.assertIn("abandon_file", [s["step"] for s in receipt["steps"]])
         finally:
             fake.stop()
 

@@ -11,7 +11,9 @@ Contract (App Store Connect API 4.5.1 OpenAPI, resources buildUploads / buildUpl
 
 Every identifier is written to the receipt BEFORE the next side effect, so a failed invocation can be
 re-run with --receipt (or --build-upload-id) and reconcile the existing upload/file instead of
-creating a second one. A build number that already has a build on the app is never re-sent.
+creating a second one. A build number that already has a build on the app is never re-sent. A resumed
+upload that is already PROCESSING is polled to its final state (never reported as success early); an
+unreadable file record fails the run with ids retained rather than reserving a replacement.
 """
 from __future__ import annotations
 
@@ -125,8 +127,8 @@ def create_payload(app_id: str, version: str, build: str) -> dict:
     return {"data": {"type": "buildUploads", "attributes": {"cfBundleShortVersionString": version, "cfBundleVersion": build, "platform": "IOS"}, "relationships": {"app": {"data": {"type": "apps", "id": app_id}}}}}
 
 
-def put_parts(ops: list[dict], data: bytes, receipt: Receipt, log) -> None:
-    done = {s.get("part") for s in receipt.data["steps"] if s.get("step") == "part" and s.get("http") in (200, 201, 204)}
+def put_parts(ops: list[dict], data: bytes, receipt: Receipt, log, file_id: str) -> None:
+    done = {s.get("part") for s in receipt.data["steps"] if s.get("step") == "part" and s.get("file_id") == file_id and s.get("http") in (200, 201, 204)}
     for op in sorted(ops, key=lambda o: o.get("partNumber", o["offset"])):
         n = op.get("partNumber") or (op["offset"] // max(op["length"], 1) + 1)
         if n in done:
@@ -138,7 +140,7 @@ def put_parts(ops: list[dict], data: bytes, receipt: Receipt, log) -> None:
             req.add_header(h["name"], h["value"])
         with urllib.request.urlopen(req, timeout=600) as r:
             log(f"  part {n}/{len(ops)}: {len(chunk)} bytes -> HTTP {r.status}")
-            receipt.step("part", part=n, bytes=len(chunk), http=r.status)
+            receipt.step("part", file_id=file_id, part=n, bytes=len(chunk), http=r.status)
 
 
 def run(args, client: Client, log=print) -> int:
@@ -157,6 +159,8 @@ def run(args, client: Client, log=print) -> int:
             return 3
 
     upload_id = args.build_upload_id or receipt.data.get("build_upload_id")
+    skip_transfer = False
+    committed = False
     if upload_id:
         st, d = client.call("GET", f"/v1/buildUploads/{upload_id}")
         if st != 200:
@@ -169,9 +173,17 @@ def run(args, client: Client, log=print) -> int:
             return 1
         receipt.set(build_upload_id=upload_id)
         receipt.step("reconcile_upload", http=st, state=attrs.get("state"))
-        if (attrs.get("state") or {}).get("state") in ("COMPLETE", "PROCESSING"):
-            log(f"build upload {upload_id} already {attrs['state']['state']}; nothing to send")
-            return 0
+        resumed_state = (attrs.get("state") or {}).get("state")
+        if resumed_state in ("COMPLETE", "PROCESSING", "FAILED"):
+            # Nothing to (re)send: the binary is already with Apple. Fall through to the same polling
+            # and final-state checks as a fresh upload; PROCESSING is not acceptance.
+            log(f"build upload {upload_id} already {resumed_state}; not re-sending, polling for the final state")
+            committed = True
+            file_id = None
+            ops = []
+            skip_transfer = True
+        else:
+            skip_transfer = False
     else:
         st, d = client.call("POST", "/v1/buildUploads", create_payload(args.app_id, version, build))
         receipt.step("create_upload", http=st, errors=d.get("errors"))
@@ -185,31 +197,35 @@ def run(args, client: Client, log=print) -> int:
     with open(args.ipa, "rb") as f:
         data = f.read()
     size = len(data)
-    file_id = receipt.data.get("build_upload_file_id")
+    file_id = None if skip_transfer else receipt.data.get("build_upload_file_id")
     ops: list[dict] = []
     if file_id:
         st, d = client.call("GET", f"/v1/buildUploadFiles/{file_id}?fields[buildUploadFiles]=assetDeliveryState,fileName,fileSize,uploadOperations")
-        receipt.step("reconcile_file", http=st, state=(d.get("data", {}).get("attributes", {}) or {}).get("assetDeliveryState"))
-        if st == 200:
-            a = d["data"]["attributes"]
-            state = (a.get("assetDeliveryState") or {}).get("state")
-            if state in ("UPLOAD_COMPLETE", "COMPLETE"):
-                log(f"file {file_id} already {state}; skipping upload and commit")
-                file_id = None
-                ops = []
-                committed = True
-            elif a.get("fileName") == os.path.basename(args.ipa) and int(a.get("fileSize", -1)) == size:
-                ops = a.get("uploadOperations") or []
-                committed = False
-                log(f"reusing file reservation {file_id} ({state}); {len(ops)} operation(s)")
-            else:
-                log(f"file {file_id} does not match this IPA; a fresh reservation is needed")
-                file_id = None
-                committed = False
+        receipt.step("reconcile_file", http=st, state=(d.get("data", {}).get("attributes", {}) or {}).get("assetDeliveryState"), errors=d.get("errors"))
+        if st != 200:
+            # UPLOAD-3: an unreadable record does not establish absence. Keep the ids for a later
+            # reconciliation and fail this invocation instead of reserving a second file.
+            log(f"file reservation {file_id} not readable (HTTP {st}); keeping ids, not creating a replacement")
+            return 1
+        a = d["data"]["attributes"]
+        state = (a.get("assetDeliveryState") or {}).get("state")
+        if state in ("UPLOAD_COMPLETE", "COMPLETE"):
+            log(f"file {file_id} already {state}; skipping upload and commit")
+            file_id = None
+            ops = []
+            committed = True
+        elif a.get("fileName") == os.path.basename(args.ipa) and int(a.get("fileSize", -1)) == size:
+            ops = a.get("uploadOperations") or []
+            committed = False
+            log(f"reusing file reservation {file_id} ({state}); {len(ops)} operation(s)")
         else:
+            # Genuinely mismatched reservation (different file or size): replace it deliberately. Part
+            # progress is scoped to the file id, so the new file's parts are never skipped.
+            log(f"file {file_id} is {a.get('fileName')}/{a.get('fileSize')} (state {state}), not this IPA; reserving a new file")
+            receipt.step("abandon_file", file_id=file_id, reason="mismatch")
             file_id = None
             committed = False
-    else:
+    elif not skip_transfer:
         committed = False
     if not file_id and not committed:
         st, d = client.call("POST", "/v1/buildUploadFiles", reserve_payload(upload_id, os.path.basename(args.ipa), size))
@@ -222,7 +238,7 @@ def run(args, client: Client, log=print) -> int:
         receipt.set(build_upload_file_id=file_id, upload_operations=len(ops))
         log(f"file reservation {file_id}: {len(ops)} upload operation(s)")
     if file_id and not committed:
-        put_parts(ops, data, receipt, log)
+        put_parts(ops, data, receipt, log, file_id)
         md5_hex = hashlib.md5(data).hexdigest()
         st, d = client.call("PATCH", f"/v1/buildUploadFiles/{file_id}", commit_payload(file_id, md5_hex))
         receipt.step("commit_file", http=st, md5=md5_hex, state=(d.get("data", {}).get("attributes", {}) or {}).get("assetDeliveryState"), errors=d.get("errors"))
