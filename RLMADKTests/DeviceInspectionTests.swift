@@ -331,12 +331,12 @@ final class DeviceInspectionTests: XCTestCase {
     }
 
     func testRecentLogIsDurableAcrossModels() {
-        let marker = "durable-log-marker-\(UUID().uuidString.prefix(8))"
+        let marker = "marker-\(UUID().uuidString.lowercased())"
         let model = PortalModel()
-        model.handleCommand(["type": "command", "command_id": marker, "kind": "unknown-kind"]) // logs a line containing the marker
-        XCTAssertTrue(model.log.contains(where: { $0.contains(marker.prefix(8)) }))
+        model.handleCommand(["type": "command", "command_id": "log-1", "kind": marker]) // unsupported kind: the log line names it in full
+        XCTAssertTrue(model.log.contains(where: { $0.contains(marker) }))
         let again = PortalModel()
-        XCTAssertTrue(again.log.contains(where: { $0.contains(marker.prefix(8)) }), "the durable log is reloaded on launch")
+        XCTAssertTrue(again.log.contains(where: { $0.contains(marker) }), "the durable log is reloaded on launch")
     }
 
     func testArgumentDecoding() {

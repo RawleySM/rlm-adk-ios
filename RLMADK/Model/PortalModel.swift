@@ -879,7 +879,8 @@ final class PortalModel: ObservableObject {
                 guard let data = try? Data(contentsOf: url) else { return nil }
                 return (data, SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined())
             }.value
-            guard let (data, digest) = read else { failed.append("\(seg.index):unreadable"); logLine("copy \(plan.captureId) #\(seg.index): unreadable"); continue }
+            guard let read else { failed.append("\(seg.index):unreadable"); logLine("copy \(plan.captureId) #\(seg.index): unreadable"); continue }
+            let (data, digest) = read
             do {
                 let raw = try await client.postRaw("devices/\(installId)/captures/\(plan.captureId)/files/\(seg.index)", body: data, headers: ["Content-Type": "audio/wav", "X-SHA256": digest, "X-Filename": seg.filename, "X-Command-Id": commandId])
                 let resp = (try? JSONSerialization.jsonObject(with: raw) as? [String: Any]) ?? [:]
@@ -896,9 +897,8 @@ final class PortalModel: ObservableObject {
                 logLine("copy \(plan.captureId) #\(seg.index): \(error.localizedDescription)")
             }
         }
-        if let payload = Optional(await manifestPayload()) {
-            _ = try? await client.post("devices/\(installId)/manifest", json: payload, as: [String: AnyDecodable].self)
-        }
+        let payload = await manifestPayload()
+        _ = try? await client.post("devices/\(installId)/manifest", json: payload, as: [String: AnyDecodable].self)
         // Applied means every named file was copied and verified; anything missing or failed is a
         // failure with the exact indexes, so a partial copy can never read as complete.
         let complete = failed.isEmpty && plan.missingIndexes.isEmpty && !plan.files.isEmpty
