@@ -165,7 +165,13 @@ final class Recognizer: NSObject {
     /// request opens immediately under the new owner so no audio is lost between the two.
     func rebindOwner(_ owner: String?) {
         nextOwner = owner
-        guard let request = current, request.owner != owner else { return }
+        guard let request = current else {
+            // Nothing is accepting audio (a request is draining or the restart is pending): in
+            // supervised mode the new owner's request opens now rather than after the restart delay.
+            if continuous { start() }
+            return
+        }
+        guard request.owner != owner else { return }
         endCurrent()
         if continuous { start() }
     }

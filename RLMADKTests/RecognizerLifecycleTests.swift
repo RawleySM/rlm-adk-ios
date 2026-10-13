@@ -88,10 +88,19 @@ final class RecognizerLifecycleTests: XCTestCase {
         engine.requests[0].final("amen")
         engine.requests[1].final("amen")
         XCTAssertEqual(finals.map { $0.owner }, [nil, "prayer-A"])
-        // Identical text twice from the same owner within three seconds (restart overlap) is one.
+        XCTAssertFalse(recognizer.isListening, "the prayer request settled; the supervised restart is still pending")
+        // End prayer with nothing accepting: the conversation request opens at once, not after the
+        // restart delay, so the first words after "end prayer" are not lost.
         recognizer.rebindOwner(nil)
+        XCTAssertEqual(engine.requests.count, 3)
+        XCTAssertTrue(recognizer.isListening)
+        XCTAssertNil(recognizer.currentOwner)
+        // Identical text twice from the same owner within three seconds (restart overlap) is one.
         engine.requests[2].final("amen")
         XCTAssertEqual(finals.count, 2)
+        recognizer.rebindOwner("prayer-B")
+        engine.requests[3].final("amen")
+        XCTAssertEqual(finals.last!.owner, "prayer-B")
     }
 
     func testManualRestartEndsButDoesNotDropThePendingFinal() {
