@@ -120,6 +120,15 @@ Required checks for the first prototype:
 
 The final implementation report must distinguish built/exercised, built/unverified and blocked. It should name how to run the backend and phone build, show actual evidence paths and disclose remaining device/provider limits. It must not present a scaffold, mock-only demonstration or HTTP health check as completed end-to-end behavior.
 
+## Device-session amendments (2026-10-13)
+
+After the first TestFlight build ran on the phone, the cascade's cancellation contract was tightened:
+a cancel must reach the inference owner while the request is still waiting for headers (cold start)
+or for the next SSE line, so that an abandoned turn never keeps an owner slot; a new final transcript
+supersedes the session's pending turn on both the phone and the server; barge-in on partial speech is
+unchanged. Findings and evidence are in the
+[acceptance report](prototype-acceptance.md#physical-device-session-findings-2026-10-13-build-020-4-on-iphone-12).
+
 ## Review adjudication and supervision
 
 Claude Fable's review completed successfully, with no permission denials. Accept F1's native audio simplification, F4's on-device recognition/native TTS split, F5's small SQLite design, F6's actual prayer intake, and F7's build configuration checks. Correct F2/F3/D3/D5 using the desktop evidence above; reject the claim that the current allocator is masked or absent on desktop and the unnecessary new tunnel. Remove D2's unused raw-audio uplink. Strengthen outbox uncertain-delivery and artifact-link evidence as above. These are the final implementation choices, superseding contradictory details in the preserved review.

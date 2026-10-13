@@ -42,7 +42,7 @@ final class PortalModel: ObservableObject {
     private let store: LocalStore
     private var ciDemoDone = false
     private var silenceTimer: Timer?
-    private var lastSpeechAt = Date()
+    private var endpoint = EndpointClock()
     private var sessionId: String?
 
     /// Voice command phrases (configuration, recorded in the runbook). Buttons are the deterministic fallback.
@@ -96,7 +96,7 @@ final class PortalModel: ObservableObject {
         recognizer.onPartial = { [weak self] text in Task { @MainActor in self?.partial(text) } }
         recognizer.onFinal = { [weak self] text in Task { @MainActor in self?.final(text, source: "voice") } }
         recognizer.onGap = { [weak self] gap in Task { @MainActor in self?.recordGap(gap) } }
-        recognizer.onRestart = { [weak self] reason in Task { @MainActor in self?.logLine("recognition restarted (\(reason))") } }
+        recognizer.onRestart = { [weak self] reason in Task { @MainActor in self?.recognitionRestarted(reason) } }
         speaker.onStateChange = { [weak self] s in Task { @MainActor in self?.speaking = s } }
         speaker.onUtteranceStarted = { [weak self] tag in Task { @MainActor in self?.devotionalSegmentStarted(tag) } }
         speaker.onUtteranceFinished = { [weak self] tag in Task { @MainActor in self?.devotionalSegmentFinished(tag) } }
@@ -225,7 +225,7 @@ final class PortalModel: ObservableObject {
         } else {
             recognizer.startContinuous()
         }
-        lastSpeechAt = Date()
+        endpoint.requestStarted()
         startSilenceTimer()
         logLine("continuous on-device recognition started")
     }
@@ -269,23 +269,35 @@ final class PortalModel: ObservableObject {
         apply(.userSpeechStarted)
         partialTranscript = ""
         if recognizer.continuous { recognizer.start() } else { recognizer.startContinuous() }
-        lastSpeechAt = Date()
+        endpoint.requestStarted()
         startSilenceTimer()
         logLine(recognizerAvailability.usable ? "listening (on-device, manual restart)" : "listen requested but \(recognizerAvailability.label)")
     }
 
     private var utteranceInterrupted = false
 
+    /// Recognition request restarted (after a final, no-speech or error): the silence window restarts
+    /// too, so the fresh request is not end-pointed immediately by the previous utterance's age.
+    func recognitionRestarted(_ reason: String) {
+        endpoint.requestStarted()
+        logLine("recognition restarted (\(reason))")
+    }
+
     private func partial(_ text: String) {
         partialTranscript = text
-        lastSpeechAt = Date()
-        // Real speech interrupts whatever is playing (response, trailing TTS, devotional), once per utterance.
+        endpoint.speech()
+        // Real speech interrupts whatever is playing or pending (response, trailing TTS, devotional),
+        // once per utterance: a pending answer must not start speaking over the user's next utterance.
         if !utteranceInterrupted, !mode.isPraying, (speaker.isSpeaking || devotionalPlaying || mode.currentTurnId != nil) {
             utteranceInterrupted = true
             apply(.userSpeechStarted)
         }
         if let turnId = mode.currentTurnId { client.send(["type": "partial_transcript", "turn_id": turnId, "text": text]) }
     }
+
+    /// Test seam for the partial path (the recognizer is not available in the simulator).
+    func partialTranscriptReceived(_ text: String) { partial(text) }
+    var endpointClock: EndpointClock { endpoint }
 
     private func final(_ text: String, source: String) {
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -321,9 +333,11 @@ final class PortalModel: ObservableObject {
         silenceTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                let silent = Date().timeIntervalSince(self.lastSpeechAt)
+                let silent = self.endpoint.silentFor()
                 self.apply(.silence(seconds: silent)) // no-op by design; prayer never ends on silence
-                if !self.mode.isPraying, self.recognizer.isListening, silent > 2.5 { self.recognizer.endUtterance() }
+                if self.endpoint.shouldEndUtterance(listening: self.recognizer.isListening, praying: self.mode.isPraying) {
+                    self.recognizer.endUtterance()
+                }
             }
         }
     }
