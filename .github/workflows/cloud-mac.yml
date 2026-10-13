@@ -101,6 +101,11 @@ jobs:
         run: |
           export VOICE_PORTAL_STATE="$RUNNER_TEMP/voice_portal_state"
           UDID="${{ steps.sim.outputs.udid }}"
+          # Fresh device state after the XCTest host ran the same bundle: no lingering system alerts.
+          xcrun simctl shutdown "$UDID" || true
+          xcrun simctl erase "$UDID"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
           APP=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 1 -name 'RLMADK.app' | head -1)
           xcrun simctl install "$UDID" "$APP"
           # Fixture mode: the app requests neither speech recognition nor the microphone and does not

@@ -197,6 +197,11 @@ final class PortalModel: ObservableObject {
     }
 
     func availabilityChanged(_ availability: Recognizer.Availability) {
+        var availability = availability
+        if PortalModel.skipPermissionPrompts {
+            availability.authorized = false
+            availability.detail = "not requested (fixture mode)"
+        }
         recognizerAvailability = availability
         if !availability.usable { recognitionRequested = false }
         reconcileRecognition()
