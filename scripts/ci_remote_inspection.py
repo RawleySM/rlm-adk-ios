@@ -90,8 +90,11 @@ def main():
         problems.append(f"image is not the one the phone reported for this command: {report['image']}")
     if report["image"]["snapshot_tab"] != "work":
         problems.append(f"image snapshot does not show the current tab (work): {report['image']['snapshot_tab']}")
-    if after_work["reason"] != "tab" or after_work["client_time"] <= after_portal["client_time"]:
-        problems.append(f"tab transition snapshots not in order/reason: {report['tab_transition']}")
+    # This endpoint stores the latest observation. A heartbeat can replace the tab-change
+    # snapshot before our GET, while still proving the selected tab after the applied command.
+    # The waits above require portal then work; their client timestamps must also advance.
+    if after_work["client_time"] <= after_portal["client_time"]:
+        problems.append(f"tab transition snapshots not in order: {report['tab_transition']}")
     if report["commands"]["dismiss_keyboard"].get("result", {}).get("keyboard_visible_after") != "no":
         problems.append(f"dismiss did not report the observed post-state: {report['commands']['dismiss_keyboard']}")
     if not any(c[1] == len(seed) and c[2] == seed_sha for c in copied):

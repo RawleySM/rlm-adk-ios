@@ -28,7 +28,20 @@ Xcode, so all Xcode work happens on GitHub-hosted macOS runners.
 
 - Apple Developer, Individual: KeePassXC entry
   "Apple Developer + App Store Connect - Individual - Enrollment 9Z9523324Y".
-- Membership is active. Team `4PJBKY2WQR`, signing assets and the App Store Connect API key are
-  configured; build `0.2.0 (4)` is available for internal TestFlight testing. Reuse the existing
-  assets and the workflow in `docs/voice-portal/prototype-runbook.md`. TestFlight installation
-  does not require registering a device UDID; physical-device voice validation remains pending.
+- Membership is active. Team `4PJBKY2WQR`, the Apple Distribution identity, the App Store profile
+  and the App Store Connect API key are configured. Reuse the existing certificate across builds;
+  replace it only when renewal or an actual signing failure requires it. Do not publish to the
+  public App Store.
+- This is permanently a private app for Rawley alone. The default delivery is a **direct signed
+  install** (Ad Hoc / release-testing export for the registered iPhone) through
+  `.github/workflows/direct-install.yml` and `scripts/direct_install.py`; TestFlight
+  (`testflight.yml`, last build `0.2.0 (6)`, VALID / IN_BETA_TESTING) is the fallback only and is
+  not dispatched for routine builds. Direct install needs the phone's UDID registered to the team
+  and an Ad Hoc profile that lists it (`ADHOC_PROFILE_BASE64`); the workflow fails before signing
+  when that profile is absent or unsuitable. Developer Mode on the phone is required to run an app
+  installed from an IPA (Apple, "Distributing your app to registered devices"); Apple's
+  certificate check runs online at first launch. Signing a build and installing it on the phone
+  are separate steps. Upgrade the same bundle id without uninstalling; copy retained prayer and
+  ambient captures before changing installation channels and verify their bytes afterward.
+  Physical-device validation remains pending.
+  See `docs/voice-portal/prototype-runbook.md`, "Direct private installation".

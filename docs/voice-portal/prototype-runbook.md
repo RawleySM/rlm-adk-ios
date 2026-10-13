@@ -149,8 +149,10 @@ remain local. Files live in the app container: `Documents/captures/<captureId>/N
 `LSSupportsOpeningDocumentsInPlace` expose that directory as **Files > On My iPhone > RLM-ADK** and
 in Finder's file sharing.
 
-1. Update the app through TestFlight (same bundle id). Do **not** uninstall: deleting the app deletes
-   the container and every capture with it.
+1. Copy the current app's Documents through the paired developer connection or existing file sharing
+   before changing installation channels when accessible. Use the direct private installation route
+   below for updates of the same bundle id; TestFlight is a fallback. Do **not** uninstall: deleting
+   the app deletes the container and every capture with it.
 2. In Files, open On My iPhone > RLM-ADK, select `captures.json` and the `captures/` folder, and
    copy (share/AirDrop/Finder copy) to the Mac or desktop. Copy; do not move or delete.
 3. Hash the copied WAVs (`sha256sum`) and compare with `captures.json` before anything else.
@@ -250,7 +252,8 @@ CI exercises all of this against the fixture backend with the real simulator cli
 including a byte-for-byte copy of a seeded capture file, a portal-to-work tab transition observed
 in the snapshots, and the image matched to its command id; the keyboard navigation XCUITest
 requires the software keyboard (the hardware keyboard is disabled before the simulator boots).
-Simulator evidence only; the phone must install the new build (over TestFlight, not an uninstall).
+Simulator evidence only; the phone must receive an upgrade through the direct private installation
+route below (or the retained TestFlight fallback), without uninstalling.
 
 ## Signing, TestFlight and device
 
@@ -321,11 +324,79 @@ the run number.
 
 ### Device
 
-- The private install route is TestFlight internal testing (no device UDID needed). Build 4 is
-  `VALID` and `IN_BETA_TESTING`; Rawley's account is already the internal tester (`INVITED`, verified
-  2026-10-13 03:22 UTC). Accept the invitation and install through TestFlight on the phone.
+- TestFlight internal testing is now the **fallback** route (no device UDID needed). The last
+  TestFlight build is `0.2.0 (6)`, `VALID` / `IN_BETA_TESTING`; its installation on the phone is
+  unverified. The default private route is the direct signed install below.
 - `iphone-12` is on the tailnet (state `-`); the only owned Mac with a device path (`macbook-rawley`,
-  macOS 12.7.6) cannot run current Xcode, so a cabled install is not available.
+  macOS 12.7.6) cannot run current Xcode, but it can pair with the phone over USB for
+  `pymobiledevice3` and for reading the UDID.
 - Physical-device voice behaviour (microphone, on-device recognition, Bluetooth, lock screen,
-  interruptions) remains unverified until the TestFlight build is installed and exercised on the phone.
-  Next build numbers must be > 4 (`testflight.yml` uses its input or the run number).
+  interruptions) remains unverified until a build is installed and exercised on the phone.
+  Build numbers are one shared sequence across both routes; the next is > 6.
+
+## Direct private installation (Ad Hoc / release-testing, no TestFlight)
+
+This app is permanently private to Rawley's phone, so the default delivery minimises Apple's part:
+Apple still issues the certificate, the registered device and the provisioning profile, and its
+certificate check runs at first launch, but there is no upload, processing, review or TestFlight.
+Signing a build and installing it on the phone are two separate steps.
+
+One-time device setup (registration and Ad Hoc profile pending as of 2026-10-13; the team and
+distribution certificate already exist):
+
+1. The phone's UDID. Cable the phone to the MacBook or Spark once (unlock it and accept "Trust This
+   Computer", the computer-pairing trust, which is unrelated to any "trust developer" setting):
+   `pymobiledevice3 usbmux list` prints the UDID and `ProductVersion`.
+2. Register the device to team `4PJBKY2WQR` (App Store Connect API `devices`, platform IOS) and
+   create an **Ad Hoc** profile for bundle `87XJJ9FG5S` / `com.rawleystanhope.rlmadk` with the
+   existing Apple Distribution certificate `AUBJ7C9S7Y` and that device (`profiles`, type
+   `IOS_APP_ADHOC`). Download it and store it base64 as the GitHub secret `ADHOC_PROFILE_BASE64`.
+   The profile expires with the certificate (2027-10-13 at the latest); every build's receipt
+   shows the exact expiry, and an expired profile stops the app from launching.
+3. Enable **Developer Mode** on the phone (Settings > Privacy & Security > Developer Mode, restart).
+   Apple's "Distributing your app to registered devices" says it is required to run an iOS app
+   installed from an IPA. Observe the phone's actual prompts; nothing here promises their absence.
+
+Build and package (`.github/workflows/direct-install.yml`, manual dispatch; it is dispatchable once
+the file is on `main`):
+
+```bash
+gh workflow run direct-install.yml -R RawleySM/rlm-adk-ios \
+  -f build_number=7 -f device_udid=<UDID> -f base_url=https://<our host>/ios/build7
+```
+
+- `build_number` is required and must advance the shared sequence (TestFlight used 6).
+- The run decodes the profile with `security cms`, and `scripts/direct_install.py validate-profile`
+  rejects anything that is not an Ad Hoc profile for this team and bundle that lists the exact
+  UDID (enterprise, App Store, development or expired profiles, or a missing secret, fail the run
+  before signing; nothing is ever substituted).
+- The export method is read from the runner's `xcodebuild -help` (`release-testing`, the current
+  name for Ad Hoc; `ad-hoc` as fallback) and the export options plist is written for that method
+  and the validated profile name. The existing Apple Distribution identity signs the archive.
+- The **exported** IPA is inspected, not the archive: its `embedded.mobileprovision` is decoded
+  and validated again, `codesign --verify --deep --strict` must pass, and `codesign -dvvv` plus the
+  entitlements must agree with the validated profile (identifier, team, Apple Distribution
+  authority, `application-identifier`, no `get-task-allow`, no `beta-reports-active`). Only then
+  is `direct-install-receipt.json` written: commit, export method, bundle id, version, build,
+  IPA sha256 and size, signing authorities and cdhash, profile name, UUID, expiry, days left,
+  certificate fingerprints and the device list the build installs on.
+- `scripts/direct_install.py package` writes `manifest.plist`, `index.html` and the sha256 sidecar
+  for the given HTTPS base URL, taking the identity from the package itself. No hosting is set up
+  by the run; the artifact `direct-install-<build>` holds the IPA, receipt, manifest, page and logs.
+
+Installing on the phone (acceptance step, separate from the build):
+
+- Paired route: from the Mac helper with the phone cabled (or on a Wi-Fi pairing created over the
+  cable), `pymobiledevice3 apps install RLMADK.ipa`. This is an upgrade of the same bundle id under
+  the same team; do **not** uninstall first, which would delete the retained captures.
+- Link route (later, once we host the files over HTTPS): open `index.html` on the phone and tap
+  "Install on this iPhone"; the `itms-services` link needs a trusted HTTPS manifest. It is a tap on
+  the phone, never a silent push.
+- First launch: the phone must be online for Apple's certificate check (PPQ); Developer Mode must
+  be on. Then verify retention, not assume it: before installing, run `sync_manifest` and note the
+  captures' bytes and sha256 from `GET /devices/<id>/manifest`; after installing and launching,
+  run it again and compare files and bytes. The install id can be compared only if the previous
+  build already reported one (build 6 did; build 5 and earlier did not), so a new install id on
+  the first migration is not by itself proof of data loss.
+- Local tests for the utility run on Linux in the backend test job (`tests/test_direct_install.py`);
+  real CMS decoding, signing and export are exercised only by the Mac workflow with a real profile.

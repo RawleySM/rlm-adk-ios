@@ -1,0 +1,170 @@
+# Direct private delivery: sign the app for Rawley's registered iPhone (Ad Hoc / release-testing),
+# export the IPA, inspect the exported package, and package an install manifest for our own HTTPS
+# host. Nothing is uploaded to Apple and TestFlight is not involved; testflight.yml stays as the
+# fallback. Manual dispatch only.
+#
+# Secrets: DIST_P12_BASE64, DIST_P12_PASSWORD (the existing Apple Distribution identity) and
+# ADHOC_PROFILE_BASE64 (an Ad Hoc profile for com.rawleystanhope.rlmadk that lists the phone's
+# UDID). A missing or unsuitable profile fails the run before anything is signed.
+name: direct-install
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: "CFBundleVersion for this build (required; advance the shared sequence, TestFlight build 6 is the last used)"
+        required: true
+      device_udid:
+        description: "Exact UDID of the target iPhone; must be in the Ad Hoc profile"
+        required: true
+      base_url:
+        description: "HTTPS base URL where RLMADK.ipa and manifest.plist will be published (no hosting is set up by this run)"
+        required: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  sign-and-package:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check inputs
+        env:
+          BUILD_NUMBER: ${{ inputs.build_number }}
+          DEVICE_UDID: ${{ inputs.device_udid }}
+          BASE_URL: ${{ inputs.base_url }}
+        run: |
+          [[ "$BUILD_NUMBER" =~ ^[0-9]+$ ]] || { echo "build_number must be an integer, got '$BUILD_NUMBER'"; exit 1; }
+          [[ -n "$DEVICE_UDID" ]] || { echo "device_udid is required"; exit 1; }
+          [[ "$BASE_URL" == https://* ]] || { echo "base_url must start with https://"; exit 1; }
+          xcodebuild -version
+
+      - name: Decode and validate the Ad Hoc profile (fails without a real profile)
+        env:
+          ADHOC_PROFILE_BASE64: ${{ secrets.ADHOC_PROFILE_BASE64 }}
+          DEVICE_UDID: ${{ inputs.device_udid }}
+        run: |
+          if [[ -z "$ADHOC_PROFILE_BASE64" ]]; then
+            echo "ADHOC_PROFILE_BASE64 is not set: no Ad Hoc profile exists for this device yet. Nothing was signed."
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/profile"
+          echo "$ADHOC_PROFILE_BASE64" | base64 --decode > "$RUNNER_TEMP/profile/adhoc.mobileprovision"
+          # CMS envelope decoded by the platform tool; the validator only ever sees the plist.
+          security cms -D -i "$RUNNER_TEMP/profile/adhoc.mobileprovision" > "$RUNNER_TEMP/profile/adhoc.plist"
+          python3 scripts/direct_install.py validate-profile --plist "$RUNNER_TEMP/profile/adhoc.plist" \
+            --udid "$DEVICE_UDID" --json "$RUNNER_TEMP/profile/profile.json" | tee profile-validation.log
+          PROFILE_NAME=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["name"])' "$RUNNER_TEMP/profile/profile.json")
+          PROFILE_UUID=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["uuid"])' "$RUNNER_TEMP/profile/profile.json")
+          echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
+          echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+
+      - name: Choose the export method the installed Xcode accepts
+        run: |
+          xcodebuild -help > "$RUNNER_TEMP/xcodebuild-help.txt" 2>&1 || true
+          METHOD=$(python3 scripts/direct_install.py select-method --help-text "$RUNNER_TEMP/xcodebuild-help.txt")
+          echo "export method: $METHOD"
+          echo "EXPORT_METHOD=$METHOD" >> "$GITHUB_ENV"
+          python3 scripts/direct_install.py export-options --method "$METHOD" --profile-name "$PROFILE_NAME" --out "$RUNNER_TEMP/ExportOptions-direct.plist"
+          plutil -p "$RUNNER_TEMP/ExportOptions-direct.plist"
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Install signing assets (build keychain, Ad Hoc profile)
+        env:
+          DIST_P12_BASE64: ${{ secrets.DIST_P12_BASE64 }}
+          DIST_P12_PASSWORD: ${{ secrets.DIST_P12_PASSWORD }}
+        run: |
+          set -o pipefail
+          [[ -n "$DIST_P12_BASE64" ]] || { echo "DIST_P12_BASE64 is not set"; exit 1; }
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+          cp "$RUNNER_TEMP/profile/adhoc.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          cp "$RUNNER_TEMP/profile/adhoc.mobileprovision" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          echo "$DIST_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/dist.p12"
+          KPW=$(uuidgen)
+          security create-keychain -p "$KPW" build.keychain
+          security set-keychain-settings -lut 21600 build.keychain
+          security unlock-keychain -p "$KPW" build.keychain
+          security import "$RUNNER_TEMP/dist.p12" -k build.keychain -P "$DIST_P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/xcodebuild
+          curl -sS -o "$RUNNER_TEMP/wwdr.cer" https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer
+          security import "$RUNNER_TEMP/wwdr.cer" -k build.keychain -T /usr/bin/codesign || true
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KPW" build.keychain >/dev/null
+          security list-keychains -d user -s build.keychain ~/Library/Keychains/login.keychain-db
+          security find-identity -v -p codesigning build.keychain | tee signing-identities.log
+          grep -q "Apple Distribution" signing-identities.log || { echo "no Apple Distribution identity in the keychain"; exit 1; }
+
+      - name: Archive (manual Apple Distribution signing with the Ad Hoc profile)
+        env:
+          BUILD_NUMBER: ${{ inputs.build_number }}
+        run: |
+          set -o pipefail
+          xcodebuild -project RLMADK.xcodeproj -scheme RLMADK -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath build/RLMADK.xcarchive \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=4PJBKY2WQR CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+            archive 2>&1 | tee xcodebuild-archive.log | { grep -E "error:|Signing Identity|Provisioning Profile|\*\* ARCHIVE" || true; }
+
+      - name: Export the signed IPA
+        run: |
+          set -o pipefail
+          xcodebuild -exportArchive -archivePath build/RLMADK.xcarchive -exportPath build/export \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions-direct.plist" \
+            2>&1 | tee xcodebuild-export.log | { grep -E "error:|EXPORT" || true; }
+          ls -la build/export
+          IPA=$(ls build/export/*.ipa)
+          [[ $(echo "$IPA" | wc -l) -eq 1 ]] || { echo "expected exactly one IPA: $IPA"; exit 1; }
+          echo "IPA=$IPA" >> "$GITHUB_ENV"
+
+      - name: Inspect the exported package (embedded profile, code signature, entitlements) and write the receipt
+        env:
+          BUILD_NUMBER: ${{ inputs.build_number }}
+          DEVICE_UDID: ${{ inputs.device_udid }}
+        run: |
+          set -o pipefail
+          rm -rf "$RUNNER_TEMP/unpacked" && mkdir -p "$RUNNER_TEMP/unpacked"
+          unzip -q "$IPA" -d "$RUNNER_TEMP/unpacked"
+          APP=$(ls -d "$RUNNER_TEMP"/unpacked/Payload/*.app)
+          security cms -D -i "$APP/embedded.mobileprovision" > "$RUNNER_TEMP/embedded.plist"
+          python3 scripts/direct_install.py validate-profile --plist "$RUNNER_TEMP/embedded.plist" --udid "$DEVICE_UDID" --json "$RUNNER_TEMP/embedded.json" | tee embedded-profile.log
+          codesign --verify --deep --strict --verbose=2 "$APP" 2>&1 | tee codesign-verify.log
+          codesign -dvvv "$APP" > codesign-details.log 2>&1
+          codesign -d --entitlements :- "$APP" > "$RUNNER_TEMP/entitlements.plist" 2>/dev/null
+          plutil -p "$RUNNER_TEMP/entitlements.plist" | tee entitlements.log
+          python3 scripts/direct_install.py receipt --ipa "$IPA" --profile-json "$RUNNER_TEMP/profile/profile.json" \
+            --embedded-profile-json "$RUNNER_TEMP/embedded.json" --codesign-text codesign-details.log \
+            --entitlements-plist "$RUNNER_TEMP/entitlements.plist" --commit "$GITHUB_SHA" --method "$EXPORT_METHOD" \
+            --build-number "$BUILD_NUMBER" --out direct-install-receipt.json | tee receipt.log
+          python3 -m json.tool direct-install-receipt.json
+
+      - name: Package the install manifest and page for the given HTTPS base URL
+        env:
+          BASE_URL: ${{ inputs.base_url }}
+        run: |
+          python3 scripts/direct_install.py package --ipa "$IPA" --base-url "$BASE_URL" --out build/publish | tee package.log
+          cp "$IPA" direct-install-receipt.json build/publish/
+          ls -la build/publish
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: direct-install-${{ inputs.build_number }}
+          path: |
+            build/publish/
+            profile-validation.log
+            embedded-profile.log
+            signing-identities.log
+            xcodebuild-archive.log
+            xcodebuild-export.log
+            codesign-verify.log
+            codesign-details.log
+            entitlements.log
+            receipt.log
+            package.log
