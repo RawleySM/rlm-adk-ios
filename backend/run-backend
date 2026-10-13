@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# run-backend: repo-owned run command for the voice portal consumer backend (desktop).
+#
+#   run-backend start      start the service in the background (pidfile + log under the state root)
+#   run-backend stop       stop it
+#   run-backend status     pid, listen address, /healthz
+#   run-backend logs [n]   tail the log
+#   run-backend import ... run the source import (families: prayer teaching scripture theographic)
+#   run-backend cli ...    any `python3 -m voice_portal` subcommand
+#
+# State root: $VOICE_PORTAL_STATE (default ~/.local/rlm-adk/voice_portal). Config: $STATE/config.json.
+# The service never starts, resumes or updates the allocator; it only reads `allocatorctl status/inbox`.
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+STATE="${VOICE_PORTAL_STATE:-$HOME/.local/rlm-adk/voice_portal}"
+export VOICE_PORTAL_STATE="$STATE"
+export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"
+mkdir -p "$STATE/run" "$STATE/logs"
+PIDFILE="$STATE/run/backend.pid"
+LOG="$STATE/logs/backend.log"
+PORT="$(python3 -m voice_portal config 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["listen_port"])' 2>/dev/null || echo 8765)"
+
+alive() { [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; }
+
+case "${1:-}" in
+  start)
+    if alive; then echo "already running pid=$(cat "$PIDFILE")"; exit 0; fi
+    nohup python3 -m voice_portal serve >>"$LOG" 2>&1 &
+    echo $! >"$PIDFILE"
+    sleep 1
+    if alive; then echo "started pid=$(cat "$PIDFILE") port=$PORT log=$LOG"; else echo "failed to start; see $LOG" >&2; tail -20 "$LOG" >&2; exit 1; fi
+    ;;
+  stop)
+    if alive; then kill "$(cat "$PIDFILE")"; sleep 1; alive && kill -9 "$(cat "$PIDFILE")" || true; echo "stopped"; else echo "not running"; fi
+    rm -f "$PIDFILE"
+    ;;
+  status)
+    if alive; then echo "running pid=$(cat "$PIDFILE") port=$PORT"; curl -s -m 5 "http://127.0.0.1:$PORT/healthz" || true; echo; else echo "not running"; fi
+    ;;
+  logs) tail -n "${2:-50}" "$LOG" ;;
+  import) shift; python3 -m voice_portal import "$@" ;;
+  cli) shift; python3 -m voice_portal "$@" ;;
+  *) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

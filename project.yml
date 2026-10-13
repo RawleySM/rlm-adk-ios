@@ -9,16 +9,37 @@ targets:
     type: application
     platform: iOS
     sources: [RLMADK]
-    scheme: {}
+    scheme:
+      testTargets: [RLMADKTests]
+    info:
+      path: RLMADK/Info.plist
+      properties:
+        CFBundleDisplayName: RLM-ADK
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UILaunchScreen: {}
+        NSMicrophoneUsageDescription: Continuous local recording, prayer capture and live voice turns.
+        NSSpeechRecognitionUsageDescription: On-device transcription of your voice turns; audio is not sent to a speech service.
+        UIBackgroundModes: [audio]
+        # Private tailnet backend over plain HTTP/WS (prototype); no public endpoints.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
     settings:
       base:
         PRODUCT_NAME: RLMADK
         PRODUCT_BUNDLE_IDENTIFIER: com.rawleystanhope.rlmadk
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: RLM-ADK
-        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        MARKETING_VERSION: "0.1.0"
-        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "0.2.0"
+        CURRENT_PROJECT_VERSION: "2"
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1"
+  RLMADKTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [RLMADKTests]
+    dependencies:
+      - target: RLMADK
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.rawleystanhope.rlmadk.tests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.0"

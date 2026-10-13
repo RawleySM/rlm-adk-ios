@@ -1,5 +1,8 @@
-# Builds and runs the app on a GitHub-hosted Mac. No Apple Developer team or signing is needed
+# Builds, tests and runs the app on a GitHub-hosted Mac. No Apple Developer team or signing is needed
 # for the iOS Simulator; device builds and TestFlight uploads wait for the Team ID.
+# The screenshot step runs the Python backend on the runner in FIXTURE mode (synthetic data, fake
+# reasoning owner) so the simulator shows real connected/devotional/turn states. It is not real-data
+# evidence; the desktop deployment in docs/voice-portal/prototype-acceptance.md is.
 name: cloud-mac
 
 on:
@@ -11,9 +14,21 @@ defaults:
     shell: bash
 
 jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Backend unit tests (stdlib only)
+        run: |
+          cd backend
+          python3 --version
+          python3 -c 'import sqlite3; print("sqlite", sqlite3.sqlite_version)'
+          python3 -m unittest discover -s tests -t . -v 2>&1 | tail -40
+
   simulator:
     runs-on: macos-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
 
@@ -21,10 +36,7 @@ jobs:
         run: |
           sw_vers
           uname -m
-          sysctl -n machdep.cpu.brand_string
-          ls -d /Applications/Xcode*.app
           xcodebuild -version
-          xcodebuild -showsdks | grep -i -E 'ios|simulator'
           xcrun simctl list runtimes
 
       - name: Generate Xcode project
@@ -32,13 +44,8 @@ jobs:
           brew install xcodegen
           xcodegen generate
 
-      - name: Build for iOS Simulator (unsigned)
-        run: |
-          xcodebuild -project RLMADK.xcodeproj -scheme RLMADK -configuration Debug \
-            -destination 'generic/platform=iOS Simulator' -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO build | tail -25
-
-      - name: Run in a simulator and take a screenshot
+      - name: Pick a simulator
+        id: sim
         run: |
           UDID=$(xcrun simctl list devices available -j | python3 -c '
           import json, sys
@@ -49,15 +56,56 @@ jobs:
                       print(device["udid"]); sys.exit(0)
           sys.exit("no iPhone simulator found")')
           xcrun simctl list devices | grep "$UDID"
-          xcrun simctl boot "$UDID"
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$UDID" || true
           xcrun simctl bootstatus "$UDID" -b
-          APP=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 1 -name '*.app' | head -1)
+
+      - name: Build for iOS Simulator (unsigned)
+        run: |
+          xcodebuild -project RLMADK.xcodeproj -scheme RLMADK -configuration Debug \
+            -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO build | tail -25
+
+      - name: Native state/outbox/source tests (XCTest)
+        run: |
+          set -o pipefail
+          xcodebuild -project RLMADK.xcodeproj -scheme RLMADK -configuration Debug \
+            -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO test 2>&1 | tee xcodebuild-test.log | grep -E "Test Case|Executed|error:|\*\* TEST" | tail -60
+
+      - name: Start fixture backend and fake reasoning owner on the runner
+        run: |
+          cd backend
+          export VOICE_PORTAL_STATE="$RUNNER_TEMP/voice_portal_state"
+          mkdir -p "$VOICE_PORTAL_STATE"
+          python3 -m tests.fakes --port 8799 > "$RUNNER_TEMP/fake-owner.log" 2>&1 &
+          cat > "$VOICE_PORTAL_STATE/config.json" <<JSON
+          {"listen_host":"127.0.0.1","listen_port":8765,"inference_base_url":"http://127.0.0.1:8799/v1","inference_status_url":"http://127.0.0.1:8799/status","allocatorctl":"/nonexistent/allocatorctl","prayer_intake_url":"http://127.0.0.1:1"}
+          JSON
+          python3 -m voice_portal fixture
+          ./run-backend start
+          sleep 2
+          curl -s http://127.0.0.1:8765/status | python3 -m json.tool | head -40
+          curl -s "http://127.0.0.1:8765/devotional?passage=PSA.23" | head -c 600; echo
+
+      - name: Run in a simulator and take screenshots (fixture backend)
+        run: |
+          UDID="${{ steps.sim.outputs.udid }}"
+          APP=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 1 -name 'RLMADK.app' | head -1)
           xcrun simctl install "$UDID" "$APP"
-          xcrun simctl launch "$UDID" com.rawleystanhope.rlmadk
-          sleep 8
+          SIMCTL_CHILD_RLMADK_BACKEND_URL=http://127.0.0.1:8765 SIMCTL_CHILD_RLMADK_CI_DEMO=1 \
+            xcrun simctl launch "$UDID" com.rawleystanhope.rlmadk
+          sleep 12
           xcrun simctl io "$UDID" screenshot simulator.png
+          sleep 6
+          xcrun simctl io "$UDID" screenshot simulator-after-turn.png
+          cd backend && ./run-backend logs 40
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: simulator-screenshot
-          path: simulator.png
+          path: |
+            simulator.png
+            simulator-after-turn.png
+            xcodebuild-test.log
