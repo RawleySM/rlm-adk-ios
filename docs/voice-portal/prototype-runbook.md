@@ -122,9 +122,10 @@ Capture files are retained; nothing deletes them automatically.
 ### Cloud Mac
 
 Every push runs `.github/workflows/cloud-mac.yml`: backend unit tests on Ubuntu; on macOS the
-unsigned simulator build, the XCTest suite, a fixture backend plus fake reasoning owner on the
-runner, launch, and screenshots of the Portal (before/after a typed CI demo turn), Work and
-Diagnostics tabs. Full `xcodebuild` logs are uploaded. For hands-on work dispatch the session
+unsigned simulator build, the XCTest suite plus the keyboard navigation XCUITest, a fixture backend
+plus fake reasoning owner on the runner, launch, screenshots of the Portal (before/after a typed CI
+demo turn), Work and Diagnostics tabs, and the remote inspection exercise (snapshot, image, tab
+select, keyboard dismiss, manifest sync, capture file copy) reported by the simulator client. Full `xcodebuild` logs are uploaded. For hands-on work dispatch the session
 workflow on this branch (the helper defaults to `main`):
 
 ```bash
@@ -163,6 +164,69 @@ in Finder's file sharing.
 
 Proof boundary: this update makes the bytes reachable; it does not fix why a prayer capture can
 close with zero segments, and it does not establish that any ambient segment contains the prayer.
+
+## Seeing what the phone sees: inspection, keyboard, remote recovery
+
+Builds from this change report app-owned state to the backend and accept a small set of remote
+commands over the existing text/control WebSocket. This is not screen mirroring: the keyboard,
+permission alerts, Control Center and other apps are outside what the app can render; the
+snapshot carries keyboard visible/frame and the focused field so a reviewer knows what covers
+the UI. A backgrounded or suspended app sends nothing, and the backend reports that honestly.
+
+Keyboard: the typed-input and backend-URL fields have a Done button above the keyboard, dismiss
+on Send/submit, on interactive scroll, on any tab change, and on the Begin prayer / Quiet / Stop
+buttons; a `dismiss_keyboard` command resigns the first responder remotely.
+
+Each install has a stable id (`Diagnostics` shows the first eight characters; `ios-…`). The
+phone sends a bounded snapshot on connect, tab change, mode change, capture events, keyboard
+show/hide, return to foreground and every 30 s while in the foreground: tab, connection, mode,
+audio owner state, whether the engine is actually running and the age of the last audio buffer,
+the last write error, recognizer state, keyboard frame/focus, typed/partial/last text, the tail of
+the assistant text, capture summaries and the last 40 log lines.
+
+```bash
+B=http://100.90.105.30:8765
+curl -s $B/devices | python3 -m json.tool                       # known phones, freshness, connected
+curl -s $B/devices/$ID/snapshot | python3 -m json.tool          # freshness: live | stale | offline | no_snapshot
+curl -s $B/devices/$ID | python3 -m json.tool                   # snapshot + recent commands + latest image/manifest
+curl -s -X POST $B/devices/$ID/commands -H 'Content-Type: application/json' -d '{"kind":"snapshot"}'
+curl -s -X POST $B/devices/$ID/commands -H 'Content-Type: application/json' -d '{"kind":"image"}'
+curl -s -o phone.jpg -D - $B/devices/$ID/images/latest           # app-rendered window; X-Image-Age-S header
+curl -s -X POST $B/devices/$ID/commands -H 'Content-Type: application/json' -d '{"kind":"dismiss_keyboard"}'
+curl -s -X POST $B/devices/$ID/commands -H 'Content-Type: application/json' -d '{"kind":"select_tab","args":{"tab":"diagnostics"}}'
+curl -s -X POST $B/devices/$ID/commands -H 'Content-Type: application/json' -d '{"kind":"sync_manifest"}'
+curl -s $B/devices/$ID/manifest | python3 -m json.tool          # every capture, segment identities, orphan WAVs
+curl -s -X POST $B/devices/$ID/commands -H 'Content-Type: application/json' \
+  -d '{"kind":"copy_capture_files","args":{"capture_id":"ambient-1791887853-9d265072","indexes":[48,49,50]}}'
+curl -s $B/devices/$ID/commands/$COMMAND_ID                      # queued | delivered | applied | failed | unsupported
+curl -s $B/devices/$ID/captures/ambient-1791887853-9d265072       # copied files (bytes, sha256, path) + ASR lines
+```
+
+Command states mean exactly this: `queued` is stored and not yet on the phone (offline or not
+pushed); `delivered` was written to a live socket; `applied`, `failed` and `unsupported` are the
+phone's own report, keyed by command id. Queue acceptance is never execution. A phone that
+disconnects after `delivered` leaves the command there without a result; repeat it.
+
+Recovery transfers: `copy_capture_files` sends the named closed segment files of one capture
+(all closed segments when `indexes` is omitted), bytes unchanged, re-hashed on the phone and
+verified by digest and size on the backend, into
+`<state root>/evidence/devices/<install id>/captures/<capture id>/`. Identical re-sends are
+idempotent; different bytes for an already stored index are refused. These copies are evidence
+for listening and dating, kept out of the prayer intake. `sync_manifest` uploads every manifest
+with segment identities and lists closed WAVs on disk that no manifest knows (orphans). During
+prayer, the on-device provisional ASR text is appended to `Documents/prayer-asr/<capture>.jsonl`
+with capture id and sequence and synced on reconnect; it is shown with the capture evidence.
+
+Honest capture status: a prayer that settles with zero segments is `Failed: no audio captured`,
+never "Saved locally"; Begin prayer checks that audio actually reaches the recorder (engine
+running, a buffer in the last two seconds), tries one restart and otherwise shows "Capture not
+running … not being recorded"; a failed restart after an interruption, route change, media reset
+or return to foreground sets the owner to Failed instead of pretending to record.
+
+CI exercises all of this against the fixture backend with the real simulator client
+(`scripts/ci_remote_inspection.py`, artifact `remote-inspection.json`, `simulator-remote-image.jpg`)
+including a byte-for-byte copy of a seeded capture file, and runs the keyboard navigation XCUITest.
+Simulator evidence only; the phone must install the new build (over TestFlight, not an uninstall).
 
 ## Signing, TestFlight and device
 

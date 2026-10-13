@@ -3,15 +3,23 @@ import SwiftUI
 struct DiagnosticsView: View {
     @EnvironmentObject var model: PortalModel
     @State private var url: String = ""
+    @FocusState private var urlFocused: Bool
 
     var body: some View {
         NavigationStack {
             List {
                 Section("Backend") {
                     HStack {
-                        TextField("http://host:8765", text: $url).textFieldStyle(.roundedBorder).font(.caption)
-                        Button("Apply") { model.setBackendURL(url) }.font(.caption)
+                        TextField("http://host:8765", text: $url)
+                            .textFieldStyle(.roundedBorder).font(.caption)
+                            .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                            .focused($urlFocused)
+                            .submitLabel(.done)
+                            .onSubmit { urlFocused = false; model.setBackendURL(url) }
+                            .accessibilityIdentifier("backendURLField")
+                        Button("Apply") { urlFocused = false; model.setBackendURL(url) }.font(.caption)
                     }
+                    Text("Device: \(model.installId.prefix(8)) · tab \(model.selectedTab) · keyboard \(model.keyboardVisible ? "up" : "down") · last snapshot \(model.lastSnapshotReason ?? "-")").font(.caption2)
                     Text(model.connection.label).font(.caption)
                     if let s = model.backendStatus {
                         Text("\(s.service) \(s.version) commit \(s.source_commit?.prefix(8) ?? "?")").font(.caption2)
@@ -23,6 +31,7 @@ struct DiagnosticsView: View {
                 }
                 Section("Audio") {
                     Text("Owner: \(PortalModel.skipPermissionPrompts ? "not started (fixture mode: capture and recognition not requested)" : model.audioState.label)").font(.caption)
+                    Text("Engine running: \(model.audio.isRunning ? "yes" : "no") · last buffer \(model.audio.lastBufferAge.map { String(format: "%.1f s ago", $0) } ?? "never") · write error \(model.audio.lastWriteError ?? "none")").font(.caption2)
                     Text(model.recognizerAvailability.label).font(.caption)
                     Text("Recognition: \(model.recognizer.continuous ? "continuous" : "stopped") · listening \(model.recognizer.isListening ? "yes" : "no") · restarts \(model.recognizer.restartCount) (\(model.recognizer.lastRestartReason))").font(.caption2)
                     if let p = model.progress { Text("Devotional progress: \(p.passage) @ \(p.revision.prefix(12)) resume \(p.resumeIndex + 1)/\(p.total)\(p.finished ? " finished" : "")").font(.caption2) }
@@ -50,7 +59,16 @@ struct DiagnosticsView: View {
                     ForEach(model.log.prefix(60), id: \.self) { Text($0).font(.caption2) }
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Diagnostics")
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { urlFocused = false }.accessibilityIdentifier("keyboardDoneDiagnostics")
+                }
+            }
+            .onChange(of: model.keyboardDismissToken) { _, _ in urlFocused = false }
+            .onChange(of: urlFocused) { _, focused in model.focusChanged(focused ? "backendURL" : nil) }
             .onAppear { url = model.backendURLString }
         }
     }

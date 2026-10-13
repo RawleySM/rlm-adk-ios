@@ -10,7 +10,7 @@ targets:
     platform: iOS
     sources: [RLMADK]
     scheme:
-      testTargets: [RLMADKTests]
+      testTargets: [RLMADKTests, RLMADKUITests]
     info:
       path: RLMADK/Info.plist
       properties:
@@ -61,3 +61,17 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.rawleystanhope.rlmadk.tests
         GENERATE_INFOPLIST_FILE: YES
         SWIFT_VERSION: "5.0"
+  RLMADKUITests:
+    # XCUITest (XCTest's own UI automation, no third-party framework): keyboard dismissal and tab
+    # navigation after typed input. Simulator evidence only; not physical-device proof.
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [RLMADKUITests]
+    dependencies:
+      - target: RLMADK
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.rawleystanhope.rlmadk.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.0"
+        TEST_TARGET_NAME: RLMADK

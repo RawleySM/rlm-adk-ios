@@ -2,6 +2,7 @@ import AVFoundation
 import CryptoKit
 import Foundation
 import SwiftUI
+import UIKit
 
 /// Orchestrates the single audio owner, on-device recognition, the gated speaker, the text/control
 /// WebSocket, locally persisted captures and the durable work list. Mode is persisted independently
@@ -32,6 +33,27 @@ final class PortalModel: ObservableObject {
     @Published var speaking = false
     @Published var typedInput: String = ""
     @Published var lastError: String?
+
+    // Phone inspection (app-owned state the backend may see) and keyboard facts
+    /// Stable per-install identity for inspection; not an account, not a user.
+    let installId: String
+    @Published var selectedTab: String = ProcessInfo.processInfo.environment["RLMADK_START_TAB"] ?? "portal" {
+        didSet { if selectedTab != oldValue { dismissKeyboard(); sendSnapshot(reason: "tab") } }
+    }
+    @Published private(set) var keyboardVisible = false
+    @Published private(set) var keyboardFrame: CGRect?
+    @Published private(set) var focusedField: String?
+    /// Incremented to ask every focused field to resign (views observe it).
+    @Published private(set) var keyboardDismissToken = 0
+    @Published private(set) var scenePhaseLabel = "unknown"
+    @Published private(set) var lastSnapshotReason: String?
+    /// Set when Begin prayer finds the audio owner not delivering buffers; cleared on the next capture.
+    @Published private(set) var captureWarning: String?
+    private var heartbeat: Timer?
+    private var asrJournals: [String: PrayerASRJournal] = [:]
+    /// Test seam: receives every command result the phone reports (also sent on the socket).
+    var commandResultSink: ((CommandResult) -> Void)?
+    private var keyboardObservers: [NSObjectProtocol] = []
 
     let audio = AudioOwner()
     let recognizer: Recognizer
@@ -77,9 +99,12 @@ final class PortalModel: ObservableObject {
         recognizerAvailability = rec.availability
         client = PortalClient(baseURL: URL(string: urlString) ?? URL(string: PortalModel.defaultBackendURL)!)
         ambientCaptureId = ambient
+        installId = PortalModel.loadOrCreateInstallId()
         if envURL != nil { backendURLString = urlString }
         store.saveCaptures(captures)
+        asrJournals = store.loadASRJournals()
         wire()
+        observeKeyboard()
         // Relaunch: mode (including quiet and an open prayer) is restored, never reset.
         apply(.relaunch)
         logLine("launched; mode=\(mode.label) quiet=\(mode.quiet) prayer=\(mode.prayerCaptureId ?? "-")")
@@ -92,6 +117,7 @@ final class PortalModel: ObservableObject {
         audio.onBuffer = { [weak self] buffer, _ in self?.recognizer.append(buffer) }
         audio.onGap = { [weak self] gap in Task { @MainActor in self?.recordGap(gap) } }
         audio.onSegmentClosed = { [weak self] captureId, seg in Task { @MainActor in self?.segmentClosed(captureId: captureId, seg) } }
+        audio.onWriteError = { [weak self] text in Task { @MainActor in self?.logLine(text); self?.sendSnapshot(reason: "write_error") } }
         recognizer.onAvailability = { [weak self] a in Task { @MainActor in self?.availabilityChanged(a) } }
         recognizer.onPartial = { [weak self] text in Task { @MainActor in self?.partial(text) } }
         recognizer.onFinal = { [weak self] text in Task { @MainActor in self?.final(text, source: "voice") } }
@@ -113,8 +139,10 @@ final class PortalModel: ObservableObject {
     private func apply(_ event: PortalEvent) {
         let (next, effects) = PortalReducer.apply(event, to: mode)
         if next != mode {
+            let modeChanged = next.quiet != mode.quiet || next.label != mode.label
             mode = next
             store.saveMode(mode)
+            if modeChanged { sendSnapshot(reason: "mode") }
         }
         for effect in effects { perform(effect) }
     }
@@ -152,6 +180,7 @@ final class PortalModel: ObservableObject {
     /// cannot be answered unattended), so screenshots show the UI with the audio owner idle and the
     /// exact "live voice unavailable" condition. Real devices always prompt and start the owner.
     static let skipPermissionPrompts = ProcessInfo.processInfo.environment["RLMADK_SKIP_PERMISSION_PROMPTS"] == "1"
+    static let underXCTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
     func startAll() {
         if PortalModel.skipPermissionPrompts {
@@ -241,9 +270,11 @@ final class PortalModel: ObservableObject {
         connection = c
         if case .connected(let id) = c {
             sessionId = id
-            client.send(["type": "hello", "mode": ["quiet": mode.quiet, "activity": mode.label]])
+            client.send(["type": "hello", "mode": ["quiet": mode.quiet, "activity": mode.label], "install_id": installId, "app_version": PortalModel.appVersion, "build": PortalModel.appBuild])
             apply(.connectionRestored)
             logLine("connected session \(id.prefix(8)); mode stays \(mode.label)")
+            sendSnapshot(reason: "connect")
+            syncPrayerASR()
             Task {
                 if devotional == nil { await loadDevotional() }
                 await syncLocalWork()
@@ -307,7 +338,12 @@ final class PortalModel: ObservableObject {
         lastTranscript = cleaned
         logLine("final (\(source)): \(cleaned)")
         if handleVoiceCommand(cleaned) { return }
-        if mode.isPraying { return } // prayer: transcripts are captured locally, never sent as turns
+        if mode.isPraying {
+            // Prayer: transcripts are never turns, but the provisional on-device text is journaled
+            // durably with the capture identity and synced so it survives a lost recording.
+            if let captureId = mode.prayerCaptureId { journalPrayerASR(captureId: captureId, text: cleaned) }
+            return
+        }
         let turnId = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         apply(.finalTranscript(turnId: turnId))
     }
@@ -318,6 +354,27 @@ final class PortalModel: ObservableObject {
         typedInput = ""
         final(text, source: "typed")
     }
+
+    func journalPrayerASR(captureId: String, text: String) {
+        var journal = asrJournals[captureId] ?? PrayerASRJournal(captureId: captureId)
+        let line = journal.append(text)
+        asrJournals[captureId] = journal
+        store.appendASR(captureId: captureId, line: line)
+        syncPrayerASR(captureId: captureId)
+    }
+
+    /// Sends every unsynced journal line (all captures, or one) with capture id and sequence; the
+    /// backend acknowledges the highest sequence it holds, which marks lines synced.
+    func syncPrayerASR(captureId: String? = nil) {
+        guard connection.isConnected else { return }
+        for (id, journal) in asrJournals where captureId == nil || id == captureId {
+            let pending = journal.unsynced
+            guard !pending.isEmpty else { continue }
+            client.send(["type": "prayer_asr", "capture_id": id, "items": pending.map { ["sequence": $0.sequence, "client_time": $0.client_time, "text": $0.text] }])
+        }
+    }
+
+    func prayerASRJournal(_ captureId: String) -> PrayerASRJournal? { asrJournals[captureId] }
 
     private func handleVoiceCommand(_ text: String) -> Bool {
         let lower = text.lowercased()
@@ -368,6 +425,13 @@ final class PortalModel: ObservableObject {
             if let turnId = e.turn_id { apply(.assistantCancelled(turnId: turnId)) }
         case "duplicate_turn":
             logLine("duplicate turn refused by backend: \(e.turn_id ?? "?")")
+        case "command":
+            handleCommand(raw)
+        case "prayer_asr_ack":
+            if let captureId = raw["capture_id"] as? String, let through = raw["max_sequence"] as? Int {
+                asrJournals[captureId]?.markSynced(through: through)
+                store.saveASRSync(asrJournals)
+            }
         default:
             break
         }
@@ -388,9 +452,26 @@ final class PortalModel: ObservableObject {
         let captureId = CaptureManifest.newCaptureId(kind: "prayer")
         captures.insert(CaptureManifest(captureId: captureId, kind: "prayer", createdAt: Date()), at: 0)
         persistCaptures()
+        asrJournals[captureId] = PrayerASRJournal(captureId: captureId)
         apply(.enterPrayer(captureId: captureId))
-        if audioState == .running { audio.beginCapture(captureId: captureId, directory: store.captureDirectory(captureId), startIndex: 0) }
+        // The owner's intent (.running) is not evidence that audio arrives. Check the engine facts,
+        // try one restart, and say plainly when the prayer is not being recorded.
+        captureWarning = nil
+        if audio.state == .running, !audio.isDelivering {
+            let restarted = audio.restartIfNeeded(reason: "begin_prayer")
+            if !audio.isDelivering {
+                captureWarning = "Capture not running: no audio has reached the recorder (engine \(audio.isRunning ? "running" : "stopped"), restart \(restarted ? "attempted" : "failed")). This prayer is not being recorded."
+                logLine(captureWarning!)
+            }
+        } else if audio.state != .running {
+            captureWarning = "Capture not running (\(audio.state.label)). This prayer is not being recorded."
+            logLine(captureWarning!)
+            // One start attempt on a real device; never under the XCTest host (permission alert) or fixture mode.
+            if !PortalModel.skipPermissionPrompts, !PortalModel.underXCTest { startAudio() }
+        }
+        if audio.state == .running { audio.beginCapture(captureId: captureId, directory: store.captureDirectory(captureId), startIndex: 0) }
         logLine("prayer begun; capture \(captureId); recognition continues for end-of-prayer commands only")
+        sendSnapshot(reason: "capture")
     }
 
     func endPrayer() {
@@ -404,7 +485,7 @@ final class PortalModel: ObservableObject {
         captures[i].finalizeRequestedAt = Date()
         persistCaptures()
         let ambientStart = captures.first(where: { $0.captureId == ambientCaptureId })?.nextSegmentIndex ?? 0
-        if audioState == .running {
+        if audio.state == .running {
             // Switch back to the ambient capture; the prayer writer settles asynchronously and only
             // then is the capture closed with its final segment count.
             audio.beginCapture(captureId: ambientCaptureId, directory: store.captureDirectory(ambientCaptureId), startIndex: ambientStart) { [weak self] produced in
@@ -418,18 +499,26 @@ final class PortalModel: ObservableObject {
     /// The writer reported its last segment; the manifest may now be closed and finalized.
     private func captureSettled(_ captureId: String, produced: Int) {
         guard let i = captures.firstIndex(where: { $0.captureId == captureId }) else { return }
-        captures[i].expectedSegmentCount = produced
-        captures[i].closedAt = Date()
+        captures[i].settle(produced: produced)
         persistCaptures()
-        logLine("capture \(captureId) settled: \(produced) segments expected, \(captures[i].segments.count) recorded")
+        if produced == 0 {
+            logLine("capture \(captureId) settled with NO segments: nothing was recorded (\(captures[i].status.label))")
+        } else {
+            logLine("capture \(captureId) settled: \(produced) segments expected, \(captures[i].segments.count) recorded")
+        }
+        sendSnapshot(reason: "capture")
         Task { await self.uploadPending(captureId: captureId) }
     }
+
+    /// Test seam for the settle path (the writer is not available in the simulator).
+    func captureSettledForTest(_ captureId: String, produced: Int) { captureSettled(captureId, produced: produced) }
 
     private func segmentClosed(captureId: String, _ seg: SegmentRecord) {
         guard let i = captures.firstIndex(where: { $0.captureId == captureId }) else { return }
         if !captures[i].segments.contains(where: { $0.index == seg.index }) { captures[i].segments.append(seg) }
         persistCaptures()
         logLine("segment \(seg.index) closed for \(captureId): \(seg.bytes) bytes sha \(seg.sha256.prefix(10))")
+        sendSnapshot(reason: "capture")
         if captures[i].kind == "prayer" { Task { await uploadPending(captureId: captureId) } }
     }
 
@@ -443,6 +532,249 @@ final class PortalModel: ObservableObject {
     }
 
     private func persistCaptures() { store.saveCaptures(captures) }
+
+    // MARK: phone inspection: snapshot, keyboard, remote commands, recovery transfers
+
+    static var appVersion: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?" }
+    static var appBuild: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?" }
+
+    private static func loadOrCreateInstallId() -> String {
+        if let existing = UserDefaults.standard.string(forKey: "installId"), !existing.isEmpty { return existing }
+        let fresh = "ios-" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(16).lowercased()
+        UserDefaults.standard.set(fresh, forKey: "installId")
+        return fresh
+    }
+
+    private func observeKeyboard() {
+        let center = NotificationCenter.default
+        keyboardObservers.append(center.addObserver(forName: UIResponder.keyboardDidShowNotification, object: nil, queue: .main) { [weak self] note in
+            let frame = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
+            Task { @MainActor in self?.keyboardChanged(visible: true, frame: frame) }
+        })
+        keyboardObservers.append(center.addObserver(forName: UIResponder.keyboardDidHideNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.keyboardChanged(visible: false, frame: nil) }
+        })
+    }
+
+    func keyboardChanged(visible: Bool, frame: CGRect?) {
+        keyboardVisible = visible
+        keyboardFrame = visible ? frame : nil
+        logLine(visible ? "keyboard shown \(frame.map { "\(Int($0.height)) pt" } ?? "")" : "keyboard hidden")
+        sendSnapshot(reason: "keyboard")
+    }
+
+    func focusChanged(_ field: String?) { focusedField = field }
+
+    /// Puts the keyboard away: every focused SwiftUI field resigns (token) and UIKit's first
+    /// responder resigns too, so a field we did not instrument cannot keep it up.
+    func dismissKeyboard() {
+        keyboardDismissToken += 1
+        focusedField = nil
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
+    func scenePhaseChanged(_ phase: ScenePhase) {
+        scenePhaseLabel = "\(phase)"
+        if phase == .active {
+            if audio.state == .running, !audio.isRunning { audio.restartIfNeeded(reason: "foreground") }
+            sendSnapshot(reason: "foreground")
+            startHeartbeat()
+        } else {
+            heartbeat?.invalidate()
+            heartbeat = nil
+        }
+    }
+
+    private func startHeartbeat() {
+        heartbeat?.invalidate()
+        heartbeat = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.sendSnapshot(reason: "heartbeat") }
+        }
+    }
+
+    func makeSnapshot() -> DeviceSnapshot {
+        DeviceSnapshot(
+            install_id: installId,
+            client_time: Date().timeIntervalSince1970,
+            app_version: PortalModel.appVersion,
+            build: PortalModel.appBuild,
+            scene_phase: scenePhaseLabel,
+            selected_tab: selectedTab,
+            connection: connection.label,
+            session_id: sessionId,
+            mode: mode.label,
+            quiet: mode.quiet,
+            praying: mode.isPraying,
+            audio_owner_state: PortalModel.skipPermissionPrompts ? "not started (fixture mode)" : audio.state.label,
+            engine_running: audio.isRunning,
+            last_buffer_age_s: audio.lastBufferAge.map { (($0 * 10).rounded()) / 10 },
+            last_write_error: audio.lastWriteError,
+            recognizer: recognizerAvailability.label,
+            recognition_continuous: recognizer.continuous,
+            recognition_listening: recognizer.isListening,
+            keyboard_visible: keyboardVisible,
+            keyboard_frame: keyboardFrame.map { [$0.origin.x, $0.origin.y, $0.width, $0.height].map(Double.init) },
+            focused_field: focusedField,
+            typed_input: typedInput,
+            partial_transcript: partialTranscript,
+            last_transcript: lastTranscript,
+            assistant_text_tail: String(assistantText.suffix(400)),
+            capture_warning: captureWarning,
+            captures: captures.map { c in
+                DeviceSnapshot.CaptureSummary(capture_id: c.captureId, kind: c.kind, status: c.status.label, segments: c.segments.count, bytes: c.segments.reduce(0) { $0 + $1.bytes }, pending_uploads: c.pendingUploads.count, gaps: c.gaps.count, closed: c.isClosed, expected_segments: c.expectedSegmentCount, created_at: c.createdAt.timeIntervalSince1970, last_segment_end: c.segments.compactMap(\.endedAt).max()?.timeIntervalSince1970)
+            },
+            recent_log: Array(log.prefix(40)),
+            last_error: lastError
+        )
+    }
+
+    private func snapshotDictionary() -> [String: Any] {
+        guard let data = try? JSONEncoder().encode(makeSnapshot()), let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
+        return obj
+    }
+
+    /// One bounded snapshot on the socket. Nothing is sent while disconnected; the backend then shows
+    /// the last snapshot's age as stale or offline instead of guessing.
+    func sendSnapshot(reason: String) {
+        lastSnapshotReason = reason
+        guard connection.isConnected else { return }
+        client.send(["type": "snapshot", "reason": reason, "snapshot": snapshotDictionary()])
+    }
+
+    private func report(_ result: CommandResult) {
+        logLine("command \(result.commandId.prefix(8)) \(result.status.rawValue): \(result.detail.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: " "))")
+        commandResultSink?(result)
+        client.send(result.payload())
+    }
+
+    /// A backend command. The result is reported with the command id; `applied` only after the
+    /// action ran here. Unknown kinds are `unsupported`; anything that could not be done is `failed`.
+    func handleCommand(_ raw: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: raw), let command = try? JSONDecoder().decode(RemoteCommand.self, from: data) else {
+            logLine("command ignored: undecodable")
+            return
+        }
+        guard let kind = RemoteCommandKind(rawValue: command.kind) else {
+            report(CommandResult(commandId: command.command_id, status: .unsupported, detail: ["kind": command.kind]))
+            return
+        }
+        switch kind {
+        case .snapshot:
+            sendSnapshot(reason: "command")
+            report(CommandResult(commandId: command.command_id, status: .applied, detail: ["reason": "snapshot sent"]))
+        case .dismiss_keyboard:
+            let was = (visible: keyboardVisible, field: focusedField ?? "none")
+            dismissKeyboard()
+            report(CommandResult(commandId: command.command_id, status: .applied, detail: ["keyboard_was_visible": was.visible ? "yes" : "no", "focused_field_was": was.field]))
+        case .select_tab:
+            switch RemoteCommandPlanner.selectTab(command.args) {
+            case .success(let tab):
+                selectedTab = tab
+                report(CommandResult(commandId: command.command_id, status: .applied, detail: ["tab": tab]))
+            case .failure(let error):
+                report(CommandResult(commandId: command.command_id, status: .failed, detail: ["reason": error.reason]))
+            }
+        case .image:
+            Task { await captureAndPostImage(commandId: command.command_id) }
+        case .sync_manifest:
+            Task { await postManifest(commandId: command.command_id) }
+        case .sync_prayer_asr:
+            let pending = asrJournals.values.reduce(0) { $0 + $1.unsynced.count }
+            syncPrayerASR()
+            report(CommandResult(commandId: command.command_id, status: .applied, detail: ["journals": "\(asrJournals.count)", "lines_sent": "\(pending)"]))
+        case .copy_capture_files:
+            switch RemoteCommandPlanner.copyPlan(command.args, captures: captures, fileExists: { id, name in FileManager.default.fileExists(atPath: store.captureDirectory(id).appendingPathComponent(name).path) }) {
+            case .failure(let error):
+                report(CommandResult(commandId: command.command_id, status: .failed, detail: ["reason": error.reason]))
+            case .success(let plan):
+                Task { await copyCaptureFiles(plan, commandId: command.command_id) }
+            }
+        }
+    }
+
+    /// Renders the app's own window (the foreground UI this app draws). The keyboard, system alerts
+    /// and other apps are separate windows and are not in the image; the snapshot says what covers it.
+    func renderAppWindow() -> Data? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        guard let scene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first,
+              let window = scene.windows.first(where: { $0.isKeyWindow }) ?? scene.windows.first else { return nil }
+        let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
+        let image = renderer.image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+        return image.jpegData(compressionQuality: 0.6)
+    }
+
+    private func captureAndPostImage(commandId: String) async {
+        guard let jpeg = renderAppWindow() else {
+            report(CommandResult(commandId: commandId, status: .failed, detail: ["reason": "no app window to render"]))
+            return
+        }
+        let digest = SHA256.hash(data: jpeg).map { String(format: "%02x", $0) }.joined()
+        let snapshotB64 = (try? JSONEncoder().encode(makeSnapshot()))?.base64EncodedString() ?? ""
+        do {
+            let raw = try await client.postRaw("devices/\(installId)/images", body: jpeg, headers: ["Content-Type": "image/jpeg", "X-SHA256": digest, "X-Scope": "app_window", "X-Command-Id": commandId, "X-Session-Id": sessionId ?? "", "X-Client-Time": "\(Date().timeIntervalSince1970)", "X-Snapshot-B64": snapshotB64])
+            let stored = (try? JSONSerialization.jsonObject(with: raw) as? [String: Any])?["stored"] as? Bool ?? false
+            report(CommandResult(commandId: commandId, status: stored ? .applied : .failed, detail: ["bytes": "\(jpeg.count)", "sha256": digest, "scope": "app_window", "stored": stored ? "yes" : "no"]))
+        } catch {
+            report(CommandResult(commandId: commandId, status: .failed, detail: ["reason": "image upload: \(error.localizedDescription)"]))
+        }
+    }
+
+    /// Manifest for recovery: every capture with its segment identities, plus closed WAVs on disk
+    /// that no manifest lists (orphans). Nothing is moved or deleted.
+    func manifestPayload() -> [String: Any] {
+        var orphans: [[String: Any]] = []
+        for captureId in store.captureDirectoryIds() {
+            let known = Set(captures.first(where: { $0.captureId == captureId })?.segments.map(\.index) ?? [])
+            for file in store.closedSegmentFiles(captureId, knownIndexes: known) {
+                orphans.append(["capture_id": captureId, "index": file.index, "filename": file.filename, "bytes": file.bytes, "sha256": file.sha256, "in_manifest": captures.contains(where: { $0.captureId == captureId })])
+            }
+        }
+        let list: [[String: Any]] = captures.map { c in
+            ["capture_id": c.captureId, "kind": c.kind, "status": c.status.label, "created_at": c.createdAt.timeIntervalSince1970, "closed_at": c.closedAt?.timeIntervalSince1970 as Any, "expected_segments": c.expectedSegmentCount as Any, "finalize_requested_at": c.finalizeRequestedAt?.timeIntervalSince1970 as Any,
+             "segments": c.segments.map { s in ["index": s.index, "filename": s.filename, "bytes": s.bytes, "sha256": s.sha256, "started_at": s.startedAt.timeIntervalSince1970, "ended_at": s.endedAt?.timeIntervalSince1970 as Any, "verified_uploaded": s.verifiedUploaded, "last_error": s.lastError as Any] },
+             "gaps": c.gaps.map { g in ["started_at": g.startedAt.timeIntervalSince1970, "ended_at": g.endedAt?.timeIntervalSince1970 as Any, "reason": g.reason, "kind": g.kind] }]
+        }
+        return ["client_time": Date().timeIntervalSince1970, "install_id": installId, "captures": list, "orphans": orphans, "asr_journals": asrJournals.mapValues { ["lines": $0.lines.count, "synced_through": $0.syncedThrough] }]
+    }
+
+    private func postManifest(commandId: String) async {
+        do {
+            let resp = try await client.post("devices/\(installId)/manifest", json: manifestPayload(), as: [String: AnyDecodable].self)
+            _ = resp
+            report(CommandResult(commandId: commandId, status: .applied, detail: ["captures": "\(captures.count)", "orphans": "\((manifestPayload()["orphans"] as? [[String: Any]])?.count ?? 0)"]))
+        } catch {
+            report(CommandResult(commandId: commandId, status: .failed, detail: ["reason": "manifest upload: \(error.localizedDescription)"]))
+        }
+    }
+
+    /// Copies the named closed capture files, bytes unchanged, to the backend's evidence store (not
+    /// the prayer intake). Each file is re-hashed before sending and the backend must echo the digest
+    /// and size. A file whose digest no longer matches the manifest is reported, not sent silently.
+    private func copyCaptureFiles(_ plan: RemoteCommandPlanner.FileCopyPlan, commandId: String) async {
+        var copied: [String] = []
+        var failed: [String] = []
+        for seg in plan.files {
+            let url = store.captureDirectory(plan.captureId).appendingPathComponent(seg.filename)
+            guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { failed.append("\(seg.index):unreadable"); continue }
+            let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            do {
+                let raw = try await client.postRaw("devices/\(installId)/captures/\(plan.captureId)/files/\(seg.index)", body: data, headers: ["Content-Type": "audio/wav", "X-SHA256": digest, "X-Filename": seg.filename, "X-Command-Id": commandId])
+                let resp = (try? JSONSerialization.jsonObject(with: raw) as? [String: Any]) ?? [:]
+                if resp["stored"] as? Bool == true, resp["sha256"] as? String == digest, resp["size_bytes"] as? Int == data.count {
+                    copied.append("\(seg.index)" + (digest == seg.sha256 ? "" : ":digest_differs_from_manifest"))
+                } else {
+                    failed.append("\(seg.index):\(resp["reason"] as? String ?? "unverified")")
+                }
+            } catch {
+                failed.append("\(seg.index):\(error.localizedDescription)")
+            }
+            logLine("copy \(plan.captureId) #\(seg.index): \(copied.last?.hasPrefix("\(seg.index)") == true ? "copied \(data.count) bytes" : (failed.last ?? "?"))")
+        }
+        _ = try? await client.post("devices/\(installId)/manifest", json: manifestPayload(), as: [String: AnyDecodable].self)
+        let detail: [String: String] = ["capture_id": plan.captureId, "copied": copied.joined(separator: ","), "failed": failed.joined(separator: ","), "missing": plan.missingIndexes.map(String.init).joined(separator: ","), "requested": "\(plan.files.count)"]
+        let status: CommandResult.Status = (plan.files.isEmpty && !plan.missingIndexes.isEmpty) || !failed.isEmpty ? .failed : .applied
+        report(CommandResult(commandId: commandId, status: status, detail: detail))
+    }
 
     // MARK: uploads (stable capture id; exact identities; no duplicate captures)
 
@@ -740,6 +1072,46 @@ final class LocalStore {
 
     func saveProgress(_ progress: DevotionalProgress) {
         if let data = try? JSONEncoder().encode(progress) { try? data.write(to: root.appendingPathComponent("devotional-progress.json"), options: .atomic) }
+    }
+
+    /// Capture directories present on disk (manifest-listed or not).
+    func captureDirectoryIds() -> [String] {
+        ((try? FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("captures").path)) ?? []).sorted()
+    }
+
+    // Prayer ASR journal: Documents/prayer-asr/<captureId>.jsonl (append-only) and prayer-asr-sync.json.
+    private var asrDirectory: URL { root.appendingPathComponent("prayer-asr") }
+
+    func appendASR(captureId: String, line: PrayerASRJournal.Line) {
+        try? FileManager.default.createDirectory(at: asrDirectory, withIntermediateDirectories: true)
+        guard var data = try? JSONEncoder().encode(line) else { return }
+        data.append(0x0A)
+        let url = asrDirectory.appendingPathComponent("\(captureId).jsonl")
+        if let handle = try? FileHandle(forWritingTo: url) {
+            defer { try? handle.close() }
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: data)
+            try? handle.synchronize()
+        } else {
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
+    func loadASRJournals() -> [String: PrayerASRJournal] {
+        let synced = (try? JSONDecoder().decode([String: Int].self, from: Data(contentsOf: root.appendingPathComponent("prayer-asr-sync.json")))) ?? [:]
+        var out: [String: PrayerASRJournal] = [:]
+        for name in (try? FileManager.default.contentsOfDirectory(atPath: asrDirectory.path)) ?? [] where name.hasSuffix(".jsonl") {
+            let captureId = String(name.dropLast(6))
+            guard let text = try? String(contentsOf: asrDirectory.appendingPathComponent(name), encoding: .utf8) else { continue }
+            let lines = text.split(separator: "\n").compactMap { try? JSONDecoder().decode(PrayerASRJournal.Line.self, from: Data($0.utf8)) }
+            out[captureId] = PrayerASRJournal(captureId: captureId, lines: lines, syncedThrough: synced[captureId] ?? 0)
+        }
+        return out
+    }
+
+    func saveASRSync(_ journals: [String: PrayerASRJournal]) {
+        let map = journals.mapValues { $0.syncedThrough }
+        if let data = try? JSONEncoder().encode(map) { try? data.write(to: root.appendingPathComponent("prayer-asr-sync.json"), options: .atomic) }
     }
 
     /// Closed segment files on disk for a capture that the manifest does not list yet.

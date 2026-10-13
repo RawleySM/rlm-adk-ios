@@ -3,6 +3,7 @@ import SwiftUI
 struct PortalView: View {
     @EnvironmentObject var model: PortalModel
     @State private var showCitation: CitationDetail?
+    @FocusState private var typedFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -16,7 +17,17 @@ struct PortalView: View {
                 }
                 .padding()
             }
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Voice Portal")
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { typedFocused = false }.accessibilityIdentifier("keyboardDone")
+                }
+            }
+            // Remote or programmatic dismissal (tab change, mode buttons, backend command) clears focus.
+            .onChange(of: model.keyboardDismissToken) { _, _ in typedFocused = false }
+            .onChange(of: typedFocused) { _, focused in model.focusChanged(focused ? "typedInput" : nil) }
             .sheet(item: Binding(get: { showCitation.map { IdentifiedCitation(detail: $0) } }, set: { showCitation = $0?.detail })) { item in
                 CitationSheet(detail: item.detail)
             }
@@ -45,11 +56,11 @@ struct PortalView: View {
     private var modeControls: some View {
         VStack(spacing: 8) {
             HStack {
-                Button(model.mode.isPraying ? "End prayer" : "Begin prayer") { model.mode.isPraying ? model.endPrayer() : model.beginPrayer() }
-                    .buttonStyle(.borderedProminent).tint(.purple)
-                Button(model.mode.quiet ? "Wake" : "Quiet") { model.mode.quiet ? model.wake() : model.enterQuiet() }
-                    .buttonStyle(.borderedProminent).tint(model.mode.quiet ? .orange : .gray)
-                Button("Stop") { model.stopOutput() }.buttonStyle(.bordered)
+                Button(model.mode.isPraying ? "End prayer" : "Begin prayer") { model.dismissKeyboard(); model.mode.isPraying ? model.endPrayer() : model.beginPrayer() }
+                    .buttonStyle(.borderedProminent).tint(.purple).accessibilityIdentifier("prayerButton")
+                Button(model.mode.quiet ? "Wake" : "Quiet") { model.dismissKeyboard(); model.mode.quiet ? model.wake() : model.enterQuiet() }
+                    .buttonStyle(.borderedProminent).tint(model.mode.quiet ? .orange : .gray).accessibilityIdentifier("quietButton")
+                Button("Stop") { model.dismissKeyboard(); model.stopOutput() }.buttonStyle(.bordered)
             }
             HStack {
                 Button { model.beginListening() } label: { Label("Listen", systemImage: "mic.fill") }
@@ -64,6 +75,9 @@ struct PortalView: View {
             if model.mode.quiet {
                 Text("Quiet: no spoken output until you wake the portal. Recording and backend work continue.")
                     .font(.caption).foregroundStyle(.orange)
+            }
+            if let warning = model.captureWarning {
+                Text(warning).font(.caption).foregroundStyle(.red).accessibilityIdentifier("captureWarning")
             }
         }
     }
@@ -122,8 +136,15 @@ struct PortalView: View {
 
     private var typedInput: some View {
         HStack {
-            TextField("Typed input (not live voice)", text: $model.typedInput).textFieldStyle(.roundedBorder)
-            Button("Send") { model.submitTyped() }.disabled(model.typedInput.isEmpty || model.mode.isPraying)
+            TextField("Typed input (not live voice)", text: $model.typedInput)
+                .textFieldStyle(.roundedBorder)
+                .focused($typedFocused)
+                .submitLabel(.send)
+                .onSubmit { typedFocused = false; model.submitTyped() }
+                .accessibilityIdentifier("typedInput")
+            Button("Send") { typedFocused = false; model.submitTyped() }
+                .disabled(model.typedInput.isEmpty || model.mode.isPraying)
+                .accessibilityIdentifier("sendButton")
         }
     }
 }
