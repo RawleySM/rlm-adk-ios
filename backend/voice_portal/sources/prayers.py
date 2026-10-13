@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 from pathlib import Path
 
 from ..db import connect_source
@@ -28,12 +29,16 @@ def read_prayers(store_path: str | Path) -> tuple[list[SourceRecord], dict]:
         conn.close()
     records = []
     for row in rows:
+        try:
+            when = dt.datetime.fromtimestamp(float(row["recorded_at"]), tz=dt.timezone.utc).strftime("%Y-%m-%d")
+        except (TypeError, ValueError):
+            when = str(row["recorded_at"])[:10]
         records.append(
             SourceRecord(
                 source_family=FAMILY,
                 source_doc_id=row["prayer_id"],
                 body=row["text"] or "",
-                title=f"Prayer {str(row['recorded_at'])[:10]}",
+                title=f"Prayer of {when} ({row['recorded_at_basis'] or 'recorded'})",
                 revision_hash=row["text_sha256"],
                 source_locator=f"prayer_corpus_v1:{row['prayer_id']}",
                 observed_at=str(row["listed_at"]),

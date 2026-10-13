@@ -24,6 +24,8 @@ struct DiagnosticsView: View {
                 Section("Audio") {
                     Text("Owner: \(model.audioState.label)").font(.caption)
                     Text(model.recognizerAvailability.label).font(.caption)
+                    Text("Recognition: \(model.recognizer.continuous ? "continuous" : "stopped") · listening \(model.recognizer.isListening ? "yes" : "no") · restarts \(model.recognizer.restartCount) (\(model.recognizer.lastRestartReason))").font(.caption2)
+                    if let p = model.progress { Text("Devotional progress: \(p.passage) @ \(p.revision.prefix(12)) resume \(p.resumeIndex + 1)/\(p.total)\(p.finished ? " finished" : "")").font(.caption2) }
                     Text("Mode persisted: quiet=\(model.mode.quiet ? "yes" : "no") activity=\(model.mode.label) devotional=\(model.mode.devotionalPassage ?? "-")@\(model.mode.devotionalPosition)").font(.caption2)
                 }
                 Section("Captures (local, retained)") {

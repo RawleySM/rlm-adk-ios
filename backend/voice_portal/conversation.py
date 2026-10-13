@@ -12,7 +12,7 @@ from collections.abc import Callable
 from .config import Config
 from .db import now
 from .reasoning import ReasoningError, stream_chat
-from .retrieval import cite_id, document_by_source, search
+from .retrieval import cite_id, document_by_source, focus_terms, resolve_citation, search
 from .sources.scripture import BOOK_NAMES
 from .sources.theographic import passage_entities
 
@@ -22,7 +22,10 @@ Use ONLY the numbered evidence passages below. Each passage is labelled with its
 SCRIPTURE (the World English Bible text), TEACHING (a pastor's published text; it is that teacher's interpretation),
 or PRAYER (Rawley's own recorded prayer; a personal statement, not Scripture).
 Cite evidence inline as [n]. Keep Scripture, a teacher's interpretation, and personal context clearly distinguished.
-If the evidence does not contain the answer, say so plainly; never invent a quotation, a date, or a source."""
+The evidence is a small set of retrieved excerpts, not the whole corpus. If it does not contain what was asked, say
+"the retrieved excerpts do not include that" and stop; never say that something is absent from Rawley's prayers,
+from Scripture or from the teaching, because you have not seen the whole corpus. Never invent a quotation, a date,
+or a source."""
 
 
 def _evidence_block(hits: list[dict]) -> str:
@@ -36,6 +39,39 @@ def _evidence_block(hits: list[dict]) -> str:
         when = hit.get("recorded_at") or ""
         lines.append(f"[{n}] {kind} — {head} {('recorded ' + str(when)[:10]) if when else ''}\n{hit['text'].strip()}")
     return "\n\n".join(lines)
+
+
+def gather_evidence(conn: sqlite3.Connection, query: str, *, families: list[str] | None, passage_cite_ids: list[str] | None, per_family: int = 2) -> tuple[list[dict], dict]:
+    """Balanced evidence: the passage actually heard first (its exact revision, even if a later import
+    made it historical), then the best chunks of each source family. Returns (hits, scope)."""
+    hits: list[dict] = []
+    seen: set[str] = set()
+    supplied: list[str] = []
+    failed: list[str] = []
+    for cite in passage_cite_ids or []:
+        try:
+            detail = resolve_citation(conn, cite)
+        except ValueError:
+            detail = {"available": False}
+        if detail.get("available") and cite not in seen:
+            seen.add(cite)
+            supplied.append(cite)
+            title = detail["title"] or detail["source_doc_id"]
+            if not detail.get("current"):
+                title += " (the revision you heard; a newer revision of this source exists)"
+            hits.append({"cite_id": cite, "source_family": detail["source_family"], "source_doc_id": detail["source_doc_id"], "revision_hash": detail["revision_hash"], "title": title, "text": detail["text"], "attribution": detail["attribution"], "recorded_at": detail.get("recorded_at"), "verse_refs": [v["osis"] for v in detail.get("verse_locators") or []], "strategy": "heard_passage", "current": bool(detail.get("current"))})
+        else:
+            failed.append(cite)
+    strategies: dict[str, str | None] = {}
+    for family in families or ["scripture", "teaching", "prayer"]:
+        result = search(conn, query, families=[family], limit=per_family)
+        strategies[family] = result.get("strategy")
+        for hit in result["hits"]:
+            if hit["cite_id"] not in seen:
+                seen.add(hit["cite_id"])
+                hits.append(hit)
+    scope = {"passage_supplied": supplied, "passage_failed": failed, "focus_terms": focus_terms(query), "strategies": strategies}
+    return hits, scope
 
 
 def run_turn(
@@ -61,11 +97,14 @@ def run_turn(
     context = context or {}
     if context.get("passage_title"):
         query = f"{transcript} {context['passage_title']}"
-    results = search(conn, query, families=families, limit=6)
-    hits = results["hits"]
+    hits, scope = gather_evidence(conn, query, families=families, passage_cite_ids=context.get("passage_cite_ids"))
     passage_note = ""
-    if context.get("passage_cite_ids"):
-        passage_note = f"\nThe user has just been listening to: {context.get('passage_title')}. Citations for that passage: {', '.join(context['passage_cite_ids'])}."
+    if scope["passage_supplied"]:
+        passage_note = f"\nThe user has just been listening to: {context.get('passage_title')}. That passage is included in the evidence."
+    elif context.get("passage_cite_ids"):
+        passage_note = f"\nThe user was listening to {context.get('passage_title')}, but that passage could not be supplied as evidence; do not quote it."
+    if scope["focus_terms"]:
+        passage_note += f"\nThe retrieval looked for excerpts about: {', '.join(scope['focus_terms'])}."
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT + passage_note},
         {"role": "user", "content": f"Evidence:\n\n{_evidence_block(hits) if hits else '(no evidence passages matched)'}\n\nQuestion: {transcript}"},
@@ -78,7 +117,7 @@ def run_turn(
     status = "done"
     error = None
     try:
-        for item in stream_chat(cfg.inference_base_url, cfg.inference_model, messages, cancel=cancel, timeout=cfg.inference_timeout_s, max_tokens=cfg.inference_max_tokens):
+        for item in stream_chat(cfg.inference_base_url, cfg.inference_model, messages, cancel=cancel, timeout=cfg.inference_timeout_s, max_tokens=cfg.inference_max_tokens, extra_body=cfg.inference_extra_body):
             if "delta" in item:
                 if first_ms is None:
                     first_ms = int((time.monotonic() - started) * 1000)
@@ -87,6 +126,8 @@ def run_turn(
                 emit({"type": "assistant_text_delta", "turn_id": turn_id, "seq": seq, "text": item["delta"]})
             else:
                 usage = item.get("usage")
+                if item.get("reasoning_chars"):
+                    usage = {**(usage or {}), "reasoning_chars_streamed": item["reasoning_chars"]}
                 if item.get("cancelled"):
                     status = "cancelled"
     except ReasoningError as exc:
@@ -107,8 +148,8 @@ def run_turn(
     elif status == "error":
         emit({"type": "error", "turn_id": turn_id, "message": error, "citations": citations})
     else:
-        emit({"type": "assistant_done", "turn_id": turn_id, "text": "".join(answer), "citations": citations, "first_delta_ms": first_ms, "done_ms": done_ms, "usage": usage, "model": cfg.inference_model, "evidence_count": len(hits)})
-    return {"turn_id": turn_id, "status": status, "answer": "".join(answer), "citations": citations, "first_delta_ms": first_ms, "done_ms": done_ms, "usage": usage, "error": error}
+        emit({"type": "assistant_done", "turn_id": turn_id, "text": "".join(answer), "citations": citations, "first_delta_ms": first_ms, "done_ms": done_ms, "usage": usage, "model": cfg.inference_model, "evidence_count": len(hits), "scope": scope})
+    return {"turn_id": turn_id, "status": status, "answer": "".join(answer), "citations": citations, "first_delta_ms": first_ms, "done_ms": done_ms, "usage": usage, "error": error, "scope": scope}
 
 
 def _passage_for_date(cfg: Config, date: dt.date | None) -> str:

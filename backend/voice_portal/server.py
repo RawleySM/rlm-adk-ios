@@ -30,6 +30,9 @@ class PortalService:
         self.started_at = now()
         self.active_turns: dict[str, threading.Event] = {}
         self.active_lock = threading.Lock()
+        recovered = outbox.recover_stale_posting(self.conn(), cfg, all_rows=True)
+        if recovered:
+            log.warning("recovered stale posting operations as delivery_unknown: %s", recovered)
 
     def conn(self) -> sqlite3.Connection:
         conn = getattr(self._local, "conn", None)

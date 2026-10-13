@@ -21,6 +21,8 @@ final class CaptureManifestTests: XCTestCase {
         m.segments[2].endedAt = Date()
         m.recordUpload(index: 2, intakeSha256: m.segments[2].sha256, durable: true, error: nil)
         m.closedAt = Date()
+        XCTAssertNil(m.finalizeSegments(), "closed but the writer has not settled")
+        m.expectedSegmentCount = 3
         let manifest = m.finalizeSegments()
         XCTAssertEqual(manifest?.count, 3)
         XCTAssertEqual(manifest?[1]["segment_index"] as? Int, 1)

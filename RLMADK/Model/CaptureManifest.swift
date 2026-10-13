@@ -62,18 +62,36 @@ struct CaptureManifest: Codable, Equatable, Identifiable {
     var recordingId: String? = nil
     var prayerId: String? = nil
     var finalizeRequestedAt: Date? = nil
+    /// Set when the segment writer has settled at end of capture: the total number of segments it
+    /// produced. Finalize is impossible until every one of them is recorded here and verified.
+    var expectedSegmentCount: Int? = nil
 
     var pendingUploads: [SegmentRecord] { segments.filter { $0.endedAt != nil && !$0.verifiedUploaded } }
     var allUploaded: Bool { !segments.isEmpty && segments.allSatisfy { $0.endedAt != nil && $0.verifiedUploaded } }
     var isClosed: Bool { closedAt != nil }
+    var writerSettled: Bool { expectedSegmentCount != nil && expectedSegmentCount == segments.count }
+    /// Next segment index a writer may use for this capture; existing files are never overwritten.
+    var nextSegmentIndex: Int { (segments.map(\.index).max() ?? -1) + 1 }
 
-    /// Ordered manifest for `POST /capture-finalize`; nil until every segment is verified.
+    /// Ordered manifest for `POST /capture-finalize`; nil until the writer settled and every
+    /// segment is verified. Indexes must be contiguous from 0.
     func finalizeSegments() -> [[String: Any]]? {
-        guard isClosed, allUploaded else { return nil }
-        return segments.sorted { $0.index < $1.index }.enumerated().map { offset, seg in
-            precondition(offset == seg.index, "segment indexes must be contiguous")
-            return ["segment_index": seg.index, "audio_sha256": seg.sha256, "size_bytes": seg.bytes]
+        guard isClosed, writerSettled, allUploaded else { return nil }
+        let ordered = segments.sorted { $0.index < $1.index }
+        for (offset, seg) in ordered.enumerated() where offset != seg.index { return nil }
+        return ordered.map { seg in ["segment_index": seg.index, "audio_sha256": seg.sha256, "size_bytes": seg.bytes] }
+    }
+
+    /// Adds segment files found on disk that the manifest does not know (a crash between close and
+    /// manifest save). `files` are (index, filename, bytes, sha256) of closed files.
+    mutating func reconcileFiles(_ files: [(index: Int, filename: String, bytes: Int, sha256: String)]) -> [Int] {
+        var added: [Int] = []
+        for file in files where !segments.contains(where: { $0.index == file.index }) {
+            segments.append(SegmentRecord(index: file.index, filename: file.filename, bytes: file.bytes, sha256: file.sha256, startedAt: createdAt, endedAt: createdAt))
+            added.append(file.index)
         }
+        segments.sort { $0.index < $1.index }
+        return added
     }
 
     mutating func recordUpload(index: Int, intakeSha256: String?, durable: Bool?, error: String?) {

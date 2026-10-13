@@ -24,7 +24,13 @@ jobs:
           cd backend
           python3 --version
           python3 -c 'import sqlite3; print("sqlite", sqlite3.sqlite_version)'
-          python3 -m unittest discover -s tests -t . -v 2>&1 | tail -40
+          set -o pipefail
+          python3 -m unittest discover -s tests -t . -v 2>&1 | tee ../backend-tests.log | { grep -E "^(Ran|OK|FAILED|ERROR|FAIL)" || true; }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-tests-log
+          path: backend-tests.log
 
   simulator:
     runs-on: macos-latest
@@ -62,16 +68,19 @@ jobs:
 
       - name: Build for iOS Simulator (unsigned)
         run: |
+          # pipefail keeps xcodebuild's exit status; the grep is wrapped so "no matches" and SIGPIPE
+          # cannot turn a failure into success or a success into failure. Full log is uploaded.
+          set -o pipefail
           xcodebuild -project RLMADK.xcodeproj -scheme RLMADK -configuration Debug \
             -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO build | tail -25
+            CODE_SIGNING_ALLOWED=NO build 2>&1 | tee xcodebuild-build.log | { grep -E "error:|\*\* BUILD" || true; }
 
       - name: Native state/outbox/source tests (XCTest)
         run: |
           set -o pipefail
           xcodebuild -project RLMADK.xcodeproj -scheme RLMADK -configuration Debug \
             -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO test 2>&1 | tee xcodebuild-test.log | grep -E "Test Case|Executed|error:|\*\* TEST" | tail -60
+            CODE_SIGNING_ALLOWED=NO test 2>&1 | tee xcodebuild-test.log | { grep -E "Test Case|Executed|error:|\*\* TEST" || true; }
 
       - name: Start fixture backend and fake reasoning owner on the runner
         run: |
@@ -80,7 +89,7 @@ jobs:
           mkdir -p "$VOICE_PORTAL_STATE"
           python3 -m tests.fakes --port 8799 > "$RUNNER_TEMP/fake-owner.log" 2>&1 &
           cat > "$VOICE_PORTAL_STATE/config.json" <<JSON
-          {"listen_host":"127.0.0.1","listen_port":8765,"inference_base_url":"http://127.0.0.1:8799/v1","inference_status_url":"http://127.0.0.1:8799/status","allocatorctl":"/nonexistent/allocatorctl","prayer_intake_url":"http://127.0.0.1:1"}
+          {"listen_host":"127.0.0.1","listen_port":8765,"inference_base_url":"http://127.0.0.1:8799/v1","inference_status_url":"http://127.0.0.1:8799/status","allocatorctl":"/nonexistent/allocatorctl","prayer_intake_url":"http://127.0.0.1:1","devotional_passages":["PSA.23"]}
           JSON
           python3 -m voice_portal fixture
           ./run-backend start
@@ -97,8 +106,15 @@ jobs:
             xcrun simctl launch "$UDID" com.rawleystanhope.rlmadk
           sleep 12
           xcrun simctl io "$UDID" screenshot simulator.png
-          sleep 6
+          sleep 8
           xcrun simctl io "$UDID" screenshot simulator-after-turn.png
+          for tab in work diagnostics; do
+            xcrun simctl terminate "$UDID" com.rawleystanhope.rlmadk || true
+            SIMCTL_CHILD_RLMADK_BACKEND_URL=http://127.0.0.1:8765 SIMCTL_CHILD_RLMADK_START_TAB=$tab \
+              xcrun simctl launch "$UDID" com.rawleystanhope.rlmadk
+            sleep 6
+            xcrun simctl io "$UDID" screenshot "simulator-$tab.png"
+          done
           cd backend && ./run-backend logs 40
 
       - uses: actions/upload-artifact@v4
@@ -108,4 +124,7 @@ jobs:
           path: |
             simulator.png
             simulator-after-turn.png
+            simulator-work.png
+            simulator-diagnostics.png
+            xcodebuild-build.log
             xcodebuild-test.log

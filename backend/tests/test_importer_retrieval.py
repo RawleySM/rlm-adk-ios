@@ -43,6 +43,15 @@ class ImportTests(unittest.TestCase):
         records, selection = read_prayers(self.cfg.prayer_store)
         return import_family(self.conn, "prayer", records, selection=selection, source_path=self.cfg.prayer_store)
 
+    def test_prayer_titles_are_dates_and_refresh_without_new_revision(self):
+        self._import_prayers([("p1", "Lord God, use my spirit.", 1790501960.0)])
+        self.assertEqual(self.conn.execute("SELECT title FROM documents WHERE source_doc_id='p1'").fetchone()[0], "Prayer of 2026-09-27 (device_capture)")
+        with self.conn:
+            self.conn.execute("UPDATE documents SET title = 'old' WHERE source_doc_id = 'p1'")
+        counts = self._import_prayers([("p1", "Lord God, use my spirit.", 1790501960.0)])
+        self.assertEqual(counts["unchanged"], 1)
+        self.assertEqual(self.conn.execute("SELECT title, COUNT(*) FROM documents WHERE source_doc_id='p1'").fetchone()[:2], ("Prayer of 2026-09-27 (device_capture)", 1))
+
     def test_repeat_import_is_idempotent(self):
         prayers = [("p1", "Lord God, use my spirit. Turn my face to you.", 1.0), ("p2", "Father, thank you for my son and for grace.", 2.0)]
         first = self._import_prayers(prayers)
@@ -146,6 +155,54 @@ class ImportTests(unittest.TestCase):
         self.assertEqual([p["place_id"] for p in theo["places"]], ["pl1"])
         missing = conversation.build_devotional(self.conn, self.cfg, passage="GEN.1")
         self.assertFalse(missing["available"])
+
+    def test_noisy_request_finds_target_subject_and_reports_strategy(self):
+        """Regression: request-frame words must not outrank the subject word."""
+        prayers = [
+            ("p-son", "Lord, I lift up my son, Creighton. Give him courage at school this week.", 1.0),
+            ("p-agents", "Father, help me think clearly about this prayer and about Scripture as I build agents that speak truth.", 2.0),
+            ("p-work", "Lord, my prayer this morning is for patience at work; let your Scripture speak to me and fit my day.", 3.0),
+            ("p-health", "Father, this prayer speaks of my health; let Scripture fit my fears and speak peace.", 4.0),
+        ]
+        self._import_prayers(prayers)
+        question = "Which prayer of mine speaks about my son, and what Scripture fits it?"
+        self.assertEqual(retrieval.focus_terms(question), ["son"])
+        result = retrieval.search(self.conn, question, families=["prayer"], limit=2)
+        self.assertEqual(result["hits"][0]["source_doc_id"], "p-son")
+        self.assertEqual(result["hits"][0]["strategy"], "focus_any")
+        self.assertIn("Creighton", result["hits"][0]["text"])
+        # the broad request words only fill the remaining slots
+        self.assertEqual(result["strategy"], "focus_any+broad")
+        # two subject words: both-required stage ranks first
+        result = retrieval.search(self.conn, "what did I pray about patience at work", families=["prayer"], limit=3)
+        self.assertEqual(retrieval.focus_terms("what did I pray about patience at work"), ["patience", "work"])
+        self.assertEqual(result["hits"][0]["source_doc_id"], "p-work")
+        self.assertEqual(result["hits"][0]["strategy"], "focus_all")
+        # a request with only frame words still returns the broad match
+        self.assertEqual(retrieval.query_plan("which prayer speaks about scripture")[0][0], "broad")
+
+    def test_missing_evidence_stays_missing(self):
+        self._import_prayers([("p1", "Lord, bless Rawley today.", 1.0)])
+        result = retrieval.search(self.conn, "What have I prayed about zebras in Antarctica?")
+        self.assertEqual(result["hits"], [])
+        hits, scope = conversation.gather_evidence(self.conn, "What have I prayed about zebras in Antarctica?", families=None, passage_cite_ids=None)
+        self.assertEqual(hits, [])
+        self.assertEqual(scope["focus_terms"], ["zebras", "antarctica"])
+
+    def test_heard_passage_keeps_its_revision_and_failed_references_are_not_claimed(self):
+        self._import_prayers([("p1", "Lord, the shepherd psalm gives me rest in green pastures.", 1.0)])
+        heard = retrieval.search(self.conn, "green pastures")["hits"][0]["cite_id"]
+        # a later import revises the body; the heard revision becomes historical
+        self._import_prayers([("p1", "Lord, the shepherd psalm gives me rest.", 1.0)])
+        hits, scope = conversation.gather_evidence(self.conn, "what did that say about pastures", families=["prayer"], passage_cite_ids=[heard, "999:badbadbadbad:0", "garbage"])
+        self.assertEqual(scope["passage_supplied"], [heard])
+        self.assertEqual(scope["passage_failed"], ["999:badbadbadbad:0", "garbage"])
+        self.assertEqual(hits[0]["cite_id"], heard)
+        self.assertFalse(hits[0]["current"])
+        self.assertIn("green pastures", hits[0]["text"])
+        self.assertIn("revision you heard", hits[0]["title"])
+        _, scope = conversation.gather_evidence(self.conn, "anything", families=["prayer"], passage_cite_ids=["garbage"])
+        self.assertEqual(scope["passage_supplied"], [])
 
     def test_theographic_passage_lookup_direct(self):
         load_theographic(self.conn, THEO_BODIES, {"source_id": "theo-test"})

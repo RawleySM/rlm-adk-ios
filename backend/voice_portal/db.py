@@ -95,7 +95,8 @@ CREATE TABLE IF NOT EXISTS work_artifacts (
   path TEXT NOT NULL,
   sha256 TEXT,
   bytes INTEGER,
-  created_at REAL NOT NULL
+  created_at REAL NOT NULL,
+  reference_json TEXT
 );
 CREATE TABLE IF NOT EXISTS prayer_captures (
   client_capture_id TEXT PRIMARY KEY,
@@ -149,7 +150,15 @@ def connect(path: Path | str) -> sqlite3.Connection:
     conn = sqlite3.connect(str(path), check_same_thread=False, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    _migrate(conn)
     return conn
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(work_artifacts)")}
+    if "reference_json" not in columns:
+        conn.execute("ALTER TABLE work_artifacts ADD COLUMN reference_json TEXT")
+        conn.commit()
 
 
 def connect_source(path: Path | str) -> sqlite3.Connection:

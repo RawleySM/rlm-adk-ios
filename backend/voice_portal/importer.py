@@ -119,6 +119,7 @@ def import_family(conn: sqlite3.Connection, family: str, records: Iterable[Sourc
                 if existing is not None:
                     if existing["current"]:
                         counts["unchanged"] += 1
+                        conn.execute("UPDATE documents SET title = ? WHERE doc_id = ? AND title IS NOT ?", (rec.title, existing["doc_id"], rec.title))
                     else:
                         for other in conn.execute(
                             "SELECT doc_id FROM documents WHERE source_family = ? AND source_doc_id = ? AND current = 1",

@@ -133,10 +133,11 @@ class FakeIntake:
 class FakeInference:
     """Streams `reply` word by word as OpenAI SSE; `delay` seconds between words; records requests."""
 
-    def __init__(self, reply="The LORD is my shepherd [1]. That is Scripture.", delay=0.02, status=200):
+    def __init__(self, reply="The LORD is my shepherd [1]. That is Scripture.", delay=0.02, status=200, reasoning="Let me think about rest."):
         self.reply = reply
         self.delay = delay
         self.status = status
+        self.reasoning = reasoning
         self.requests: list[dict] = []
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
         self.server.daemon_threads = True
@@ -194,6 +195,8 @@ class FakeInference:
                     self.wfile.flush()
 
                 try:
+                    if owner.reasoning:  # thinking models stream reasoning_content before content
+                        chunk(b"data: " + json.dumps({"choices": [{"delta": {"reasoning_content": owner.reasoning}, "finish_reason": None}]}).encode() + b"\n\n")
                     words = owner.reply.split(" ")
                     for i, word in enumerate(words):
                         delta = word if i == 0 else " " + word

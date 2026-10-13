@@ -18,6 +18,13 @@ the existing pipeline products and connect them to durable tasks, projects, and 
 - [Architecture research](architecture-research.md): source inventory, native audio considerations,
   Theographic and retrieval comparisons, proposed components and interfaces, and a phased proof plan.
 
+- [Prototype plan](prototype-plan.md): the selected first slice, source contracts, host interfaces and
+  acceptance checks. [Fable review](prototype-fable-review.md) is preserved with the Codex adjudication.
+- [Prototype runbook](prototype-runbook.md): how to deploy and run the desktop backend, the client, the
+  cloud Mac, and the signing/device situation.
+- [Prototype acceptance](prototype-acceptance.md): what was built and exercised, built but unverified,
+  or blocked, with evidence paths and simulator screenshots.
+
 - [Gemini research report archive](research/2026-10-12-gemini/README.md): seven completed reports,
   source lists, all twelve independent prompts, and links/status for the remaining studies.
 

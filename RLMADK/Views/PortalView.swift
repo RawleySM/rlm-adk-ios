@@ -37,7 +37,7 @@ struct PortalView: View {
                 Spacer()
                 if model.speaking { Label("Speaking", systemImage: "speaker.wave.2").font(.caption) }
             }
-            Text(model.recognizerAvailability.label).font(.caption2).foregroundStyle(model.recognizerAvailability.usable ? .secondary : .orange)
+            Text(model.recognizerAvailability.label).font(.caption2).foregroundStyle(model.recognizerAvailability.usable ? Color.secondary : Color.orange)
         }
         .accessibilityIdentifier("statusHeader")
     }

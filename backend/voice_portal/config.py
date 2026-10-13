@@ -37,6 +37,9 @@ class Config:
     inference_model: str = "spark-small"
     inference_timeout_s: int = 600
     inference_max_tokens: int = 400
+    # Forwarded into the chat request body. Thinking models (Qwen3) otherwise spend the budget on
+    # reasoning_content that is never spoken; the owner proxies the body unchanged.
+    inference_extra_body: dict = field(default_factory=lambda: {"chat_template_kwargs": {"enable_thinking": False}})
     # Spark-A prayer intake through the desktop loopback forward.
     prayer_intake_url: str = "http://127.0.0.1:8091"
     # Installed allocator CLI (desktop). Never started or resumed by this service.
@@ -84,6 +87,8 @@ def load_config(path: str | os.PathLike | None = None) -> Config:
                 setattr(cfg, key, int(raw))
             elif isinstance(current, list):
                 setattr(cfg, key, [item for item in raw.split(",") if item])
+            elif isinstance(current, dict):
+                setattr(cfg, key, json.loads(raw))
             else:
                 setattr(cfg, key, raw)
     if not cfg.source_commit:

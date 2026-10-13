@@ -87,12 +87,17 @@ class ServerTests(unittest.TestCase):
         done = events[-1]
         self.assertEqual(done["type"], "assistant_done")
         self.assertIn("shepherd", done["text"])
+        self.assertNotIn("think about rest", done["text"])  # reasoning_content is never spoken/shown
+        self.assertEqual(done["usage"]["reasoning_chars_streamed"], len(self.inference.reasoning))
+        self.assertEqual(self.inference.requests[0]["chat_template_kwargs"], {"enable_thinking": False})
         self.assertEqual(done["citations"][0]["source_family"], "prayer")
         self.assertIsNotNone(done["first_delta_ms"])
         self.assertEqual(done["usage"]["completion_tokens"], len(self.inference.reply.split()))
         # partials never triggered a model call; only the final did
         self.assertEqual(len(self.inference.requests), 1)
         self.assertIn("PRAYER", self.inference.requests[0]["messages"][1]["content"])
+        self.assertIn("retrieved excerpts", self.inference.requests[0]["messages"][0]["content"])
+        self.assertEqual(done["scope"]["focus_terms"], ["green", "pastures"])
         # duplicate final for the same turn id is refused
         ws.send_json({"type": "final_transcript", "turn_id": "t1", "text": "again"})
         self.assertEqual(json.loads(ws.receive())["type"], "duplicate_turn")

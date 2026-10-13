@@ -13,13 +13,25 @@ struct WorkView: View {
                 VStack {
                     Picker("Kind", selection: $kind) { Text("Research").tag("research"); Text("Testimony").tag("testimony") }.pickerStyle(.segmented)
                     TextField("Describe the work (stable operation id is assigned locally)", text: $request, axis: .vertical).textFieldStyle(.roundedBorder)
-                    Button("Record and dispatch") { Task { await model.submitWork(kind: kind, text: request); request = "" } }
-                        .buttonStyle(.borderedProminent).disabled(request.isEmpty || !model.connection.isConnected)
+                    Button("Record and dispatch") { let text = request; request = ""; Task { await model.submitWork(kind: kind, text: text) } }
+                        .buttonStyle(.borderedProminent).disabled(request.isEmpty)
+                    if !model.connection.isConnected { Text("Offline: the request is kept on the phone and sent on reconnect.").font(.caption2).foregroundStyle(.orange) }
                 }.padding(.horizontal)
                 if let a = model.backendStatus?.allocator {
                     Text(allocatorLine(a)).font(.caption2).foregroundStyle(.secondary).padding(.horizontal)
                 }
-                List(model.work) { op in
+                List {
+                    ForEach(model.localWork.filter { $0.state == "pending" }) { item in
+                        VStack(alignment: .leading) {
+                            Text(item.requestText).font(.caption).lineLimit(2)
+                            HStack {
+                                Text("Queued locally on phone").font(.caption.bold()).foregroundStyle(.orange)
+                                Text(item.operationId.prefix(8)).font(.caption2).foregroundStyle(.secondary)
+                            }
+                            if let e = item.lastError { Text(e).font(.caption2).foregroundStyle(.secondary).lineLimit(2) }
+                        }
+                    }
+                    ForEach(model.work) { op in
                     Button { Task { selected = await model.workDetail(op.operation_id) } } label: {
                         VStack(alignment: .leading) {
                             Text(op.request_text).font(.caption).lineLimit(2)
@@ -30,8 +42,9 @@ struct WorkView: View {
                             if let e = op.last_error { Text(e).font(.caption2).foregroundStyle(.secondary).lineLimit(2) }
                         }
                     }
+                    }
                 }
-                .refreshable { await model.refreshWork() }
+                .refreshable { await model.syncLocalWork(); await model.refreshWork() }
             }
             .navigationTitle("Work")
             .task { await model.refreshWork() }

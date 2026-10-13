@@ -59,6 +59,9 @@ final class PortalReducerTests: XCTestCase {
         let (after, late) = run([.assistantDelta(turnId: "t1"), .assistantDone(turnId: "t1")], from: state)
         XCTAssertEqual(after.activity, .idle)
         XCTAssertTrue(late.isEmpty)
+        // Speech while idle still stops anything that is playing, without a server cancel.
+        let (_, idleSpeech) = run([.userSpeechStarted], from: after)
+        XCTAssertEqual(idleSpeech, [.cancelOutput(turnId: nil)])
     }
 
     func testOrdinaryCompletionReturnsToAvailableNotQuiet() {
@@ -88,5 +91,14 @@ final class PortalReducerTests: XCTestCase {
         let data = try JSONEncoder().encode(mode)
         let back = try JSONDecoder().decode(PortalMode.self, from: data)
         XCTAssertEqual(back, mode)
+    }
+}
+
+extension PortalReducerTests {
+    func testDevotionalRevisionPersists() throws {
+        var mode = PortalMode()
+        mode.devotionalRevision = "abc"
+        let back = try JSONDecoder().decode(PortalMode.self, from: JSONEncoder().encode(mode))
+        XCTAssertEqual(back.devotionalRevision, "abc")
     }
 }

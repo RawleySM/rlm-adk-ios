@@ -122,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.cmd == "readiness":
         _print(readiness(cfg.inference_base_url, cfg.inference_status_url, cfg.inference_model))
     elif args.cmd == "probe":
-        _print(probe_once(cfg.inference_base_url, cfg.inference_model, timeout=cfg.inference_timeout_s))
+        _print(probe_once(cfg.inference_base_url, cfg.inference_model, timeout=cfg.inference_timeout_s, extra_body=cfg.inference_extra_body))
     elif args.cmd == "turn":
         import threading
         import uuid

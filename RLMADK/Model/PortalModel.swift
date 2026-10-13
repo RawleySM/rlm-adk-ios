@@ -1,4 +1,5 @@
 import AVFoundation
+import CryptoKit
 import Foundation
 import SwiftUI
 
@@ -24,6 +25,8 @@ final class PortalModel: ObservableObject {
     @Published var devotional: Devotional?
     @Published var devotionalPlaying = false
     @Published var work: [WorkOperation] = []
+    @Published private(set) var localWork: [LocalWorkItem] = []
+    @Published private(set) var progress: DevotionalProgress?
     @Published var backendStatus: BackendStatus?
     @Published var log: [String] = []
     @Published var speaking = false
@@ -59,10 +62,17 @@ final class PortalModel: ObservableObject {
         if !loadedCaptures.contains(where: { $0.captureId == ambient }) {
             loadedCaptures.insert(CaptureManifest(captureId: ambient, kind: "ambient", createdAt: Date()), at: 0)
         }
+        for i in loadedCaptures.indices {
+            // Files closed on disk but missing from the manifest (crash between close and save) are recovered.
+            let found = store.closedSegmentFiles(loadedCaptures[i].captureId, knownIndexes: Set(loadedCaptures[i].segments.map(\.index)))
+            _ = loadedCaptures[i].reconcileFiles(found)
+        }
         let rec = Recognizer()
         self.store = store
         mode = loadedMode
         captures = loadedCaptures
+        localWork = store.loadLocalWork()
+        progress = store.loadProgress()
         recognizer = rec
         recognizerAvailability = rec.availability
         client = PortalClient(baseURL: URL(string: urlString) ?? URL(string: PortalModel.defaultBackendURL)!)
@@ -86,7 +96,10 @@ final class PortalModel: ObservableObject {
         recognizer.onPartial = { [weak self] text in Task { @MainActor in self?.partial(text) } }
         recognizer.onFinal = { [weak self] text in Task { @MainActor in self?.final(text, source: "voice") } }
         recognizer.onGap = { [weak self] gap in Task { @MainActor in self?.recordGap(gap) } }
+        recognizer.onRestart = { [weak self] reason in Task { @MainActor in self?.logLine("recognition restarted (\(reason))") } }
         speaker.onStateChange = { [weak self] s in Task { @MainActor in self?.speaking = s } }
+        speaker.onUtteranceStarted = { [weak self] tag in Task { @MainActor in self?.devotionalSegmentStarted(tag) } }
+        speaker.onUtteranceFinished = { [weak self] tag in Task { @MainActor in self?.devotionalSegmentFinished(tag) } }
         client.onConnection = { [weak self] c in Task { @MainActor in self?.connectionChanged(c) } }
         client.onEvent = { [weak self] e, raw in Task { @MainActor in self?.handle(e, raw) } }
     }
@@ -144,11 +157,27 @@ final class PortalModel: ObservableObject {
     private func startAudio() {
         guard audioState != .running else { return }
         let captureId = mode.prayerCaptureId ?? ambientCaptureId
+        let startIndex = captures.first(where: { $0.captureId == captureId })?.nextSegmentIndex ?? 0
         do {
-            try audio.start(captureId: captureId, directory: store.captureDirectory(captureId))
-            logLine("audio owner running; capture \(captureId)")
+            try audio.start(captureId: captureId, directory: store.captureDirectory(captureId), startIndex: startIndex)
+            logLine("audio owner running; capture \(captureId) from segment \(startIndex)")
+            startContinuousRecognition()
         } catch {
             logLine("audio owner failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// The streaming cascade: recognition stays open between exchanges and is restarted after every
+    /// final, no-speech or error without touching the recorder. Buttons remain the fallback.
+    private func startContinuousRecognition() {
+        guard audioState == .running else { return }
+        if recognizerAvailability.usable {
+            recognizer.startContinuous()
+            lastSpeechAt = Date()
+            startSilenceTimer()
+            logLine("continuous on-device recognition started")
+        } else {
+            logLine("live voice unavailable here: \(recognizerAvailability.label); typed input and buttons remain")
         }
     }
 
@@ -168,6 +197,7 @@ final class PortalModel: ObservableObject {
             logLine("connected session \(id.prefix(8)); mode stays \(mode.label)")
             Task {
                 if devotional == nil { await loadDevotional() }
+                await syncLocalWork()
                 await refreshWork()
                 await retryPendingUploads()
                 if ProcessInfo.processInfo.environment["RLMADK_CI_DEMO"] == "1", !ciDemoDone {
@@ -189,16 +219,22 @@ final class PortalModel: ObservableObject {
         guard !mode.isPraying else { return }
         apply(.userSpeechStarted)
         partialTranscript = ""
-        recognizer.start()
+        if recognizer.continuous { recognizer.start() } else { recognizer.startContinuous() }
         lastSpeechAt = Date()
         startSilenceTimer()
-        logLine(recognizerAvailability.usable ? "listening (on-device)" : "listen requested but \(recognizerAvailability.label)")
+        logLine(recognizerAvailability.usable ? "listening (on-device, manual restart)" : "listen requested but \(recognizerAvailability.label)")
     }
+
+    private var utteranceInterrupted = false
 
     private func partial(_ text: String) {
         partialTranscript = text
         lastSpeechAt = Date()
-        if case .responding = mode.activity { apply(.userSpeechStarted) } // barge-in on real speech
+        // Real speech interrupts whatever is playing (response, trailing TTS, devotional), once per utterance.
+        if !utteranceInterrupted, !mode.isPraying, (speaker.isSpeaking || devotionalPlaying || mode.currentTurnId != nil) {
+            utteranceInterrupted = true
+            apply(.userSpeechStarted)
+        }
         if let turnId = mode.currentTurnId { client.send(["type": "partial_transcript", "turn_id": turnId, "text": text]) }
     }
 
@@ -206,6 +242,7 @@ final class PortalModel: ObservableObject {
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }
         partialTranscript = ""
+        utteranceInterrupted = false
         lastTranscript = cleaned
         logLine("final (\(source)): \(cleaned)")
         if handleVoiceCommand(cleaned) { return }
@@ -289,9 +326,8 @@ final class PortalModel: ObservableObject {
         captures.insert(CaptureManifest(captureId: captureId, kind: "prayer", createdAt: Date()), at: 0)
         persistCaptures()
         apply(.enterPrayer(captureId: captureId))
-        recognizer.stop()
-        if audioState == .running { audio.beginCapture(captureId: captureId, directory: store.captureDirectory(captureId)) }
-        logLine("prayer begun; capture \(captureId)")
+        if audioState == .running { audio.beginCapture(captureId: captureId, directory: store.captureDirectory(captureId), startIndex: 0) }
+        logLine("prayer begun; capture \(captureId); recognition continues for end-of-prayer commands only")
     }
 
     func endPrayer() {
@@ -302,13 +338,27 @@ final class PortalModel: ObservableObject {
 
     private func finishCapture(_ captureId: String) {
         guard let i = captures.firstIndex(where: { $0.captureId == captureId }) else { return }
-        captures[i].closedAt = Date()
         captures[i].finalizeRequestedAt = Date()
         persistCaptures()
+        let ambientStart = captures.first(where: { $0.captureId == ambientCaptureId })?.nextSegmentIndex ?? 0
         if audioState == .running {
-            audio.rotateSegment() // closes the final prayer segment; segmentClosed() will upload it
-            audio.beginCapture(captureId: ambientCaptureId, directory: store.captureDirectory(ambientCaptureId))
+            // Switch back to the ambient capture; the prayer writer settles asynchronously and only
+            // then is the capture closed with its final segment count.
+            audio.beginCapture(captureId: ambientCaptureId, directory: store.captureDirectory(ambientCaptureId), startIndex: ambientStart) { [weak self] produced in
+                Task { @MainActor in self?.captureSettled(captureId, produced: produced) }
+            }
+        } else {
+            captureSettled(captureId, produced: captures[i].segments.count)
         }
+    }
+
+    /// The writer reported its last segment; the manifest may now be closed and finalized.
+    private func captureSettled(_ captureId: String, produced: Int) {
+        guard let i = captures.firstIndex(where: { $0.captureId == captureId }) else { return }
+        captures[i].expectedSegmentCount = produced
+        captures[i].closedAt = Date()
+        persistCaptures()
+        logLine("capture \(captureId) settled: \(produced) segments expected, \(captures[i].segments.count) recorded")
         Task { await self.uploadPending(captureId: captureId) }
     }
 
@@ -416,12 +466,8 @@ final class PortalModel: ObservableObject {
             if let p = passage ?? mode.devotionalPassage { q["passage"] = p }
             let d = try await client.get("devotional", query: q, as: Devotional.self)
             devotional = d
-            if mode.devotionalPassage != d.passage {
-                var m = mode
-                m.devotionalPassage = d.passage
-                m.devotionalPosition = 0
-                mode = m
-                store.saveMode(m)
+            if let p = progress, !p.matches(passage: d.passage, revision: d.revision_hash ?? "") {
+                logLine("devotional revision/passage changed; saved position no longer applies")
             }
             logLine("devotional loaded: \(d.title ?? d.passage) segments=\(d.segments?.count ?? 0) teaching=\(d.teaching_found ?? false)")
         } catch { logLine("devotional error: \(error.localizedDescription)") }
@@ -430,23 +476,48 @@ final class PortalModel: ObservableObject {
     func playDevotional() {
         guard let d = devotional, let segments = d.segments, !segments.isEmpty else { return }
         guard SpeechGate.mayEnqueue(mode) else { logLine("devotional playback suppressed by gate (\(mode.label))"); return }
+        let revision = d.revision_hash ?? ""
+        if progress == nil || !(progress!.matches(passage: d.passage, revision: revision)) || progress!.total != segments.count {
+            progress = DevotionalProgress(passage: d.passage, revision: revision, total: segments.count)
+        }
+        var start = progress!.resumeIndex
+        if progress!.finished { start = 0; progress!.finished = false }
         devotionalPlaying = true
-        let start = min(mode.devotionalPosition, segments.count - 1)
         for (offset, seg) in segments[start...].enumerated() {
             let prefix = seg.kind == "scripture" ? "" : "From \(seg.attribution ?? "teaching"): "
-            speaker.speak(prefix + seg.text)
-            // Position advances as utterances are enqueued; interruption keeps the last reached index.
-            var m = mode
-            m.devotionalPosition = start + offset
-            mode = m
+            speaker.speak(prefix + seg.text, tag: start + offset)
         }
-        store.saveMode(mode)
+        logLine("devotional playing from segment \(start + 1)/\(segments.count) (\(d.passage) @ \(revision.prefix(12)))")
     }
 
     func pauseDevotional() {
         speaker.stopAll()
         devotionalPlaying = false
-        store.saveMode(mode)
+        progress?.interrupted()
+        persistProgress()
+        logLine("devotional paused at segment \((progress?.resumeIndex ?? 0) + 1)")
+    }
+
+    private func devotionalSegmentStarted(_ index: Int) {
+        progress?.started(index)
+        persistProgress()
+    }
+
+    private func devotionalSegmentFinished(_ index: Int) {
+        progress?.finished(index)
+        if progress?.finished == true { devotionalPlaying = false }
+        persistProgress()
+    }
+
+    private func persistProgress() {
+        if let p = progress {
+            store.saveProgress(p)
+            var m = mode
+            m.devotionalPosition = p.resumeIndex
+            m.devotionalPassage = p.passage
+            m.devotionalRevision = p.revision
+            if m != mode { mode = m; store.saveMode(m) }
+        }
     }
 
     // MARK: sources and work
@@ -467,15 +538,66 @@ final class PortalModel: ObservableObject {
         if let list = try? await client.get("work", as: WorkList.self) { work = list.operations }
     }
 
+    /// Records the request locally first (stable operation id), then asks the service to create and
+    /// dispatch it. Offline, the item stays visible as locally queued and is replayed on reconnect.
     func submitWork(kind: String, text: String) async {
         let operationId = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-        store.appendPendingWork(operationId: operationId, kind: kind, text: text) // local record first
-        do {
-            _ = try await client.post("work", json: ["operation_id": operationId, "kind": kind, "request_text": text], as: WorkOperation.self)
-            _ = try await client.post("work/\(operationId)/dispatch", json: [:], as: [String: AnyDecodable].self)
-            logLine("work \(operationId.prefix(8)) recorded and dispatched")
-        } catch { logLine("work submit error: \(error.localizedDescription)") }
+        localWork.insert(LocalWorkItem(operationId: operationId, kind: kind, requestText: text, createdAt: Date()), at: 0)
+        store.saveLocalWork(localWork)
+        logLine("work \(operationId.prefix(8)) queued locally on the phone")
+        await syncLocalWork()
+    }
+
+    /// Replays pending local items: the service is asked whether the operation exists before any
+    /// create, so a relaunch or reconnect never produces a second server operation.
+    func syncLocalWork() async {
+        guard connection.isConnected else { return }
+        let pending = localWork.filter { $0.state == "pending" }
+        guard !pending.isEmpty else { return }
+        var existence: [String: Bool] = [:]
+        for item in pending {
+            do {
+                _ = try await client.get("work/\(item.operationId)", as: WorkOperation.self)
+                existence[item.operationId] = true
+            } catch let error as PortalClient.HTTPError where error.status == 404 {
+                existence[item.operationId] = false
+            } catch {
+                logLine("work sync: cannot check \(item.operationId.prefix(8)): \(error.localizedDescription)")
+                return // unknown service state: leave everything pending
+            }
+        }
+        for action in WorkReconciler.plan(pending: pending, serverHas: { existence[$0] ?? false }) {
+            switch action {
+            case .create(let id):
+                guard let item = pending.first(where: { $0.operationId == id }) else { continue }
+                do {
+                    _ = try await client.post("work", json: ["operation_id": id, "kind": item.kind, "request_text": item.requestText], as: WorkOperation.self)
+                    _ = try? await client.post("work/\(id)/dispatch", json: [:], as: [String: AnyDecodable].self)
+                    settleLocalWork(id)
+                } catch {
+                    markLocalWork(id, error: error.localizedDescription)
+                }
+            case .settle(let id):
+                settleLocalWork(id)
+            }
+        }
         await refreshWork()
+    }
+
+    private func settleLocalWork(_ id: String) {
+        if let i = localWork.firstIndex(where: { $0.operationId == id }) {
+            localWork[i].state = "recorded"
+            localWork[i].lastError = nil
+            store.saveLocalWork(localWork)
+            logLine("work \(id.prefix(8)) confirmed on the service")
+        }
+    }
+
+    private func markLocalWork(_ id: String, error: String) {
+        if let i = localWork.firstIndex(where: { $0.operationId == id }) {
+            localWork[i].lastError = error
+            store.saveLocalWork(localWork)
+        }
     }
 
     func reconcileWork(_ operationId: String) async {
@@ -539,15 +661,35 @@ final class LocalStore {
         if let data = try? JSONEncoder().encode(captures) { try? data.write(to: root.appendingPathComponent("captures.json"), options: .atomic) }
     }
 
-    func appendPendingWork(operationId: String, kind: String, text: String) {
-        let line = (try? JSONSerialization.data(withJSONObject: ["operation_id": operationId, "kind": kind, "request_text": text, "created_at": Date().timeIntervalSince1970])) ?? Data()
-        let url = root.appendingPathComponent("work-pending.jsonl")
-        if let handle = try? FileHandle(forWritingTo: url) {
-            handle.seekToEndOfFile()
-            handle.write(line + Data("\n".utf8))
-            try? handle.close()
-        } else {
-            try? (line + Data("\n".utf8)).write(to: url)
+    func loadLocalWork() -> [LocalWorkItem] {
+        guard let data = try? Data(contentsOf: root.appendingPathComponent("work-local.json")) else { return [] }
+        return (try? JSONDecoder().decode([LocalWorkItem].self, from: data)) ?? []
+    }
+
+    func saveLocalWork(_ items: [LocalWorkItem]) {
+        if let data = try? JSONEncoder().encode(items) { try? data.write(to: root.appendingPathComponent("work-local.json"), options: .atomic) }
+    }
+
+    func loadProgress() -> DevotionalProgress? {
+        guard let data = try? Data(contentsOf: root.appendingPathComponent("devotional-progress.json")) else { return nil }
+        return try? JSONDecoder().decode(DevotionalProgress.self, from: data)
+    }
+
+    func saveProgress(_ progress: DevotionalProgress) {
+        if let data = try? JSONEncoder().encode(progress) { try? data.write(to: root.appendingPathComponent("devotional-progress.json"), options: .atomic) }
+    }
+
+    /// Closed segment files on disk for a capture that the manifest does not list yet.
+    func closedSegmentFiles(_ captureId: String, knownIndexes: Set<Int>) -> [(index: Int, filename: String, bytes: Int, sha256: String)] {
+        let dir = captureDirectory(captureId)
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+        var out: [(index: Int, filename: String, bytes: Int, sha256: String)] = []
+        for name in names.sorted() where name.hasSuffix(".wav") {
+            guard let index = Int(name.dropLast(4)), !knownIndexes.contains(index) else { continue }
+            guard let data = try? Data(contentsOf: dir.appendingPathComponent(name)), !data.isEmpty else { continue }
+            let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            out.append((index, name, data.count, digest))
         }
+        return out
     }
 }

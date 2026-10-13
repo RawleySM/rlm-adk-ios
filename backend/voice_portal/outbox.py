@@ -99,24 +99,72 @@ def _classify_post(returncode: int | None, stdout: str, stderr: str, outcome: st
     return "delivery_unknown", {"reason": f"exit_{returncode}_without_refusal"}
 
 
+def recover_stale_posting(conn: sqlite3.Connection, cfg: Config, *, all_rows: bool = False, operation_id: str | None = None) -> list[str]:
+    """A `posting` row whose process died (service restart) or whose attempt exceeded the CLI timeout
+    can only be `delivery_unknown`: the post may or may not have reached the inbox. Never replayed."""
+    recovered = []
+    stale_before = now() - (cfg.allocatorctl_timeout_s + 5)
+    rows = conn.execute("SELECT operation_id FROM work_operations WHERE status = 'posting'" + ("" if operation_id is None else " AND operation_id = ?"), () if operation_id is None else (operation_id,)).fetchall()
+    for row in rows:
+        attempt = conn.execute("SELECT attempt_id, started_at, finished_at FROM work_attempts WHERE operation_id = ? AND outcome = 'posting' ORDER BY attempt_id DESC LIMIT 1", (row["operation_id"],)).fetchone()
+        if attempt is None or all_rows or attempt["started_at"] < stale_before:
+            with conn:
+                conn.execute("UPDATE work_operations SET status = 'delivery_unknown', updated_at = ?, last_error = ?, note = ? WHERE operation_id = ? AND status = 'posting'", (now(), "posting attempt did not settle; outcome unknown", "recovered_stale_posting", row["operation_id"]))
+                if attempt is not None:
+                    conn.execute("UPDATE work_attempts SET finished_at = COALESCE(finished_at, ?), outcome = 'delivery_unknown', note = ? WHERE attempt_id = ? AND outcome = 'posting'", (now(), json.dumps({"reason": "stale_posting_recovered"}), attempt["attempt_id"]))
+            recovered.append(row["operation_id"])
+    return recovered
+
+
 def dispatch(conn: sqlite3.Connection, cfg: Config, operation_id: str) -> dict:
-    """Post the directive once. Refuses to post from delivery_unknown or directive_posted."""
+    """Post the directive once. The ready-status check and the attempt row are one atomic claim, so
+    concurrent dispatches of the same operation produce exactly one external post."""
     op = get_operation(conn, operation_id)
     if op is None:
         raise KeyError(operation_id)
+    if op["status"] == "posting":
+        recover_stale_posting(conn, cfg, operation_id=operation_id)
+        op = get_operation(conn, operation_id)
     if op["status"] not in RETRYABLE:
         return {"operation_id": operation_id, "status": op["status"], "dispatched": False, "reason": f"not_retryable_from_{op['status']}"}
     directive_dir = cfg.root / "outbox"
     directive_dir.mkdir(parents=True, exist_ok=True)
-    path = directive_dir / f"{operation_id}.txt"
-    path.write_text(directive_text(op), encoding="utf-8")
-    cmd = [cfg.allocatorctl, "inbox", "post", "--file", str(path)]
-    with conn:  # persist the attempt BEFORE the subprocess starts
+    # Atomic claim: BEGIN IMMEDIATE takes the write lock; the conditional UPDATE only succeeds for a
+    # retryable row, and the attempt row is inserted in the same transaction. Only the claim winner
+    # writes a directive file, and it is a per-attempt file, so a losing request can never touch
+    # the payload the winner's CLI reads.
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        claimed = conn.execute(
+            "UPDATE work_operations SET status = 'posting', updated_at = ? WHERE operation_id = ? AND status IN ('queued_locally', 'backend_unavailable')",
+            (now(), operation_id),
+        ).rowcount
+        if claimed != 1:
+            conn.execute("ROLLBACK")
+            current = conn.execute("SELECT status FROM work_operations WHERE operation_id = ?", (operation_id,)).fetchone()["status"]
+            return {"operation_id": operation_id, "status": current, "dispatched": False, "reason": f"not_retryable_from_{current}"}
         attempt_id = conn.execute(
             "INSERT INTO work_attempts(operation_id, started_at, command_json, outcome) VALUES (?,?,?,?)",
-            (operation_id, now(), json.dumps(cmd), "posting"),
+            (operation_id, now(), "[]", "posting"),
         ).lastrowid
-        conn.execute("UPDATE work_operations SET status = 'posting', updated_at = ? WHERE operation_id = ?", (now(), operation_id))
+        conn.execute("COMMIT")
+    except Exception:
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
+        raise
+    path = directive_dir / f"{operation_id}-attempt{attempt_id}.txt"
+    cmd = [cfg.allocatorctl, "inbox", "post", "--file", str(path)]
+    try:
+        path.write_text(directive_text(op), encoding="utf-8")
+        with conn:
+            conn.execute("UPDATE work_attempts SET command_json = ? WHERE attempt_id = ?", (json.dumps(cmd), attempt_id))
+    except OSError as exc:
+        # Local failure before any external side effect: the attempt is recorded as such and the
+        # operation goes back to the queue; nothing was posted.
+        with conn:
+            conn.execute("UPDATE work_attempts SET finished_at = ?, command_json = ?, outcome = 'local_write_failed', stderr = ? WHERE attempt_id = ?", (now(), json.dumps(cmd), str(exc), attempt_id))
+            conn.execute("UPDATE work_operations SET status = 'queued_locally', updated_at = ?, last_error = ? WHERE operation_id = ? AND status = 'posting'", (now(), f"directive file could not be written: {exc}", operation_id))
+        return {"operation_id": operation_id, "status": "queued_locally", "dispatched": False, "reason": "local_write_failed", "error": str(exc), "attempt_id": attempt_id}
     returncode, stdout, stderr, outcome = _run(cmd, cfg.allocatorctl_timeout_s)
     status, parsed = _classify_post(returncode, stdout, stderr, outcome)
     with conn:
@@ -146,7 +194,10 @@ def reconcile(conn: sqlite3.Connection, cfg: Config, operation_id: str) -> dict:
     op = get_operation(conn, operation_id)
     if op is None:
         raise KeyError(operation_id)
-    cmd = [cfg.allocatorctl, "inbox", "list"]
+    if op["status"] == "posting":
+        recover_stale_posting(conn, cfg, operation_id=operation_id)
+        op = get_operation(conn, operation_id)
+    cmd = [cfg.allocatorctl, "inbox", "list", "--all"]
     returncode, stdout, stderr, outcome = _run(cmd, cfg.allocatorctl_timeout_s)
     combined = stdout + "\n" + stderr
     result: dict = {"operation_id": operation_id, "before": op["status"], "command": cmd, "returncode": returncode}
@@ -188,20 +239,32 @@ def reconcile(conn: sqlite3.Connection, cfg: Config, operation_id: str) -> dict:
     return result
 
 
-def attach_artifact(conn: sqlite3.Connection, operation_id: str, *, kind: str, path: Path) -> dict:
-    """Record an artifact that actually exists; RLM results use kind 'rlm_result', local bundles 'source_packet'."""
+def attach_artifact(conn: sqlite3.Connection, operation_id: str, *, kind: str, path: Path, reference: dict | None = None) -> dict:
+    """Record an artifact whose bytes exist. `rlm_result` additionally requires a result reference
+    that names this operation's posted directive (message_id and run_id of a directive_posted attempt);
+    a bare existing path never marks the operation artifact_available. Source packets stay 'source_packet'."""
     if not path.is_file():
         raise FileNotFoundError(path)
+    if kind == "rlm_result":
+        ref = reference or {}
+        if not ref.get("message_id") or not ref.get("run_id") or not ref.get("result_ref"):
+            raise ValueError("rlm_result needs reference{message_id, run_id, result_ref} associated with this operation")
+        posted = conn.execute(
+            "SELECT 1 FROM work_attempts WHERE operation_id = ? AND message_id = ? AND run_id = ? AND outcome IN ('directive_posted', 'reconcile')",
+            (operation_id, ref["message_id"], ref["run_id"]),
+        ).fetchone()
+        if posted is None:
+            raise ValueError("result reference does not match a posted directive of this operation")
     data = path.read_bytes()
     artifact_id = uuid.uuid4().hex
     with conn:
         conn.execute(
-            "INSERT INTO work_artifacts(artifact_id, operation_id, kind, path, sha256, bytes, created_at) VALUES (?,?,?,?,?,?,?)",
-            (artifact_id, operation_id, kind, str(path), hashlib.sha256(data).hexdigest(), len(data), now()),
+            "INSERT INTO work_artifacts(artifact_id, operation_id, kind, path, sha256, bytes, created_at, reference_json) VALUES (?,?,?,?,?,?,?,?)",
+            (artifact_id, operation_id, kind, str(path), hashlib.sha256(data).hexdigest(), len(data), now(), json.dumps(reference) if reference else None),
         )
         if kind == "rlm_result":
             conn.execute("UPDATE work_operations SET status = 'artifact_available', updated_at = ? WHERE operation_id = ?", (now(), operation_id))
-    return {"artifact_id": artifact_id, "kind": kind, "path": str(path), "bytes": len(data)}
+    return {"artifact_id": artifact_id, "kind": kind, "path": str(path), "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
 
 
 def build_source_packet(conn: sqlite3.Connection, cfg: Config, operation_id: str) -> dict:
@@ -220,7 +283,9 @@ def build_source_packet(conn: sqlite3.Connection, cfg: Config, operation_id: str
     }
     directory = cfg.root / "artifacts" / operation_id
     directory.mkdir(parents=True, exist_ok=True)
-    path = directory / "source_packet.json"
+    packet_id = uuid.uuid4().hex
+    packet["packet_id"] = packet_id
+    path = directory / f"source_packet-{packet_id}.json"  # never overwrites bytes an earlier artifact hash refers to
     path.write_text(json.dumps(packet, indent=2, ensure_ascii=False), encoding="utf-8")
     info = attach_artifact(conn, operation_id, kind="source_packet", path=path)
     return {**info, "hits": len(packet["hits"])}

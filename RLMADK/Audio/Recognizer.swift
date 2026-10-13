@@ -24,11 +24,18 @@ final class Recognizer: NSObject {
     private var task: SFSpeechRecognitionTask?
     private(set) var availability: Availability
     private(set) var isListening = false
+    /// Supervised mode: after every final, no-speech or error the request is reopened so the
+    /// cascade stays available between exchanges without touching the recorder.
+    private(set) var continuous = false
     private var utteranceId = 0
+    private var lastFinal: (text: String, at: Date)?
+    private(set) var restartCount = 0
+    private(set) var lastRestartReason = ""
     var onPartial: ((String) -> Void)?
     var onFinal: ((String) -> Void)?
     var onGap: ((GapRecord) -> Void)?
     var onAvailability: ((Availability) -> Void)?
+    var onRestart: ((String) -> Void)?
 
     override init() {
         let locale = Locale(identifier: "en-US")
@@ -51,10 +58,16 @@ final class Recognizer: NSObject {
         }
     }
 
+    /// Keeps a recognition request open continuously (restarted per utterance) until `stop()`.
+    func startContinuous() {
+        continuous = true
+        start()
+    }
+
     /// Starts one utterance. Audio keeps recording regardless; this only opens a recognition request.
     func start() {
         guard availability.usable, let recognizer else { return }
-        stop()
+        cancelTask()
         utteranceId += 1
         let id = utteranceId
         let request = SFSpeechAudioBufferRecognitionRequest()
@@ -69,7 +82,8 @@ final class Recognizer: NSObject {
                 let text = result.bestTranscription.formattedString
                 if result.isFinal {
                     self.isListening = false
-                    self.onFinal?(text)
+                    self.deliverFinal(text)
+                    self.scheduleRestart(after: 0.2, reason: "final")
                 } else {
                     self.onPartial?(text)
                 }
@@ -80,9 +94,41 @@ final class Recognizer: NSObject {
                 // 1110 = no speech detected; 216/301 = cancelled. Report others as recognition gaps.
                 if code != 1110, code != 216, code != 301 {
                     self.onGap?(GapRecord(startedAt: Date(), endedAt: Date(), reason: "recognition_error_\(code)", kind: "recognition"))
+                    self.scheduleRestart(after: 1.0, reason: "error_\(code)")
+                } else if code == 1110 {
+                    self.scheduleRestart(after: 0.2, reason: "no_speech")
                 }
             }
         }
+    }
+
+    /// Identical final text within three seconds (restart overlap) is delivered once.
+    private func deliverFinal(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if let last = lastFinal, last.text == trimmed, Date().timeIntervalSince(last.at) < 3 { return }
+        lastFinal = (trimmed, Date())
+        onFinal?(trimmed)
+    }
+
+    private func scheduleRestart(after delay: Double, reason: String) {
+        guard continuous else { return }
+        let id = utteranceId
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self, self.continuous, id == self.utteranceId, !self.isListening else { return }
+            self.restartCount += 1
+            self.lastRestartReason = reason
+            self.onRestart?(reason)
+            self.start()
+        }
+    }
+
+    private func cancelTask() {
+        task?.cancel()
+        task = nil
+        request?.endAudio()
+        request = nil
+        isListening = false
     }
 
     func append(_ buffer: AVAudioPCMBuffer) {
@@ -94,12 +140,9 @@ final class Recognizer: NSObject {
     func endUtterance() { request?.endAudio() }
 
     func stop() {
+        continuous = false
         utteranceId += 1
-        task?.cancel()
-        task = nil
-        request?.endAudio()
-        request = nil
-        isListening = false
+        cancelTask()
     }
 }
 

@@ -16,17 +16,57 @@ STOPWORDS = {
 }
 TOKEN = re.compile(r"[0-9A-Za-z']+")
 
+# Words that describe the *request* ("which prayer of mine speaks about…", "what Scripture fits…")
+# rather than its subject. They are common across the whole corpus, so an OR query lets them
+# outrank the one word that actually matters ("son"). They are dropped from the focus query and only
+# return in the broad fallback when nothing else matches.
+FRAME_WORDS = {
+    "prayer", "prayers", "prayed", "pray", "praying", "scripture", "scriptures", "verse", "verses", "passage",
+    "passages", "bible", "biblical", "teaching", "teachings", "sermon", "sermons", "devotional", "psalm",
+    "speak", "speaks", "spoke", "spoken", "say", "says", "said", "mention", "mentions", "mentioned", "talk",
+    "talks", "talked", "about", "which", "what", "fits", "fit", "suits", "suit", "mine", "my", "me", "find",
+    "show", "give", "tell", "recorded", "recording", "ever", "any", "one", "something", "anything", "relate",
+    "relates", "related", "connect", "connects", "regarding", "concerning", "again", "please", "could", "would",
+}
 
-def fts_query(text: str) -> str:
-    tokens = [t.lower().strip("'") for t in TOKEN.findall(text)]
-    terms = [t for t in tokens if len(t) >= 2 and t not in STOPWORDS]
-    if not terms:
-        terms = [t for t in tokens if len(t) >= 2]
+
+def _tokens(text: str) -> list[str]:
     seen: list[str] = []
-    for term in terms:
-        if term not in seen:
+    for raw in TOKEN.findall(text):
+        term = raw.lower().strip("'")
+        if len(term) >= 2 and term not in seen:
             seen.append(term)
-    return " OR ".join(f'"{term}"' for term in seen[:16])
+    return seen
+
+
+def content_terms(text: str) -> list[str]:
+    tokens = _tokens(text)
+    terms = [t for t in tokens if t not in STOPWORDS]
+    return terms or tokens
+
+
+def focus_terms(text: str) -> list[str]:
+    """Subject words of a natural request: content terms minus request-frame vocabulary."""
+    return [t for t in content_terms(text) if t not in FRAME_WORDS]
+
+
+def fts_query(text: str, *, operator: str = "OR") -> str:
+    terms = content_terms(text)
+    return f" {operator} ".join(f'"{term}"' for term in terms[:16])
+
+
+def query_plan(text: str) -> list[tuple[str, str]]:
+    """Ordered (strategy, match) pairs: all focus terms, any focus term, then the broad request."""
+    focus = focus_terms(text)[:16]
+    broad = fts_query(text)
+    plan: list[tuple[str, str]] = []
+    if focus:
+        if len(focus) > 1:
+            plan.append(("focus_all", " AND ".join(f'"{t}"' for t in focus)))
+        plan.append(("focus_any", " OR ".join(f'"{t}"' for t in focus)))
+    if broad and broad not in {m for _, m in plan}:
+        plan.append(("broad", broad))
+    return plan
 
 
 def cite_id(doc_id: int, revision_hash: str, chunk_index: int) -> str:
@@ -41,9 +81,32 @@ def parse_cite_id(value: str) -> tuple[int, str, int]:
 
 
 def search(conn: sqlite3.Connection, query: str, *, families: list[str] | None = None, limit: int = 8) -> dict:
-    match = fts_query(query)
-    if not match:
-        return {"query": query, "match": "", "hits": []}
+    """Focus-first FTS: chunks matching every subject word rank first, then any subject word, then
+    the broad request words. Each stage only fills what the previous stages left open."""
+    plan = query_plan(query)
+    if not plan:
+        return {"query": query, "match": "", "strategy": None, "hits": []}
+    hits: list[dict] = []
+    seen: set[str] = set()
+    strategies: list[str] = []
+    for strategy, match in plan:
+        remaining = limit - len(hits)
+        if remaining <= 0:
+            break
+        stage = _search_match(conn, match, families=families, limit=remaining + len(hits))
+        added = 0
+        for hit in stage:
+            if hit["cite_id"] not in seen and len(hits) < limit:
+                hit["strategy"] = strategy
+                seen.add(hit["cite_id"])
+                hits.append(hit)
+                added += 1
+        if added:
+            strategies.append(strategy)
+    return {"query": query, "match": plan[0][1], "plan": plan, "strategy": "+".join(strategies) or None, "focus_terms": focus_terms(query), "hits": hits}
+
+
+def _search_match(conn: sqlite3.Connection, match: str, *, families: list[str] | None, limit: int) -> list[dict]:
     sql = (
         "SELECT f.chunk_id, f.doc_id, f.source_family, bm25(chunks_fts) AS rank, snippet(chunks_fts, 0, '[', ']', ' … ', 24) AS snip, "
         "c.chunk_index, c.start, c.end, c.text, d.source_doc_id, d.revision_hash, d.title, d.recorded_at, d.recorded_at_basis, d.observed_at, d.metadata_json "
@@ -56,7 +119,7 @@ def search(conn: sqlite3.Connection, query: str, *, families: list[str] | None =
         params.extend(families)
     sql += " ORDER BY rank LIMIT ?"
     params.append(limit)
-    hits = []
+    hits: list[dict] = []
     for row in conn.execute(sql, params):
         meta = json.loads(row["metadata_json"] or "{}")
         hits.append(
@@ -79,7 +142,7 @@ def search(conn: sqlite3.Connection, query: str, *, families: list[str] | None =
                 "verse_refs": verse_refs_for_span(json.loads(conn.execute("SELECT locators_json FROM documents WHERE doc_id = ?", (row["doc_id"],)).fetchone()[0]), row["start"], row["end"]),
             }
         )
-    return {"query": query, "match": match, "hits": hits}
+    return hits
 
 
 def attribution(family: str, meta: dict) -> str:

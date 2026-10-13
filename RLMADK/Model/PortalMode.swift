@@ -15,6 +15,8 @@ struct PortalMode: Codable, Equatable {
     /// Devotional playback position (segment index) kept independent of any connection.
     var devotionalPosition: Int = 0
     var devotionalPassage: String? = nil
+    /// Exact source revision the position refers to; a different revision resets the position.
+    var devotionalRevision: String? = nil
 
     var isPraying: Bool {
         if case .prayer = activity { return true }
@@ -90,6 +92,10 @@ enum PortalReducer {
                 effects.append(.cancelOutput(turnId: id))
                 effects.append(.sendCancel(turnId: id))
                 next.activity = .idle
+            } else if !state.isPraying {
+                // Real speech also interrupts output that is still playing after the turn finished
+                // (trailing TTS, devotional playback). Prayer speech is never an interruption.
+                effects.append(.cancelOutput(turnId: nil))
             }
         case .finalTranscript(let turnId):
             if state.isPraying { break } // prayer is addressed to God; transcripts never start a turn
@@ -110,8 +116,9 @@ enum PortalReducer {
                 effects.append(.cancelOutput(turnId: nil))
             }
         case .enterPrayer(let captureId):
+            // Entering prayer always silences current and queued speech, whatever was playing.
+            effects.append(.cancelOutput(turnId: state.currentTurnId))
             if let id = state.currentTurnId {
-                effects.append(.cancelOutput(turnId: id))
                 effects.append(.sendCancel(turnId: id))
             }
             next.activity = .prayer(captureId: captureId)

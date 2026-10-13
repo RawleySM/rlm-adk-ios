@@ -56,6 +56,7 @@ def stream_chat(
     timeout: float = 600.0,
     max_tokens: int = 400,
     temperature: float = 0.3,
+    extra_body: dict | None = None,
 ) -> Iterator[dict]:
     """Yield {"delta": str} items then one {"done": True, "usage": ..., "finish_reason": ...}.
 
@@ -69,6 +70,8 @@ def stream_chat(
         "temperature": temperature,
         "stream_options": {"include_usage": True},
     }
+    if extra_body:
+        payload.update(extra_body)
     req = urllib.request.Request(
         f"{base_url}/chat/completions",
         data=json.dumps(payload).encode("utf-8"),
@@ -84,11 +87,12 @@ def stream_chat(
         raise ReasoningError(f"inference owner unreachable: {exc}") from exc
     usage = None
     finish_reason = None
+    reasoning_chars = 0
     try:
         buffer = b""
         while True:
             if cancel is not None and cancel.is_set():
-                yield {"done": True, "cancelled": True, "usage": usage, "finish_reason": "cancelled"}
+                yield {"done": True, "cancelled": True, "usage": usage, "finish_reason": "cancelled", "reasoning_chars": reasoning_chars}
                 return
             chunk = resp.readline()
             if not chunk:
@@ -112,7 +116,12 @@ def stream_chat(
             if event.get("usage"):
                 usage = event["usage"]
             for choice in event.get("choices") or []:
-                delta = (choice.get("delta") or {}).get("content")
+                delta_obj = choice.get("delta") or {}
+                # Thinking models stream `reasoning_content` first; it is never spoken or shown as the answer.
+                reasoning = delta_obj.get("reasoning_content") or delta_obj.get("reasoning")
+                if reasoning:
+                    reasoning_chars += len(reasoning)
+                delta = delta_obj.get("content")
                 if delta:
                     yield {"delta": delta}
                 if choice.get("finish_reason"):
@@ -124,20 +133,24 @@ def stream_chat(
             resp.close()
         except Exception:
             pass
-    yield {"done": True, "cancelled": False, "usage": usage, "finish_reason": finish_reason}
+    yield {"done": True, "cancelled": False, "usage": usage, "finish_reason": finish_reason, "reasoning_chars": reasoning_chars}
 
 
-def probe_once(base_url: str, model: str, timeout: float = 600.0) -> dict:
-    """A tiny non-streaming request used by the smoke command; returns timing and the reply."""
+def probe_once(base_url: str, model: str, timeout: float = 600.0, extra_body: dict | None = None) -> dict:
+    """A tiny streaming request used by the smoke command; returns timing and the reply."""
     started = time.monotonic()
     first = None
     text = []
     usage = None
-    for item in stream_chat(base_url, model, [{"role": "user", "content": "Reply with the single word: ready"}], timeout=timeout, max_tokens=8):
+    reasoning_chars = 0
+    finish = None
+    for item in stream_chat(base_url, model, [{"role": "user", "content": "Reply with the single word: ready"}], timeout=timeout, max_tokens=64, extra_body=extra_body):
         if "delta" in item:
             if first is None:
                 first = time.monotonic() - started
             text.append(item["delta"])
         else:
             usage = item.get("usage")
-    return {"first_delta_s": first, "total_s": time.monotonic() - started, "text": "".join(text), "usage": usage}
+            reasoning_chars = item.get("reasoning_chars", 0)
+            finish = item.get("finish_reason")
+    return {"first_delta_s": first, "total_s": time.monotonic() - started, "text": "".join(text), "usage": usage, "reasoning_chars": reasoning_chars, "finish_reason": finish}

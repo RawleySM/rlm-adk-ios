@@ -46,8 +46,9 @@ final class AudioOwner: NSObject {
         try session.setActive(true, options: [])
     }
 
-    /// Starts the engine and tap. Captured audio goes to `captureId`'s segment files.
-    func start(captureId: String, directory: URL) throws {
+    /// Starts the engine and tap. Captured audio goes to `captureId`'s segment files, continuing
+    /// after the highest index already present (manifest or disk); nothing is overwritten.
+    func start(captureId: String, directory: URL, startIndex: Int) throws {
         if state == .running { return }
         do {
             try configureSession()
@@ -60,7 +61,7 @@ final class AudioOwner: NSObject {
                 throw NSError(domain: "AudioOwner", code: 1, userInfo: [NSLocalizedDescriptionKey: "no input format (no microphone on this device/simulator)"])
             }
             inputFormat = format
-            let writer = SegmentWriter(captureId: captureId, directory: directory, format: format, maxSeconds: maxSegmentSeconds, queue: writeQueue)
+            let writer = SegmentWriter(captureId: captureId, directory: directory, format: format, maxSeconds: maxSegmentSeconds, queue: writeQueue, startIndex: startIndex)
             writer.onSegmentClosed = { [weak self] seg in self?.onSegmentClosed?(captureId, seg) }
             self.writer = writer
             input.removeTap(onBus: 0)
@@ -78,23 +79,29 @@ final class AudioOwner: NSObject {
         }
     }
 
-    /// Begins a new capture (for example when prayer starts) without stopping the engine.
-    func beginCapture(captureId: String, directory: URL) {
-        guard let format = inputFormat else { return }
+    /// Switches capture (for example when prayer starts or ends) without stopping the engine. The
+    /// previous writer is closed; `settled` fires on the main queue AFTER its last segment-closed
+    /// callback was delivered, with the total number of segments that writer produced.
+    func beginCapture(captureId: String, directory: URL, startIndex: Int, settled: ((Int) -> Void)? = nil) {
+        guard let format = inputFormat else { settled?(0); return }
         let old = writer
-        let writer = SegmentWriter(captureId: captureId, directory: directory, format: format, maxSeconds: maxSegmentSeconds, queue: writeQueue)
+        let writer = SegmentWriter(captureId: captureId, directory: directory, format: format, maxSeconds: maxSegmentSeconds, queue: writeQueue, startIndex: startIndex)
         writer.onSegmentClosed = { [weak self] seg in self?.onSegmentClosed?(captureId, seg) }
         self.writer = writer
-        old?.close()
+        if let old {
+            old.close(settled: settled)
+        } else {
+            settled?(0)
+        }
     }
 
     /// Closes the current segment so it can be hashed and uploaded.
     func rotateSegment() { writer?.rotate() }
 
-    func stop() {
+    func stop(settled: ((Int) -> Void)? = nil) {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
-        writer?.close()
+        if let writer { writer.close(settled: settled) } else { settled?(0) }
         writer = nil
         setState(.idle)
     }
@@ -154,19 +161,37 @@ final class SegmentWriter {
     let maxSeconds: Double
     private let queue: DispatchQueue
     private var file: AVAudioFile?
-    private var index = 0
+    private var index: Int
+    private let firstIndex: Int
     private var startedAt = Date()
     private var frames: AVAudioFramePosition = 0
     var onSegmentClosed: ((SegmentRecord) -> Void)?
 
-    init(captureId: String, directory: URL, format: AVAudioFormat, maxSeconds: Double, queue: DispatchQueue) {
+    init(captureId: String, directory: URL, format: AVAudioFormat, maxSeconds: Double, queue: DispatchQueue, startIndex: Int) {
         self.captureId = captureId
         self.directory = directory
         self.format = format
         self.maxSeconds = maxSeconds
         self.queue = queue
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        // Never reuse an index that already has bytes on disk, whatever the manifest says.
+        let onDisk = SegmentWriter.highestIndexOnDisk(in: directory)
+        let start = max(startIndex, onDisk + 1)
+        self.index = start
+        self.firstIndex = start
     }
+
+    /// Highest `NNNNNNNN.wav` index present in `directory`, or -1.
+    static func highestIndexOnDisk(in directory: URL) -> Int {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+        return names.compactMap { name -> Int? in
+            guard name.hasSuffix(".wav") else { return nil }
+            return Int(name.dropLast(4))
+        }.max() ?? -1
+    }
+
+    /// Number of segments this writer has produced (closed) so far.
+    var producedCount: Int { index - firstIndex }
 
     private var currentURL: URL { directory.appendingPathComponent(String(format: "%08d.wav", index)) }
 
@@ -207,7 +232,16 @@ final class SegmentWriter {
     }
 
     func rotate() { queue.async { [self] in closeCurrent() } }
-    func close() { queue.async { [self] in closeCurrent() } }
+
+    /// Closes the open segment. `settled` runs on the main queue after the last segment-closed
+    /// callback (also main queue, FIFO), with the index after the last segment this writer wrote.
+    func close(settled: ((Int) -> Void)? = nil) {
+        queue.async { [self] in
+            closeCurrent()
+            let last = index
+            if let settled { DispatchQueue.main.async { settled(last) } }
+        }
+    }
 
     private func closeCurrent() {
         guard file != nil else { return }
