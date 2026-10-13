@@ -125,8 +125,8 @@ The final implementation report must distinguish built/exercised, built/unverifi
 After the first TestFlight build ran on the phone, the cascade's cancellation contract was tightened:
 a cancel must reach the inference owner while the request is still waiting for headers (cold start)
 or for the next SSE line, so that an abandoned turn never keeps an owner slot; a new final transcript
-supersedes the session's pending turn on both the phone and the server; and a partial transcript
-interrupts only audible output. Findings and evidence are in the
+supersedes the session's pending turn on both the phone and the server; barge-in on partial speech is
+unchanged. Findings and evidence are in the
 [acceptance report](prototype-acceptance.md#physical-device-session-findings-2026-10-13-build-020-4-on-iphone-12).
 
 ## Review adjudication and supervision

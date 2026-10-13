@@ -1,9 +1,9 @@
 import XCTest
 @testable import RLMADK
 
-/// Phone-session findings (2026-10-13): pending turns were cancelled by the first partial of the next
-/// utterance even with nothing audible, and a restarted recognition request inherited the previous
-/// utterance's silence age. These tests pin the corrected behaviour.
+/// Phone-session follow-up (2026-10-13): a restarted recognition request must not inherit the previous
+/// utterance's silence age, a new final supersedes a pending turn, and barge-in semantics on partials
+/// are unchanged (speech during a pending turn cancels it).
 final class EndpointingTests: XCTestCase {
     func testFreshRequestGetsAFullSilenceWindow() {
         let t0 = Date(timeIntervalSince1970: 1_000)
@@ -26,16 +26,14 @@ final class EndpointingTests: XCTestCase {
     }
 
     @MainActor
-    func testPartialDoesNotCancelAPendingTurnWithNothingAudible() {
+    func testPartialStillBargesInOnAPendingTurn() {
         let model = PortalModel()
         model.recognitionStarter = {}
         model.typedInput = "What does Psalm 23 say"
-        model.submitTyped() // pending turn; nothing audible (no connection in tests)
-        let pending = model.mode.currentTurnId
-        XCTAssertNotNil(pending)
-        model.partialTranscriptReceived("No")
-        XCTAssertEqual(model.mode.currentTurnId, pending, "a partial with nothing audible must not cancel the pending turn")
-        XCTAssertEqual(model.mode.activity, .responding(turnId: pending!))
+        model.submitTyped() // pending turn (no connection in tests)
+        XCTAssertNotNil(model.mode.currentTurnId)
+        model.partialTranscriptReceived("Actually")
+        XCTAssertEqual(model.mode.activity, .idle, "speech during a pending turn cancels it so the old answer cannot start over the user")
     }
 
     func testNewFinalSupersedesPendingTurn() {

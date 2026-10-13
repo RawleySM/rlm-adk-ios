@@ -22,6 +22,50 @@ from .ws import WebSocket, WebSocketClosed, accept_key
 log = logging.getLogger("voice_portal")
 
 
+class SessionTurns:
+    """Turn cancel events of one WebSocket session with one lock for every mutation and snapshot."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._events: dict[str, threading.Event] = {}
+
+    def register(self, turn_id: str) -> threading.Event:
+        event = threading.Event()
+        with self._lock:
+            self._events[turn_id] = event
+        return event
+
+    def pop(self, turn_id: str) -> None:
+        with self._lock:
+            self._events.pop(turn_id, None)
+
+    def contains(self, turn_id: str) -> bool:
+        with self._lock:
+            return turn_id in self._events
+
+    def cancel(self, turn_id: str) -> bool:
+        with self._lock:
+            event = self._events.get(turn_id)
+        if event is None:
+            return False
+        event.set()
+        return True
+
+    def supersede(self) -> list[str]:
+        """Set every still-running turn's cancel event; safe against concurrent pops."""
+        with self._lock:
+            pairs = [(turn_id, event) for turn_id, event in self._events.items() if not event.is_set()]
+        for _, event in pairs:
+            event.set()
+        return [turn_id for turn_id, _ in pairs]
+
+    def cancel_all(self) -> None:
+        with self._lock:
+            events = list(self._events.values())
+        for event in events:
+            event.set()
+
+
 class PortalService:
     def __init__(self, cfg: Config):
         self.cfg = cfg
@@ -233,7 +277,7 @@ class Handler(BaseHTTPRequestHandler):
         with conn:
             conn.execute("INSERT INTO sessions(session_id, started_at, remote) VALUES (?,?,?)", (session_id, now(), self.address_string()))
         ws.send_json({"type": "session", "session_id": session_id, "server_time": now(), "model": cfg.inference_model, "inference_base_url": cfg.inference_base_url, "source_commit": cfg.source_commit or None})
-        session_turns: dict[str, threading.Event] = {}
+        session_turns = SessionTurns()
         send_lock = threading.Lock()
 
         def emit(event: dict) -> None:
@@ -249,7 +293,7 @@ class Handler(BaseHTTPRequestHandler):
                 conversation.run_turn(local, cfg, turn_id=turn_id, session_id=session_id, transcript=text, context=context, emit=emit, cancel=cancel)
             finally:
                 local.close()
-                session_turns.pop(turn_id, None)
+                session_turns.pop(turn_id)
                 with svc.active_lock:
                     svc.active_turns.pop(turn_id, None)
 
@@ -282,23 +326,20 @@ class Handler(BaseHTTPRequestHandler):
                     if not text:
                         emit({"type": "error", "turn_id": turn_id, "message": "empty transcript"})
                         continue
-                    if turn_id in session_turns or conn.execute("SELECT 1 FROM turns WHERE turn_id = ?", (turn_id,)).fetchone():
+                    if session_turns.contains(turn_id) or conn.execute("SELECT 1 FROM turns WHERE turn_id = ?", (turn_id,)).fetchone():
                         emit({"type": "duplicate_turn", "turn_id": turn_id})
                         continue
                     # One conversation per session: a new final supersedes any turn still running for
                     # this session, so a pending request never keeps an owner slot behind the user.
-                    superseded = [old for old, ev in list(session_turns.items()) if not ev.is_set()]
-                    for old in superseded:
-                        session_turns[old].set()
-                    cancel = threading.Event()
-                    session_turns[turn_id] = cancel
+                    superseded = session_turns.supersede()
+                    cancel = session_turns.register(turn_id)
                     with svc.active_lock:
                         svc.active_turns[turn_id] = cancel
                     emit({"type": "turn_accepted", "turn_id": turn_id, "superseded": superseded})
                     threading.Thread(target=run, args=(turn_id, text, event.get("context"), cancel), daemon=True).start()
                 elif kind == "cancel":
                     turn_id = event.get("turn_id")
-                    cancelled = turn_id in session_turns and session_turns[turn_id].set() is None
+                    cancelled = session_turns.cancel(turn_id)
                     emit({"type": "cancel_ack", "turn_id": turn_id, "active": cancelled})
                 elif kind == "mode_changed":
                     with conn:
@@ -309,8 +350,7 @@ class Handler(BaseHTTPRequestHandler):
         except (WebSocketClosed, ConnectionError, OSError):
             pass
         finally:
-            for cancel in session_turns.values():
-                cancel.set()  # disconnect settles the requests this session owns
+            session_turns.cancel_all()  # disconnect settles the requests this session owns
             with conn:
                 conn.execute("UPDATE sessions SET ended_at = ? WHERE session_id = ?", (now(), session_id))
             ws.close()

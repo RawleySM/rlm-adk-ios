@@ -11,7 +11,7 @@ from tests.fakes import FakeInference
 from tests.helpers import make_config, write_prayer_store
 from voice_portal.db import connect
 from voice_portal.importer import import_family
-from voice_portal.server import make_server
+from voice_portal.server import SessionTurns, make_server
 from voice_portal.sources.prayers import read_prayers
 from voice_portal.ws import ClientWebSocket, client_handshake
 
@@ -183,3 +183,30 @@ class ServerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SessionTurnsTests(unittest.TestCase):
+    def test_supersede_survives_concurrent_pops(self):
+        turns = SessionTurns()
+        events = [turns.register(f"t{i}") for i in range(200)]
+        stop = threading.Event()
+
+        def popper():
+            for i in range(200):
+                turns.pop(f"t{i}")
+                time.sleep(0.0001)
+            stop.set()
+
+        t = threading.Thread(target=popper)
+        t.start()
+        superseded = []
+        while not stop.is_set():
+            superseded += turns.supersede()  # must never raise KeyError against the popper
+        t.join()
+        self.assertTrue(all(e.is_set() for i, e in enumerate(events) if f"t{i}" in superseded))
+        self.assertEqual(turns.supersede(), [])
+        self.assertFalse(turns.cancel("missing"))
+        e = turns.register("x")
+        self.assertTrue(turns.cancel("x"))
+        self.assertTrue(e.is_set())
+        self.assertEqual(turns.supersede(), [])  # already-set events are not reported again

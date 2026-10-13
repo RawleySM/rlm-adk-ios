@@ -106,6 +106,87 @@ class StallingOwner:
         return H
 
 
+class RawFramingOwner:
+    """A raw-socket owner that answers with HTTP/1.0 close-delimited SSE or HTTP/1.1 `Connection: close`,
+    sends one delta, then stalls. It records remote EOF/reset on its side of the connection."""
+
+    def __init__(self, framing="http10"):
+        self.framing = framing
+        self.remote_eof = threading.Event()
+        self.handler_done = threading.Event()
+        self.requests = 0
+        self.srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.srv.bind(("127.0.0.1", 0))
+        self.srv.listen(4)
+        self.port = self.srv.getsockname()[1]
+        self.stop_flag = threading.Event()
+        threading.Thread(target=self._serve, daemon=True).start()
+
+    @property
+    def base_url(self):
+        return f"http://127.0.0.1:{self.port}/v1"
+
+    def stop(self):
+        self.stop_flag.set()
+        try:
+            self.srv.close()
+        except OSError:
+            pass
+
+    def _serve(self):
+        while not self.stop_flag.is_set():
+            try:
+                conn, _ = self.srv.accept()
+            except OSError:
+                return
+            threading.Thread(target=self._handle, args=(conn,), daemon=True).start()
+
+    def _handle(self, conn):
+        self.requests += 1
+        try:
+            conn.settimeout(5)
+            data = b""
+            while b"\r\n\r\n" not in data:
+                part = conn.recv(4096)
+                if not part:
+                    self.remote_eof.set()
+                    return
+                data += part
+            head, _, body = data.partition(b"\r\n\r\n")
+            length = int(next((l.split(b":")[1] for l in head.split(b"\r\n") if l.lower().startswith(b"content-length")), b"0"))
+            while len(body) < length:
+                body += conn.recv(4096)
+            delta = b'data: {"choices":[{"delta":{"content":"Hello"},"finish_reason":null}]}\n\n'
+            if self.framing == "http10":
+                conn.sendall(b"HTTP/1.0 200 OK\r\nContent-Type: text/event-stream\r\n\r\n" + delta)
+            else:
+                conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n" + delta)
+            # stall: wait for the client to go away (EOF or reset) or for the owner to be stopped
+            conn.settimeout(0.1)
+            while not self.stop_flag.is_set():
+                try:
+                    chunk = conn.recv(1)
+                    if chunk == b"":
+                        self.remote_eof.set()
+                        return
+                except socket.timeout:
+                    continue
+                except OSError:
+                    self.remote_eof.set()
+                    return
+        finally:
+            self.handler_done.set()
+            try:
+                conn.close()
+            except OSError:
+                pass
+
+
+def live_reader_threads():
+    return [t for t in threading.enumerate() if t.name == "reasoning-upstream" and t.is_alive()]
+
+
 def collect(gen):
     out = []
     for item in gen:
@@ -198,6 +279,72 @@ class CancelTests(unittest.TestCase):
         try:
             items, _ = self._run(owner, threading.Event())
             self.assertEqual(items[-1]["usage"], {"prompt_tokens": 3, "completion_tokens": 2})
+        finally:
+            owner.stop()
+
+    def _framing_case(self, framing):
+        owner = RawFramingOwner(framing)
+        try:
+            cancel = threading.Event()
+            gen = stream_chat(owner.base_url, "m", [{"role": "user", "content": "hi"}], cancel=cancel, timeout=10, tick_seconds=0.05)
+            first = next(gen)
+            self.assertEqual(first, {"delta": "Hello"})
+            t0 = time.monotonic()
+            cancel.set()
+            rest = list(gen)
+            elapsed = time.monotonic() - t0
+            self.assertTrue(rest[-1]["cancelled"])
+            self.assertTrue(rest[-1]["upstream_settled"], "reader thread must have terminated")
+            self.assertLess(elapsed, 1.0)
+            self.assertTrue(owner.remote_eof.wait(1.0), "owner must observe remote EOF/reset on its socket")
+            self.assertEqual(live_reader_threads(), [])
+            self.assertIsNone(rest[-1]["usage"])
+        finally:
+            owner.stop()
+
+    def test_cancel_with_http10_close_delimited_response_tears_down_real_socket(self):
+        self._framing_case("http10")
+
+    def test_cancel_with_connection_close_response_tears_down_real_socket(self):
+        self._framing_case("close")
+
+    def test_cancel_during_connect_sends_no_request(self):
+        owner = StallingOwner()
+        try:
+            cancel = threading.Event()
+            gate = threading.Event()
+
+            def slow_connect():  # runs on the reader thread inside the connect window
+                gate.wait(5)
+
+            gen = stream_chat(owner.base_url, "m", [{"role": "user", "content": "hi"}], cancel=cancel, timeout=10, tick_seconds=0.05, _connect_hook=slow_connect)
+            # Start the request on the reader thread, then cancel while it is still "connecting".
+            threading.Timer(0.2, cancel.set).start()
+            threading.Timer(0.6, gate.set).start()
+            items = collect(gen)
+            self.assertTrue(items[-1]["cancelled"])
+            self.assertFalse(items[-1]["sent"], "no request bytes may be written after the cancel")
+            self.assertTrue(items[-1]["upstream_settled"])
+            time.sleep(0.3)
+            self.assertEqual(owner.requests, 0)
+            self.assertEqual(live_reader_threads(), [])
+        finally:
+            owner.stop()
+
+    def test_cancel_observed_before_queued_line_wins(self):
+        """The owner's next line and [DONE] are already queued when the cancel lands: no delta, no success.
+        The same post-wait precedence check applies to a queued owner error."""
+        owner = StallingOwner(line_delay=0.3)
+        try:
+            cancel = threading.Event()
+            gen = stream_chat(owner.base_url, "m", [{"role": "user", "content": "hi"}], cancel=cancel, timeout=10, tick_seconds=0.05)
+            self.assertEqual(next(gen), {"delta": "First"})
+            time.sleep(0.6)  # owner has sent " second", usage and [DONE]; they sit in the queue unread
+            cancel.set()
+            rest = list(gen)
+            self.assertEqual([i for i in rest if "delta" in i], [], "queued delta must not surface after the cancel")
+            self.assertTrue(rest[-1]["cancelled"])
+            self.assertIsNone(rest[-1]["usage"], "usage that was never observed stays unknown")
         finally:
             owner.stop()
 

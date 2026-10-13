@@ -286,11 +286,9 @@ final class PortalModel: ObservableObject {
     private func partial(_ text: String) {
         partialTranscript = text
         endpoint.speech()
-        // Real speech interrupts audible output (a spoken response, trailing TTS, devotional) once per
-        // utterance. A turn that is still pending with nothing audible is NOT cancelled by a partial:
-        // a false start would otherwise leave the user with no answer at all. It is superseded only by
-        // the next final transcript (reducer + server).
-        if !utteranceInterrupted, !mode.isPraying, (speaker.isSpeaking || devotionalPlaying) {
+        // Real speech interrupts whatever is playing or pending (response, trailing TTS, devotional),
+        // once per utterance: a pending answer must not start speaking over the user's next utterance.
+        if !utteranceInterrupted, !mode.isPraying, (speaker.isSpeaking || devotionalPlaying || mode.currentTurnId != nil) {
             utteranceInterrupted = true
             apply(.userSpeechStarted)
         }
