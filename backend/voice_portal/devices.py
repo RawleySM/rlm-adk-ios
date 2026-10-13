@@ -41,6 +41,12 @@ def record_hello(conn: sqlite3.Connection, install_id: str, *, session_id: str, 
         )
 
 
+def reset_connections(conn: sqlite3.Connection) -> int:
+    """Server start: no socket survived the restart, so no device is connected until it says hello."""
+    with conn:
+        return conn.execute("UPDATE devices SET connected = 0 WHERE connected = 1").rowcount
+
+
 def record_disconnect(conn: sqlite3.Connection, install_id: str) -> None:
     with conn:
         conn.execute("UPDATE devices SET connected = 0, last_seen = ? WHERE install_id = ?", (now(), install_id))
@@ -57,28 +63,37 @@ def store_snapshot(conn: sqlite3.Connection, install_id: str, *, session_id: str
     return cur.lastrowid
 
 
-def latest_snapshot(conn: sqlite3.Connection, install_id: str, stale_after: float = STALE_AFTER_S) -> dict:
+def latest_snapshot(conn: sqlite3.Connection, install_id: str, stale_after: float = STALE_AFTER_S, live: bool | None = None) -> dict:
+    """Freshness: unknown_device | no_snapshot | offline (no socket) | stale (socket, old snapshot) |
+    connected_background (socket, app not foreground-active per its own last report) | live.
+    `live` is the service's current socket registry; when given it overrides the stored flag."""
     device = conn.execute("SELECT * FROM devices WHERE install_id = ?", (install_id,)).fetchone()
     row = conn.execute("SELECT * FROM device_snapshots WHERE install_id = ? ORDER BY snapshot_id DESC LIMIT 1", (install_id,)).fetchone()
     if device is None:
         return {"install_id": install_id, "known": False, "freshness": "unknown_device", "snapshot": None}
-    out = {"install_id": install_id, "known": True, "connected": bool(device["connected"]), "last_seen": device["last_seen"], "app_version": device["app_version"], "build": device["build"], "last_session_id": device["last_session_id"]}
+    connected = bool(device["connected"]) if live is None else bool(live)
+    out = {"install_id": install_id, "known": True, "connected": connected, "last_seen": device["last_seen"], "app_version": device["app_version"], "build": device["build"], "last_session_id": device["last_session_id"]}
     if row is None:
         out.update({"freshness": "no_snapshot", "snapshot": None, "age_s": None})
         return out
+    snapshot = json.loads(row["snapshot_json"])
     age = now() - row["server_time"]
-    if not device["connected"]:
+    scene = snapshot.get("scene_phase")
+    if not connected:
         freshness = "offline"
     elif age > stale_after:
         freshness = "stale"
+    elif scene not in (None, "active"):
+        freshness = "connected_background"
     else:
         freshness = "live"
-    out.update({"freshness": freshness, "age_s": round(age, 1), "server_time": row["server_time"], "client_time": row["client_time"], "reason": row["reason"], "snapshot": json.loads(row["snapshot_json"])})
+    out.update({"freshness": freshness, "age_s": round(age, 1), "server_time": row["server_time"], "client_time": row["client_time"], "reason": row["reason"], "scene_phase": scene, "snapshot": snapshot})
     return out
 
 
-def list_devices(conn: sqlite3.Connection) -> list[dict]:
-    return [latest_snapshot(conn, r["install_id"]) | {"snapshot": None} for r in conn.execute("SELECT install_id FROM devices ORDER BY last_seen DESC")]
+def list_devices(conn: sqlite3.Connection, live_ids: set[str] | None = None) -> list[dict]:
+    rows = conn.execute("SELECT install_id FROM devices ORDER BY last_seen DESC")
+    return [latest_snapshot(conn, r["install_id"], live=(r["install_id"] in live_ids) if live_ids is not None else None) | {"snapshot": None} for r in rows]
 
 
 def create_command(conn: sqlite3.Connection, install_id: str, kind: str, args: dict | None) -> dict:
@@ -105,13 +120,15 @@ def get_command(conn: sqlite3.Connection, command_id: str) -> dict | None:
 
 
 def pending_commands(conn: sqlite3.Connection, install_id: str) -> list[dict]:
-    rows = conn.execute("SELECT command_id FROM device_commands WHERE install_id = ? AND status = 'queued' ORDER BY created_at", (install_id,)).fetchall()
+    """Commands with no result yet: queued, and delivered ones whose result never arrived (socket
+    lost). Both are pushed again on hello; the phone replays a cached result instead of re-running."""
+    rows = conn.execute("SELECT command_id FROM device_commands WHERE install_id = ? AND result_at IS NULL AND status IN ('queued', 'delivered') ORDER BY created_at", (install_id,)).fetchall()
     return [get_command(conn, r["command_id"]) for r in rows]
 
 
 def mark_delivered(conn: sqlite3.Connection, command_id: str) -> None:
     with conn:
-        conn.execute("UPDATE device_commands SET status = 'delivered', delivered_at = ? WHERE command_id = ? AND status = 'queued'", (now(), command_id))
+        conn.execute("UPDATE device_commands SET status = 'delivered', delivered_at = ? WHERE command_id = ? AND result_at IS NULL", (now(), command_id))
 
 
 def record_result(conn: sqlite3.Connection, install_id: str, command_id: str, status: str, result: dict | None) -> dict | None:

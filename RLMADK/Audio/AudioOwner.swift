@@ -46,6 +46,8 @@ final class AudioOwner: NSObject {
     var lastWriteError: String? { factsLock.lock(); defer { factsLock.unlock() }; return lastWriteErrorText }
     /// True when the engine runs and a buffer arrived within the last two seconds.
     var isDelivering: Bool { engine.isRunning && (lastBufferAge ?? .infinity) < 2 }
+    /// The segment file currently being written (not closed, not hashed, must not be copied as complete).
+    var openSegmentURL: URL? { writer?.openFileURL }
 
     override init() {
         super.init()
@@ -199,6 +201,10 @@ final class SegmentWriter {
     let maxSeconds: Double
     private let queue: DispatchQueue
     private var file: AVAudioFile?
+    private let openLock = NSLock()
+    private var openURL: URL?
+    /// URL of the segment being written, readable from any thread; nil between segments.
+    var openFileURL: URL? { openLock.lock(); defer { openLock.unlock() }; return openURL }
     private var closed = false // set on the write queue by close(); later appends are dropped
     private var index: Int
     private let firstIndex: Int
@@ -260,6 +266,7 @@ final class SegmentWriter {
                         AVLinearPCMIsNonInterleaved: false,
                     ]
                     file = try AVAudioFile(forWriting: currentURL, settings: settings, commonFormat: format.commonFormat, interleaved: format.isInterleaved)
+                    openLock.lock(); openURL = currentURL; openLock.unlock()
                     startedAt = Date()
                     frames = 0
                 }
@@ -294,6 +301,7 @@ final class SegmentWriter {
         guard file != nil else { return }
         let url = currentURL
         file = nil // AVAudioFile flushes on deinit
+        openLock.lock(); openURL = nil; openLock.unlock()
         let data = (try? Data(contentsOf: url)) ?? Data()
         let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
         let record = SegmentRecord(index: index, filename: url.lastPathComponent, bytes: data.count, sha256: digest, startedAt: startedAt, endedAt: Date())

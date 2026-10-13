@@ -29,6 +29,7 @@ struct DeviceSnapshot: Codable, Equatable {
     var last_transcript: String
     var assistant_text_tail: String
     var capture_warning: String?
+    var last_journal_error: String?
     var captures: [CaptureSummary]
     var recent_log: [String]
     var last_error: String?
@@ -82,11 +83,12 @@ enum AnyCodableValue: Decodable, Equatable {
 
 /// Phone-side result of a command. `applied` means the action actually ran on the phone; anything
 /// the phone could not do is `failed` (with a reason) or `unsupported` (unknown kind).
-struct CommandResult: Equatable {
-    enum Status: String { case applied, failed, unsupported }
+struct CommandResult: Codable, Equatable {
+    enum Status: String, Codable { case applied, failed, unsupported }
     var commandId: String
     var status: Status
     var detail: [String: String]
+    var reportedAt: Double = Date().timeIntervalSince1970
 
     func payload() -> [String: Any] {
         ["type": "command_result", "command_id": commandId, "status": status.rawValue, "result": detail]
@@ -102,10 +104,17 @@ struct PlanError: Error, Equatable {
 enum RemoteCommandPlanner {
     static let tabs = ["portal", "sources", "work", "diagnostics"]
 
+    struct PlannedFile: Equatable {
+        var index: Int
+        var filename: String
+        var manifestSha256: String?       // nil for a file the manifest does not list (orphan)
+    }
+
     struct FileCopyPlan: Equatable {
         var captureId: String
-        var files: [SegmentRecord]        // closed segments present on disk, ascending index
-        var missingIndexes: [Int]         // requested (or closed) indexes with no file on disk
+        var files: [PlannedFile]          // closed files present on disk, ascending index
+        var missingIndexes: [Int]         // named indexes with no closed file on disk
+        var inManifest: Bool
     }
 
     static func selectTab(_ args: [String: AnyCodableValue]?) -> Result<String, PlanError> {
@@ -113,16 +122,28 @@ enum RemoteCommandPlanner {
         return tabs.contains(tab) ? .success(tab) : .failure(PlanError(reason: "unknown tab \(tab); known: \(tabs.joined(separator: ","))"))
     }
 
-    static func copyPlan(_ args: [String: AnyCodableValue]?, captures: [CaptureManifest], fileExists: (String, String) -> Bool) -> Result<FileCopyPlan, PlanError> {
+    /// `closedFilesOnDisk` lists index -> filename of segment files on disk for the capture, excluding
+    /// the file a writer is still appending to. A capture known only by its directory (no manifest
+    /// entry) is still copyable by exact identity; a capture with neither is unknown.
+    static func copyPlan(_ args: [String: AnyCodableValue]?, captures: [CaptureManifest], closedFilesOnDisk: (String) -> [Int: String]) -> Result<FileCopyPlan, PlanError> {
         guard let captureId = args?["capture_id"]?.stringValue else { return .failure(PlanError(reason: "missing capture_id")) }
-        guard let capture = captures.first(where: { $0.captureId == captureId }) else { return .failure(PlanError(reason: "unknown capture \(captureId)")) }
-        let closed = capture.segments.filter { $0.endedAt != nil }
+        let capture = captures.first(where: { $0.captureId == captureId })
+        let onDisk = closedFilesOnDisk(captureId)
+        guard capture != nil || !onDisk.isEmpty else { return .failure(PlanError(reason: "unknown capture \(captureId)")) }
+        let manifestClosed = (capture?.segments ?? []).filter { $0.endedAt != nil }
+        let manifestSha = Dictionary(manifestClosed.map { ($0.index, $0.sha256) }, uniquingKeysWith: { a, _ in a })
         let requested = args?["indexes"]?.intArray
-        let wanted = requested.map { set in closed.filter { set.contains($0.index) } } ?? closed
-        let present = wanted.filter { fileExists(captureId, $0.filename) }.sorted { $0.index < $1.index }
-        let presentIndexes = Set(present.map(\.index))
-        let missing = (requested ?? closed.map(\.index)).filter { !presentIndexes.contains($0) }.sorted()
-        return .success(FileCopyPlan(captureId: captureId, files: present, missingIndexes: missing))
+        let wanted = requested.map { Set($0) } ?? Set(manifestClosed.map(\.index)).union(onDisk.keys)
+        var files: [PlannedFile] = []
+        var missing: [Int] = []
+        for index in wanted.sorted() {
+            if let name = onDisk[index] {
+                files.append(PlannedFile(index: index, filename: name, manifestSha256: manifestSha[index]))
+            } else {
+                missing.append(index)
+            }
+        }
+        return .success(FileCopyPlan(captureId: captureId, files: files, missingIndexes: missing, inManifest: capture != nil))
     }
 }
 

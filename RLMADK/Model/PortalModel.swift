@@ -47,12 +47,26 @@ final class PortalModel: ObservableObject {
     @Published private(set) var keyboardDismissToken = 0
     @Published private(set) var scenePhaseLabel = "unknown"
     @Published private(set) var lastSnapshotReason: String?
-    /// Set when Begin prayer finds the audio owner not delivering buffers; cleared on the next capture.
+    /// Set while a prayer is open and no audio buffer has reached the recorder recently; it is
+    /// re-evaluated every second during prayer and cleared as soon as delivery resumes.
     @Published private(set) var captureWarning: String?
+    @Published private(set) var lastJournalError: String?
     private var heartbeat: Timer?
+    private var deliveryWatch: Timer?
     private var asrJournals: [String: PrayerASRJournal] = [:]
+    /// Finals from the recognizer may arrive after End prayer; for a short window they still belong
+    /// to that prayer's capture and are never turned into conversational turns.
+    private var recentPrayerEnd: (captureId: String, at: Date)?
+    static let latePrayerFinalWindow: TimeInterval = 3
+    /// Results already reported, by command id. A command pushed again (socket lost before the result
+    /// reached the backend) is answered from here and never run twice. Persisted, bounded.
+    private var completedCommands: [String: CommandResult] = [:]
+    private var inFlightCommands: Set<String> = []
     /// Test seam: receives every command result the phone reports (also sent on the socket).
     var commandResultSink: ((CommandResult) -> Void)?
+    /// Test seam: replaces `audio.isDelivering` (no engine runs under XCTest).
+    var deliveryProbe: (() -> Bool)?
+    private var isDelivering: Bool { deliveryProbe?() ?? audio.isDelivering }
     private var keyboardObservers: [NSObjectProtocol] = []
 
     let audio = AudioOwner()
@@ -86,9 +100,10 @@ final class PortalModel: ObservableObject {
         }
         for i in loadedCaptures.indices {
             // Files closed on disk but missing from the manifest (crash between close and save) are recovered.
-            let found = store.closedSegmentFiles(loadedCaptures[i].captureId, knownIndexes: Set(loadedCaptures[i].segments.map(\.index)))
+            let found = store.closedSegmentFiles(loadedCaptures[i].captureId, knownIndexes: Set(loadedCaptures[i].segments.map(\.index)), excluding: nil)
             _ = loadedCaptures[i].reconcileFiles(found)
         }
+        let relabelled = CaptureManifest.relabelRetainedZeroAudio(&loadedCaptures)
         let rec = Recognizer()
         self.store = store
         mode = loadedMode
@@ -102,9 +117,12 @@ final class PortalModel: ObservableObject {
         installId = PortalModel.loadOrCreateInstallId()
         if envURL != nil { backendURLString = urlString }
         store.saveCaptures(captures)
+        log = store.loadRecentLog()
         asrJournals = store.loadASRJournals()
+        completedCommands = store.loadCommandResults()
         wire()
         observeKeyboard()
+        for id in relabelled { logLine("retained prayer \(id) closed with no audio; relabelled Failed: no audio captured (nothing deleted)") }
         // Relaunch: mode (including quiet and an open prayer) is restored, never reset.
         apply(.relaunch)
         logLine("launched; mode=\(mode.label) quiet=\(mode.quiet) prayer=\(mode.prayerCaptureId ?? "-")")
@@ -132,8 +150,10 @@ final class PortalModel: ObservableObject {
 
     private func logLine(_ s: String) {
         let stamp = ISO8601DateFormatter().string(from: Date())
-        log.insert("\(stamp) \(s)", at: 0)
+        let line = "\(stamp) \(s)"
+        log.insert(line, at: 0)
         if log.count > 200 { log.removeLast() }
+        store.appendLog(line) // durable, bounded; reloaded on launch
     }
 
     private func apply(_ event: PortalEvent) {
@@ -169,7 +189,7 @@ final class PortalModel: ObservableObject {
         case .savePrayer(let captureId):
             finishCapture(captureId)
         case .waitForUser:
-            logLine("prayer saved; waiting for the user")
+            logLine("prayer ended; capture settling (saved only once the writer reports its segments); waiting for the user")
         }
     }
 
@@ -326,8 +346,9 @@ final class PortalModel: ObservableObject {
         if let turnId = mode.currentTurnId { client.send(["type": "partial_transcript", "turn_id": turnId, "text": text]) }
     }
 
-    /// Test seam for the partial path (the recognizer is not available in the simulator).
+    /// Test seams for the recognizer paths (the recognizer is not available in the simulator).
     func partialTranscriptReceived(_ text: String) { partial(text) }
+    func finalTranscriptReceived(_ text: String) { final(text, source: "voice") }
     var endpointClock: EndpointClock { endpoint }
 
     private func final(_ text: String, source: String) {
@@ -337,13 +358,19 @@ final class PortalModel: ObservableObject {
         utteranceInterrupted = false
         lastTranscript = cleaned
         logLine("final (\(source)): \(cleaned)")
-        if handleVoiceCommand(cleaned) { return }
-        if mode.isPraying {
-            // Prayer: transcripts are never turns, but the provisional on-device text is journaled
-            // durably with the capture identity and synced so it survives a lost recording.
-            if let captureId = mode.prayerCaptureId { journalPrayerASR(captureId: captureId, text: cleaned) }
+        // Prayer text is journaled BEFORE any control phrase is acted on, with the capture identity it
+        // was recognized under, exactly as recognized: a line that ends with "end prayer" is kept too.
+        if source == "voice", mode.isPraying, let captureId = mode.prayerCaptureId {
+            journalPrayerASR(captureId: captureId, text: cleaned)
+        } else if source == "voice", !mode.isPraying, let recent = recentPrayerEnd, Date().timeIntervalSince(recent.at) < PortalModel.latePrayerFinalWindow {
+            // The recognizer settled this utterance after End prayer: it belongs to that prayer.
+            journalPrayerASR(captureId: recent.captureId, text: cleaned)
+            logLine("late prayer final attributed to \(recent.captureId); not a turn")
+            _ = handleVoiceCommand(cleaned)
             return
         }
+        if handleVoiceCommand(cleaned) { return }
+        if mode.isPraying { return } // prayer: never a conversational turn
         let turnId = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         apply(.finalTranscript(turnId: turnId))
     }
@@ -359,7 +386,13 @@ final class PortalModel: ObservableObject {
         var journal = asrJournals[captureId] ?? PrayerASRJournal(captureId: captureId)
         let line = journal.append(text)
         asrJournals[captureId] = journal
-        store.appendASR(captureId: captureId, line: line)
+        do {
+            try store.appendASR(captureId: captureId, line: line)
+        } catch {
+            // The line stays in memory (unsynced) and is still sent; the disk failure is reported, not hidden.
+            lastJournalError = "\(captureId) #\(line.sequence): \(error.localizedDescription)"
+            logLine("prayer ASR journal write FAILED for \(captureId) #\(line.sequence): \(error.localizedDescription)")
+        }
         syncPrayerASR(captureId: captureId)
     }
 
@@ -455,28 +488,55 @@ final class PortalModel: ObservableObject {
         asrJournals[captureId] = PrayerASRJournal(captureId: captureId)
         apply(.enterPrayer(captureId: captureId))
         // The owner's intent (.running) is not evidence that audio arrives. Check the engine facts,
-        // try one restart, and say plainly when the prayer is not being recorded.
+        // try one restart, and keep observing: the warning tracks delivery for the whole prayer.
         captureWarning = nil
-        if audio.state == .running, !audio.isDelivering {
-            let restarted = audio.restartIfNeeded(reason: "begin_prayer")
-            if !audio.isDelivering {
-                captureWarning = "Capture not running: no audio has reached the recorder (engine \(audio.isRunning ? "running" : "stopped"), restart \(restarted ? "attempted" : "failed")). This prayer is not being recorded."
-                logLine(captureWarning!)
-            }
+        if audio.state == .running, !isDelivering {
+            audio.restartIfNeeded(reason: "begin_prayer")
         } else if audio.state != .running {
-            captureWarning = "Capture not running (\(audio.state.label)). This prayer is not being recorded."
-            logLine(captureWarning!)
             // One start attempt on a real device; never under the XCTest host (permission alert) or fixture mode.
             if !PortalModel.skipPermissionPrompts, !PortalModel.underXCTest { startAudio() }
         }
         if audio.state == .running { audio.beginCapture(captureId: captureId, directory: store.captureDirectory(captureId), startIndex: 0) }
         logLine("prayer begun; capture \(captureId); recognition continues for end-of-prayer commands only")
+        refreshDeliveryWarning()
+        deliveryWatch?.invalidate()
+        deliveryWatch = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshDeliveryWarning() }
+        }
         sendSnapshot(reason: "capture")
     }
 
-    func endPrayer() {
+    /// Observed every second while praying: states what was seen and when, and clears itself when
+    /// buffers arrive again. Never a one-time verdict.
+    func refreshDeliveryWarning() {
         guard mode.isPraying else { return }
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        if isDelivering {
+            if captureWarning != nil {
+                captureWarning = nil
+                logLine("audio delivery resumed at \(stamp); prayer capture is recording again")
+                sendSnapshot(reason: "capture")
+            }
+            return
+        }
+        let detail = audio.state == .running
+            ? "engine \(audio.isRunning ? "running" : "stopped"), last buffer \(audio.lastBufferAge.map { String(format: "%.1f s ago", $0) } ?? "never")"
+            : audio.state.label
+        let text = "Not recording as of \(stamp): no audio buffer reached the recorder in the last 2 s (\(detail)). Prayer text is still journaled."
+        if captureWarning == nil {
+            logLine(text)
+            sendSnapshot(reason: "capture")
+        }
+        captureWarning = text
+    }
+
+    func endPrayer() {
+        guard mode.isPraying, let captureId = mode.prayerCaptureId else { return }
+        recentPrayerEnd = (captureId, Date())
         apply(.endPrayer)
+        deliveryWatch?.invalidate()
+        deliveryWatch = nil
+        captureWarning = nil
         logLine("prayer ended explicitly")
     }
 
@@ -582,6 +642,9 @@ final class PortalModel: ObservableObject {
         } else {
             heartbeat?.invalidate()
             heartbeat = nil
+            // Tell the backend the app left the foreground while the socket may still carry it;
+            // afterwards it shows connected_background / offline, never live.
+            sendSnapshot(reason: scenePhaseLabel)
         }
     }
 
@@ -620,6 +683,7 @@ final class PortalModel: ObservableObject {
             last_transcript: lastTranscript,
             assistant_text_tail: String(assistantText.suffix(400)),
             capture_warning: captureWarning,
+            last_journal_error: lastJournalError,
             captures: captures.map { c in
                 DeviceSnapshot.CaptureSummary(capture_id: c.captureId, kind: c.kind, status: c.status.label, segments: c.segments.count, bytes: c.segments.reduce(0) { $0 + $1.bytes }, pending_uploads: c.pendingUploads.count, gaps: c.gaps.count, closed: c.isClosed, expected_segments: c.expectedSegmentCount, created_at: c.createdAt.timeIntervalSince1970, last_segment_end: c.segments.compactMap(\.endedAt).max()?.timeIntervalSince1970)
             },
@@ -641,8 +705,16 @@ final class PortalModel: ObservableObject {
         client.send(["type": "snapshot", "reason": reason, "snapshot": snapshotDictionary()])
     }
 
-    private func report(_ result: CommandResult) {
-        logLine("command \(result.commandId.prefix(8)) \(result.status.rawValue): \(result.detail.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: " "))")
+    private func report(_ result: CommandResult, replayed: Bool = false) {
+        logLine("command \(result.commandId.prefix(8)) \(result.status.rawValue)\(replayed ? " (replayed)" : ""): \(result.detail.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: " "))")
+        inFlightCommands.remove(result.commandId)
+        if !replayed {
+            completedCommands[result.commandId] = result
+            if completedCommands.count > 50 {
+                for key in completedCommands.sorted(by: { $0.value.reportedAt < $1.value.reportedAt }).prefix(completedCommands.count - 50).map(\.key) { completedCommands.removeValue(forKey: key) }
+            }
+            store.saveCommandResults(completedCommands)
+        }
         commandResultSink?(result)
         client.send(result.payload())
     }
@@ -654,6 +726,15 @@ final class PortalModel: ObservableObject {
             logLine("command ignored: undecodable")
             return
         }
+        if let done = completedCommands[command.command_id] {
+            report(done, replayed: true) // pushed again after a lost socket: answer, do not re-run
+            return
+        }
+        if inFlightCommands.contains(command.command_id) {
+            logLine("command \(command.command_id.prefix(8)) already running; duplicate push ignored")
+            return
+        }
+        inFlightCommands.insert(command.command_id)
         guard let kind = RemoteCommandKind(rawValue: command.kind) else {
             report(CommandResult(commandId: command.command_id, status: .unsupported, detail: ["kind": command.kind]))
             return
@@ -663,9 +744,7 @@ final class PortalModel: ObservableObject {
             sendSnapshot(reason: "command")
             report(CommandResult(commandId: command.command_id, status: .applied, detail: ["reason": "snapshot sent"]))
         case .dismiss_keyboard:
-            let was = (visible: keyboardVisible, field: focusedField ?? "none")
-            dismissKeyboard()
-            report(CommandResult(commandId: command.command_id, status: .applied, detail: ["keyboard_was_visible": was.visible ? "yes" : "no", "focused_field_was": was.field]))
+            Task { await dismissKeyboardObserved(commandId: command.command_id) }
         case .select_tab:
             switch RemoteCommandPlanner.selectTab(command.args) {
             case .success(let tab):
@@ -683,7 +762,8 @@ final class PortalModel: ObservableObject {
             syncPrayerASR()
             report(CommandResult(commandId: command.command_id, status: .applied, detail: ["journals": "\(asrJournals.count)", "lines_sent": "\(pending)"]))
         case .copy_capture_files:
-            switch RemoteCommandPlanner.copyPlan(command.args, captures: captures, fileExists: { id, name in FileManager.default.fileExists(atPath: store.captureDirectory(id).appendingPathComponent(name).path) }) {
+            let open = audio.openSegmentURL
+            switch RemoteCommandPlanner.copyPlan(command.args, captures: captures, closedFilesOnDisk: { id in store.segmentFilesOnDisk(id, excluding: open) }) {
             case .failure(let error):
                 report(CommandResult(commandId: command.command_id, status: .failed, detail: ["reason": error.reason]))
             case .success(let plan):
@@ -692,21 +772,49 @@ final class PortalModel: ObservableObject {
         }
     }
 
+    /// Saves the pre-state, dismisses, then reports what was actually observed afterwards (the
+    /// keyboard-did-hide notification clears `keyboardVisible`), within a bounded wait.
+    static let dismissObservationWindow: TimeInterval = 1.0
+
+    private func dismissKeyboardObserved(commandId: String) async {
+        let before = (visible: keyboardVisible, field: focusedField ?? "none")
+        dismissKeyboard()
+        var waited: TimeInterval = 0
+        while keyboardVisible, waited < PortalModel.dismissObservationWindow {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            waited += 0.1
+        }
+        let detail = ["keyboard_was_visible": before.visible ? "yes" : "no", "focused_field_was": before.field, "keyboard_visible_after": keyboardVisible ? "yes" : "no", "observed_after_s": String(format: "%.1f", waited)]
+        report(CommandResult(commandId: commandId, status: keyboardVisible ? .failed : .applied, detail: keyboardVisible ? detail.merging(["reason": "keyboard still visible after \(String(format: "%.1f", waited)) s"]) { a, _ in a } : detail))
+    }
+
     /// Renders the app's own window (the foreground UI this app draws). The keyboard, system alerts
     /// and other apps are separate windows and are not in the image; the snapshot says what covers it.
-    func renderAppWindow() -> Data? {
+    /// Requires a foreground-active scene and a successful draw; otherwise returns the reason.
+    func renderAppWindow() -> Result<Data, PlanError> {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        guard let scene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first,
-              let window = scene.windows.first(where: { $0.isKeyWindow }) ?? scene.windows.first else { return nil }
+        guard let scene = scenes.first(where: { $0.activationState == .foregroundActive }) else {
+            return .failure(PlanError(reason: "no foreground-active scene (\(scenes.map { "\($0.activationState.rawValue)" }.joined(separator: ",")))"))
+        }
+        guard let window = scene.windows.first(where: { $0.isKeyWindow }) ?? scene.windows.first else {
+            return .failure(PlanError(reason: "foreground scene has no window"))
+        }
+        var drawn = false
         let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
-        let image = renderer.image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
-        return image.jpegData(compressionQuality: 0.6)
+        let image = renderer.image { _ in drawn = window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+        guard drawn else { return .failure(PlanError(reason: "drawHierarchy returned false")) }
+        guard let jpeg = image.jpegData(compressionQuality: 0.6), jpeg.count > 0 else { return .failure(PlanError(reason: "jpeg encoding failed")) }
+        return .success(jpeg)
     }
 
     private func captureAndPostImage(commandId: String) async {
-        guard let jpeg = renderAppWindow() else {
-            report(CommandResult(commandId: commandId, status: .failed, detail: ["reason": "no app window to render"]))
+        let jpeg: Data
+        switch renderAppWindow() {
+        case .failure(let error):
+            report(CommandResult(commandId: commandId, status: .failed, detail: ["reason": error.reason]))
             return
+        case .success(let data):
+            jpeg = data
         }
         let digest = SHA256.hash(data: jpeg).map { String(format: "%02x", $0) }.joined()
         let snapshotB64 = (try? JSONEncoder().encode(makeSnapshot()))?.base64EncodedString() ?? ""
@@ -720,28 +828,34 @@ final class PortalModel: ObservableObject {
     }
 
     /// Manifest for recovery: every capture with its segment identities, plus closed WAVs on disk
-    /// that no manifest lists (orphans). Nothing is moved or deleted.
-    func manifestPayload() -> [String: Any] {
-        var orphans: [[String: Any]] = []
-        for captureId in store.captureDirectoryIds() {
-            let known = Set(captures.first(where: { $0.captureId == captureId })?.segments.map(\.index) ?? [])
-            for file in store.closedSegmentFiles(captureId, knownIndexes: known) {
-                orphans.append(["capture_id": captureId, "index": file.index, "filename": file.filename, "bytes": file.bytes, "sha256": file.sha256, "in_manifest": captures.contains(where: { $0.captureId == captureId })])
+    /// that no manifest lists (orphans). Hashing orphans runs off the main thread; the file a writer
+    /// is still appending to is excluded. Nothing is moved or deleted.
+    func manifestPayload() async -> [String: Any] {
+        let store = self.store
+        let known: [String: Set<Int>] = Dictionary(captures.map { ($0.captureId, Set($0.segments.map(\.index))) }, uniquingKeysWith: { a, _ in a })
+        let open = audio.openSegmentURL
+        let orphans: [[String: Any]] = await Task.detached(priority: .utility) {
+            var out: [[String: Any]] = []
+            for captureId in store.captureDirectoryIds() {
+                for file in store.closedSegmentFiles(captureId, knownIndexes: known[captureId] ?? [], excluding: open) {
+                    out.append(["capture_id": captureId, "index": file.index, "filename": file.filename, "bytes": file.bytes, "sha256": file.sha256, "in_manifest": known[captureId] != nil])
+                }
             }
-        }
+            return out
+        }.value
         let list: [[String: Any]] = captures.map { c in
             ["capture_id": c.captureId, "kind": c.kind, "status": c.status.label, "created_at": c.createdAt.timeIntervalSince1970, "closed_at": c.closedAt?.timeIntervalSince1970 as Any, "expected_segments": c.expectedSegmentCount as Any, "finalize_requested_at": c.finalizeRequestedAt?.timeIntervalSince1970 as Any,
              "segments": c.segments.map { s in ["index": s.index, "filename": s.filename, "bytes": s.bytes, "sha256": s.sha256, "started_at": s.startedAt.timeIntervalSince1970, "ended_at": s.endedAt?.timeIntervalSince1970 as Any, "verified_uploaded": s.verifiedUploaded, "last_error": s.lastError as Any] },
              "gaps": c.gaps.map { g in ["started_at": g.startedAt.timeIntervalSince1970, "ended_at": g.endedAt?.timeIntervalSince1970 as Any, "reason": g.reason, "kind": g.kind] }]
         }
-        return ["client_time": Date().timeIntervalSince1970, "install_id": installId, "captures": list, "orphans": orphans, "asr_journals": asrJournals.mapValues { ["lines": $0.lines.count, "synced_through": $0.syncedThrough] }]
+        return ["client_time": Date().timeIntervalSince1970, "install_id": installId, "captures": list, "orphans": orphans, "open_segment": open?.lastPathComponent as Any, "asr_journals": asrJournals.mapValues { ["lines": $0.lines.count, "synced_through": $0.syncedThrough] }]
     }
 
     private func postManifest(commandId: String) async {
         do {
-            let resp = try await client.post("devices/\(installId)/manifest", json: manifestPayload(), as: [String: AnyDecodable].self)
-            _ = resp
-            report(CommandResult(commandId: commandId, status: .applied, detail: ["captures": "\(captures.count)", "orphans": "\((manifestPayload()["orphans"] as? [[String: Any]])?.count ?? 0)"]))
+            let payload = await manifestPayload()
+            _ = try await client.post("devices/\(installId)/manifest", json: payload, as: [String: AnyDecodable].self)
+            report(CommandResult(commandId: commandId, status: .applied, detail: ["captures": "\(captures.count)", "orphans": "\((payload["orphans"] as? [[String: Any]])?.count ?? 0)"]))
         } catch {
             report(CommandResult(commandId: commandId, status: .failed, detail: ["reason": "manifest upload: \(error.localizedDescription)"]))
         }
@@ -753,27 +867,39 @@ final class PortalModel: ObservableObject {
     private func copyCaptureFiles(_ plan: RemoteCommandPlanner.FileCopyPlan, commandId: String) async {
         var copied: [String] = []
         var failed: [String] = []
+        let directory = store.captureDirectory(plan.captureId)
         for seg in plan.files {
-            let url = store.captureDirectory(plan.captureId).appendingPathComponent(seg.filename)
-            guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { failed.append("\(seg.index):unreadable"); continue }
-            let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            let url = directory.appendingPathComponent(seg.filename)
+            // Read and hash off the main thread; bytes are sent exactly as read.
+            let read: (Data, String)? = await Task.detached(priority: .utility) {
+                guard let data = try? Data(contentsOf: url) else { return nil }
+                return (data, SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined())
+            }.value
+            guard let (data, digest) = read else { failed.append("\(seg.index):unreadable"); logLine("copy \(plan.captureId) #\(seg.index): unreadable"); continue }
             do {
                 let raw = try await client.postRaw("devices/\(installId)/captures/\(plan.captureId)/files/\(seg.index)", body: data, headers: ["Content-Type": "audio/wav", "X-SHA256": digest, "X-Filename": seg.filename, "X-Command-Id": commandId])
                 let resp = (try? JSONSerialization.jsonObject(with: raw) as? [String: Any]) ?? [:]
                 if resp["stored"] as? Bool == true, resp["sha256"] as? String == digest, resp["size_bytes"] as? Int == data.count {
-                    copied.append("\(seg.index)" + (digest == seg.sha256 ? "" : ":digest_differs_from_manifest"))
+                    let note = seg.manifestSha256 == nil ? ":not_in_manifest" : (seg.manifestSha256 == digest ? "" : ":digest_differs_from_manifest")
+                    copied.append("\(seg.index)\(note)")
+                    logLine("copy \(plan.captureId) #\(seg.index): \(data.count) bytes verified by the backend\(note)")
                 } else {
                     failed.append("\(seg.index):\(resp["reason"] as? String ?? "unverified")")
+                    logLine("copy \(plan.captureId) #\(seg.index): \(failed.last!)")
                 }
             } catch {
                 failed.append("\(seg.index):\(error.localizedDescription)")
+                logLine("copy \(plan.captureId) #\(seg.index): \(error.localizedDescription)")
             }
-            logLine("copy \(plan.captureId) #\(seg.index): \(copied.last?.hasPrefix("\(seg.index)") == true ? "copied \(data.count) bytes" : (failed.last ?? "?"))")
         }
-        _ = try? await client.post("devices/\(installId)/manifest", json: manifestPayload(), as: [String: AnyDecodable].self)
-        let detail: [String: String] = ["capture_id": plan.captureId, "copied": copied.joined(separator: ","), "failed": failed.joined(separator: ","), "missing": plan.missingIndexes.map(String.init).joined(separator: ","), "requested": "\(plan.files.count)"]
-        let status: CommandResult.Status = (plan.files.isEmpty && !plan.missingIndexes.isEmpty) || !failed.isEmpty ? .failed : .applied
-        report(CommandResult(commandId: commandId, status: status, detail: detail))
+        if let payload = Optional(await manifestPayload()) {
+            _ = try? await client.post("devices/\(installId)/manifest", json: payload, as: [String: AnyDecodable].self)
+        }
+        // Applied means every named file was copied and verified; anything missing or failed is a
+        // failure with the exact indexes, so a partial copy can never read as complete.
+        let complete = failed.isEmpty && plan.missingIndexes.isEmpty && !plan.files.isEmpty
+        let detail: [String: String] = ["capture_id": plan.captureId, "in_manifest": plan.inManifest ? "yes" : "no", "copied": copied.joined(separator: ","), "failed": failed.joined(separator: ","), "missing": plan.missingIndexes.map(String.init).joined(separator: ","), "named": "\(plan.files.count + plan.missingIndexes.count)", "reason": complete ? "all named files copied and verified" : "partial: \(copied.count) of \(plan.files.count + plan.missingIndexes.count) named files verified"]
+        report(CommandResult(commandId: commandId, status: complete ? .applied : .failed, detail: detail))
     }
 
     // MARK: uploads (stable capture id; exact identities; no duplicate captures)
@@ -1079,21 +1205,75 @@ final class LocalStore {
         ((try? FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("captures").path)) ?? []).sorted()
     }
 
+    /// index -> filename of segment files on disk for a capture, excluding the file still being
+    /// written. No hashing (cheap enough for the main thread).
+    func segmentFilesOnDisk(_ captureId: String, excluding open: URL?) -> [Int: String] {
+        let dir = captureDirectory(captureId)
+        var out: [Int: String] = [:]
+        for name in (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [] where name.hasSuffix(".wav") {
+            guard let index = Int(name.dropLast(4)) else { continue }
+            if let open, open.standardizedFileURL == dir.appendingPathComponent(name).standardizedFileURL { continue }
+            out[index] = name
+        }
+        return out
+    }
+
+    // Durable recent log: Documents/recent-log.txt, appended on a serial queue, bounded by rotation.
+    private static let logQueue = DispatchQueue(label: "rlmadk.log", qos: .utility)
+    private var logURL: URL { root.appendingPathComponent("recent-log.txt") }
+
+    func appendLog(_ line: String) {
+        let url = logURL
+        LocalStore.logQueue.async {
+            let data = Data((line + "\n").utf8)
+            if let handle = try? FileHandle(forWritingTo: url) {
+                _ = try? handle.seekToEnd()
+                try? handle.write(contentsOf: data)
+                try? handle.close()
+            } else {
+                try? data.write(to: url, options: .atomic)
+            }
+            if let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int), size > 512_000,
+               let text = try? String(contentsOf: url, encoding: .utf8) {
+                let kept = text.split(separator: "\n").suffix(1000).joined(separator: "\n") + "\n"
+                try? Data(kept.utf8).write(to: url, options: .atomic)
+            }
+        }
+    }
+
+    /// Last lines from the durable log, newest first, for the in-memory log on launch.
+    func loadRecentLog(limit: Int = 200) -> [String] {
+        LocalStore.logQueue.sync {} // any pending append from a previous model lands first
+        guard let text = try? String(contentsOf: logURL, encoding: .utf8) else { return [] }
+        return Array(text.split(separator: "\n").suffix(limit).reversed().map(String.init))
+    }
+
+    func loadCommandResults() -> [String: CommandResult] {
+        guard let data = try? Data(contentsOf: root.appendingPathComponent("command-results.json")) else { return [:] }
+        return (try? JSONDecoder().decode([String: CommandResult].self, from: data)) ?? [:]
+    }
+
+    func saveCommandResults(_ results: [String: CommandResult]) {
+        if let data = try? JSONEncoder().encode(results) { try? data.write(to: root.appendingPathComponent("command-results.json"), options: .atomic) }
+    }
+
     // Prayer ASR journal: Documents/prayer-asr/<captureId>.jsonl (append-only) and prayer-asr-sync.json.
     private var asrDirectory: URL { root.appendingPathComponent("prayer-asr") }
 
-    func appendASR(captureId: String, line: PrayerASRJournal.Line) {
-        try? FileManager.default.createDirectory(at: asrDirectory, withIntermediateDirectories: true)
-        guard var data = try? JSONEncoder().encode(line) else { return }
+    /// Appends one journal line and flushes it; any failure is thrown to the caller (shown, logged).
+    func appendASR(captureId: String, line: PrayerASRJournal.Line) throws {
+        try FileManager.default.createDirectory(at: asrDirectory, withIntermediateDirectories: true)
+        var data = try JSONEncoder().encode(line)
         data.append(0x0A)
         let url = asrDirectory.appendingPathComponent("\(captureId).jsonl")
-        if let handle = try? FileHandle(forWritingTo: url) {
+        if FileManager.default.fileExists(atPath: url.path) {
+            let handle = try FileHandle(forWritingTo: url)
             defer { try? handle.close() }
-            _ = try? handle.seekToEnd()
-            try? handle.write(contentsOf: data)
-            try? handle.synchronize()
+            try handle.seekToEnd()
+            try handle.write(contentsOf: data)
+            try handle.synchronize()
         } else {
-            try? data.write(to: url, options: .atomic)
+            try data.write(to: url, options: .atomic)
         }
     }
 
@@ -1114,13 +1294,15 @@ final class LocalStore {
         if let data = try? JSONEncoder().encode(map) { try? data.write(to: root.appendingPathComponent("prayer-asr-sync.json"), options: .atomic) }
     }
 
-    /// Closed segment files on disk for a capture that the manifest does not list yet.
-    func closedSegmentFiles(_ captureId: String, knownIndexes: Set<Int>) -> [(index: Int, filename: String, bytes: Int, sha256: String)] {
+    /// Closed segment files on disk for a capture that the manifest does not list yet. `excluding`
+    /// is the file a writer is still appending to: it is neither closed nor complete and is skipped.
+    func closedSegmentFiles(_ captureId: String, knownIndexes: Set<Int>, excluding open: URL?) -> [(index: Int, filename: String, bytes: Int, sha256: String)] {
         let dir = captureDirectory(captureId)
         let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
         var out: [(index: Int, filename: String, bytes: Int, sha256: String)] = []
         for name in names.sorted() where name.hasSuffix(".wav") {
             guard let index = Int(name.dropLast(4)), !knownIndexes.contains(index) else { continue }
+            if let open, open.standardizedFileURL == dir.appendingPathComponent(name).standardizedFileURL { continue }
             guard let data = try? Data(contentsOf: dir.appendingPathComponent(name)), !data.isEmpty else { continue }
             let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
             out.append((index, name, data.count, digest))

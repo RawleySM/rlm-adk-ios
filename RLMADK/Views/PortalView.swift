@@ -79,6 +79,9 @@ struct PortalView: View {
             if let warning = model.captureWarning {
                 Text(warning).font(.caption).foregroundStyle(.red).accessibilityIdentifier("captureWarning")
             }
+            if let err = model.lastJournalError {
+                Text("Prayer text journal: \(err)").font(.caption2).foregroundStyle(.red)
+            }
         }
     }
 

@@ -48,7 +48,14 @@ def main():
     snap = call(base, "GET", f"/devices/{install_id}/snapshot")
     report["snapshot"] = snap
     print(f"snapshot freshness={snap['freshness']} age={snap['age_s']} tab={snap['snapshot']['selected_tab']} keyboard={snap['snapshot']['keyboard_visible']} owner={snap['snapshot']['audio_owner_state']}")
-    report["commands"]["select_tab"] = run_command(base, install_id, "select_tab", {"tab": "portal"})
+    # Tab transition: portal first, then another tab; the snapshot the app sends on each change must
+    # name the new tab (observed state, not the command's intent).
+    report["commands"]["select_tab_portal"] = run_command(base, install_id, "select_tab", {"tab": "portal"})
+    after_portal = wait_for(lambda: (lambda s: s if s.get("snapshot", {}).get("selected_tab") == "portal" else None)(call(base, "GET", f"/devices/{install_id}/snapshot")), 15, "snapshot showing portal")
+    report["commands"]["select_tab_work"] = run_command(base, install_id, "select_tab", {"tab": "work"})
+    after_work = wait_for(lambda: (lambda s: s if s.get("snapshot", {}).get("selected_tab") == "work" else None)(call(base, "GET", f"/devices/{install_id}/snapshot")), 15, "snapshot showing work")
+    report["tab_transition"] = {"portal": {"reason": after_portal["reason"], "client_time": after_portal["client_time"]}, "work": {"reason": after_work["reason"], "client_time": after_work["client_time"]}}
+    print(f"tab transition observed: portal ({after_portal['reason']}) -> work ({after_work['reason']})")
     report["commands"]["select_tab_unknown"] = run_command(base, install_id, "select_tab", {"tab": "nowhere"})
     report["commands"]["dismiss_keyboard"] = run_command(base, install_id, "dismiss_keyboard")
     report["commands"]["image"] = run_command(base, install_id, "image")
@@ -56,7 +63,7 @@ def main():
     image = call(base, "GET", f"/devices/{install_id}/images/latest")
     with open(f"{out_dir}/simulator-remote-image.jpg", "wb") as f:
         f.write(image)
-    report["image"] = {"bytes": len(image), "sha256": hashlib.sha256(image).hexdigest(), "meta_sha256": meta["sha256"], "age_s": meta["age_s"], "scope": meta["scope"]}
+    report["image"] = {"bytes": len(image), "sha256": hashlib.sha256(image).hexdigest(), "meta_sha256": meta["sha256"], "meta_command_id": meta["command_id"], "command_id": report["commands"]["image"]["command_id"], "phone_reported_sha256": report["commands"]["image"].get("result", {}).get("sha256"), "age_s": meta["age_s"], "scope": meta["scope"], "snapshot_tab": (meta.get("snapshot") or {}).get("selected_tab")}
     report["commands"]["sync_manifest"] = run_command(base, install_id, "sync_manifest")
     manifest = call(base, "GET", f"/devices/{install_id}/manifest")["manifest"]
     report["manifest"] = {"captures": [(c["capture_id"], c["kind"], len(c["segments"])) for c in manifest["captures"]], "orphans": manifest["orphans"]}
@@ -71,7 +78,7 @@ def main():
     with open(f"{out_dir}/remote-inspection.json", "w") as f:
         json.dump(report, f, indent=2, default=str)
     problems = []
-    for name in ("snapshot", "select_tab", "dismiss_keyboard", "image", "sync_manifest", "copy_capture_files"):
+    for name in ("snapshot", "select_tab_portal", "select_tab_work", "dismiss_keyboard", "image", "sync_manifest", "copy_capture_files"):
         if report["commands"][name]["status"] != "applied":
             problems.append(f"{name} not applied: {report['commands'][name]}")
     for name in ("select_tab_unknown", "copy_unknown"):
@@ -79,6 +86,14 @@ def main():
             problems.append(f"{name} should have failed: {report['commands'][name]}")
     if report["image"]["sha256"] != meta["sha256"] or len(image) < 1000:
         problems.append("image digest/size mismatch")
+    if meta["command_id"] != report["commands"]["image"]["command_id"] or report["image"]["phone_reported_sha256"] != meta["sha256"]:
+        problems.append(f"image is not the one the phone reported for this command: {report['image']}")
+    if report["image"]["snapshot_tab"] != "work":
+        problems.append(f"image snapshot does not show the current tab (work): {report['image']['snapshot_tab']}")
+    if after_work["reason"] != "tab" or after_work["client_time"] <= after_portal["client_time"]:
+        problems.append(f"tab transition snapshots not in order/reason: {report['tab_transition']}")
+    if report["commands"]["dismiss_keyboard"].get("result", {}).get("keyboard_visible_after") != "no":
+        problems.append(f"dismiss did not report the observed post-state: {report['commands']['dismiss_keyboard']}")
     if not any(c[1] == len(seed) and c[2] == seed_sha for c in copied):
         problems.append(f"seeded file not copied byte-for-byte: {copied}")
     else:

@@ -104,6 +104,20 @@ struct CaptureManifest: Codable, Equatable, Identifiable {
         }
     }
 
+    /// Manifests written by earlier builds: a prayer that closed with a settled count of zero and no
+    /// segment files still says "Saved locally". Relabel it honestly (nothing is deleted; files on
+    /// disk, if any turn up, are still recoverable through the orphan listing).
+    static func relabelRetainedZeroAudio(_ captures: inout [CaptureManifest]) -> [String] {
+        var changed: [String] = []
+        for i in captures.indices where captures[i].kind == "prayer" && captures[i].isClosed && captures[i].expectedSegmentCount == 0 && captures[i].segments.isEmpty {
+            if case .savedLocally = captures[i].status {
+                captures[i].status = .failed(reason: "no audio captured")
+                changed.append(captures[i].captureId)
+            }
+        }
+        return changed
+    }
+
     mutating func recordUpload(index: Int, intakeSha256: String?, durable: Bool?, error: String?) {
         guard let i = segments.firstIndex(where: { $0.index == index }) else { return }
         segments[i].lastError = error

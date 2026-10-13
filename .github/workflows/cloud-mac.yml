@@ -53,6 +53,10 @@ jobs:
       - name: Pick a simulator
         id: sim
         run: |
+          # The keyboard UI tests require the SOFTWARE keyboard; a connected hardware keyboard would
+          # hide it. Set before the simulator boots so Simulator.app reads it on launch.
+          defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false
+          defaults read com.apple.iphonesimulator ConnectHardwareKeyboard
           UDID=$(xcrun simctl list devices available -j | python3 -c '
           import json, sys
           devices = json.load(sys.stdin)["devices"]
@@ -77,8 +81,6 @@ jobs:
 
       - name: Native state/outbox/source/inspection tests (XCTest) and keyboard navigation (XCUITest)
         run: |
-          # The software keyboard must be exercised, not a connected hardware keyboard.
-          defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false || true
           set -o pipefail
           xcodebuild -project RLMADK.xcodeproj -scheme RLMADK -configuration Debug \
             -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath build \

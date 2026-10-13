@@ -75,9 +75,13 @@ class PortalService:
         self.started_at = now()
         self.active_turns: dict[str, threading.Event] = {}
         self.active_lock = threading.Lock()
-        # install_id -> (session_id, emit) for the phone's live WebSocket, so HTTP can push commands.
+        # install_id -> (session_id, send) for the phone's live WebSocket, so HTTP can push commands.
+        # `send` raises on transport failure (unlike the best-effort `emit` used for conversation).
         self.device_sessions: dict[str, tuple[str, callable]] = {}
         self.device_lock = threading.Lock()
+        reset = devices.reset_connections(self.conn())  # nothing survives a restart as "connected"
+        if reset:
+            log.info("device connections reset on start: %d", reset)
         recovered = outbox.recover_stale_posting(self.conn(), cfg, all_rows=True)
         if recovered:
             log.warning("recovered stale posting operations as delivery_unknown: %s", recovered)
@@ -108,18 +112,32 @@ class PortalService:
         }
 
     def push_command(self, install_id: str, command: dict) -> bool:
-        """Deliver a queued command to the phone's live session; True only if it was sent."""
+        """Deliver a command to the phone's live session; True only if the frame was written. A
+        transport failure leaves the command queued, drops the dead registration and marks the
+        device disconnected, so the next hello pushes it again."""
         with self.device_lock:
             entry = self.device_sessions.get(install_id)
         if entry is None:
             return False
-        session_id, emit = entry
+        session_id, send = entry
         try:
-            emit({"type": "command", "command_id": command["command_id"], "kind": command["kind"], "args": command["args"]})
-        except Exception:
+            send({"type": "command", "command_id": command["command_id"], "kind": command["kind"], "args": command["args"]})
+        except Exception as exc:  # WebSocketClosed, OSError, or any broken transport
+            log.warning("command %s to %s not sent: %s", command["command_id"], install_id, exc)
+            self.drop_device_session(install_id, session_id)
             return False
         devices.mark_delivered(self.conn(), command["command_id"])
         return True
+
+    def drop_device_session(self, install_id: str, session_id: str) -> None:
+        with self.device_lock:
+            if self.device_sessions.get(install_id, (None, None))[0] == session_id:
+                self.device_sessions.pop(install_id, None)
+                devices.record_disconnect(self.conn(), install_id)
+
+    def live_device_ids(self) -> set[str]:
+        with self.device_lock:
+            return set(self.device_sessions)
 
     def cancel_turn(self, turn_id: str) -> bool:
         with self.active_lock:
@@ -241,13 +259,14 @@ class Handler(BaseHTTPRequestHandler):
             # ----- phone inspection and recovery -----
             if parts and parts[0] == "devices":
                 if method == "GET" and len(parts) == 1:
-                    return self._json(200, {"devices": devices.list_devices(conn)})
+                    return self._json(200, {"devices": devices.list_devices(conn, svc.live_device_ids())})
                 if len(parts) >= 2:
                     install_id = parts[1]
+                    live = install_id in svc.live_device_ids()
                     if method == "GET" and len(parts) == 2:
-                        return self._json(200, {**devices.latest_snapshot(conn, install_id), "commands": devices.recent_commands(conn, install_id), "latest_image": devices.latest_image(conn, install_id), "latest_manifest": (devices.latest_manifest(conn, install_id) or {}).get("received_at")})
+                        return self._json(200, {**devices.latest_snapshot(conn, install_id, live=live), "commands": devices.recent_commands(conn, install_id), "latest_image": devices.latest_image(conn, install_id), "latest_manifest": (devices.latest_manifest(conn, install_id) or {}).get("received_at")})
                     if method == "GET" and parts[2:] == ["snapshot"]:
-                        return self._json(200, devices.latest_snapshot(conn, install_id))
+                        return self._json(200, devices.latest_snapshot(conn, install_id, live=live))
                     if method == "POST" and parts[2:] == ["commands"]:
                         payload = self._read_json()
                         try:
@@ -361,10 +380,14 @@ class Handler(BaseHTTPRequestHandler):
         send_lock = threading.Lock()
         device_install_id: str | None = None
 
+        def send_strict(event: dict) -> None:
+            """Raises on transport failure; used for command delivery, where silence must not pass as sent."""
+            with send_lock:
+                ws.send_json(event)
+
         def emit(event: dict) -> None:
             try:
-                with send_lock:
-                    ws.send_json(event)
+                send_strict(event)
             except (WebSocketClosed, OSError):
                 pass
 
@@ -406,7 +429,7 @@ class Handler(BaseHTTPRequestHandler):
                             continue
                         device_install_id = install_id
                         with svc.device_lock:
-                            svc.device_sessions[install_id] = (session_id, emit)
+                            svc.device_sessions[install_id] = (session_id, send_strict)
                     emit({"type": "hello_ack", "session_id": session_id, "mode": event.get("mode"), "install_id": install_id})
                     if install_id:
                         for pending in devices.pending_commands(conn, install_id):
@@ -463,10 +486,7 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             session_turns.cancel_all()  # disconnect settles the requests this session owns
             if device_install_id:
-                with svc.device_lock:
-                    if svc.device_sessions.get(device_install_id, (None, None))[0] == session_id:
-                        svc.device_sessions.pop(device_install_id, None)
-                        devices.record_disconnect(conn, device_install_id)
+                svc.drop_device_session(device_install_id, session_id)
             with conn:
                 conn.execute("UPDATE sessions SET ended_at = ? WHERE session_id = ?", (now(), session_id))
             ws.close()

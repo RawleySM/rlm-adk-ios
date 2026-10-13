@@ -14,15 +14,15 @@ final class KeyboardNavigationUITests: XCTestCase {
         app.launch()
     }
 
-    /// Focuses the typed input field and returns whether a software keyboard came up. A connected
-    /// hardware keyboard hides the software keyboard on the simulator; CI turns that off.
-    @discardableResult
-    private func focusTypedInput() -> Bool {
+    /// Focuses the typed input field and REQUIRES the software keyboard: this is the reported bug,
+    /// so a run where no keyboard appears (a hardware keyboard attached to the simulator) fails
+    /// instead of passing silently. CI disables the hardware keyboard before booting the simulator.
+    private func focusTypedInput() {
         let field = app.textFields["typedInput"]
         XCTAssertTrue(field.waitForExistence(timeout: 10), "typed input field present")
         if !field.isHittable { app.swipeUp() }
         field.tap()
-        return app.keyboards.element.waitForExistence(timeout: 3)
+        XCTAssertTrue(app.keyboards.element.waitForExistence(timeout: 5), "software keyboard must appear after tapping the typed input field (is a hardware keyboard connected to the simulator?)")
     }
 
     private func assertKeyboardGone(_ why: String) {
@@ -33,7 +33,7 @@ final class KeyboardNavigationUITests: XCTestCase {
     }
 
     func testDoneButtonDismissesKeyboardAndTabsAreReachable() throws {
-        guard focusTypedInput() else { throw XCTSkip("no software keyboard on this simulator (hardware keyboard attached)") }
+        focusTypedInput()
         app.textFields["typedInput"].typeText("hello")
         let done = app.buttons["keyboardDone"]
         XCTAssertTrue(done.waitForExistence(timeout: 3), "keyboard toolbar Done present")
@@ -48,24 +48,23 @@ final class KeyboardNavigationUITests: XCTestCase {
         let urlField = app.textFields["backendURLField"]
         XCTAssertTrue(urlField.waitForExistence(timeout: 5))
         urlField.tap()
-        if app.keyboards.element.waitForExistence(timeout: 3) {
-            app.buttons["keyboardDoneDiagnostics"].tap()
-            assertKeyboardGone("Diagnostics Done")
-        }
+        XCTAssertTrue(app.keyboards.element.waitForExistence(timeout: 5), "software keyboard for the URL field")
+        app.buttons["keyboardDoneDiagnostics"].tap()
+        assertKeyboardGone("Diagnostics Done")
         XCTAssertTrue(app.tabBars.buttons["Portal"].isHittable)
         app.tabBars.buttons["Portal"].tap()
         XCTAssertTrue(app.navigationBars["Voice Portal"].waitForExistence(timeout: 5))
     }
 
     func testQuietButtonDismissesKeyboardAndStillTogglesQuiet() throws {
-        let keyboard = focusTypedInput()
+        focusTypedInput()
         app.textFields["typedInput"].typeText("quiet")
         let quiet = app.buttons["quietButton"]
         XCTAssertTrue(quiet.waitForExistence(timeout: 5))
         if !quiet.isHittable { app.swipeDown() }
         XCTAssertTrue(quiet.isHittable, "Quiet button must stay reachable while typing")
         quiet.tap()
-        if keyboard { assertKeyboardGone("Quiet") }
+        assertKeyboardGone("Quiet")
         let woke = NSPredicate(format: "label == 'Wake'")
         expectation(for: woke, evaluatedWith: quiet, handler: nil)
         waitForExpectations(timeout: 5)
@@ -75,7 +74,7 @@ final class KeyboardNavigationUITests: XCTestCase {
     }
 
     func testSubmitSendsAndDismissesKeyboard() throws {
-        guard focusTypedInput() else { throw XCTSkip("no software keyboard on this simulator (hardware keyboard attached)") }
+        focusTypedInput()
         app.textFields["typedInput"].typeText("What does the shepherd psalm say?\n")
         assertKeyboardGone("submit")
         XCTAssertTrue(app.staticTexts["You: What does the shepherd psalm say?"].waitForExistence(timeout: 5), "typed turn recorded as the last transcript")
@@ -83,7 +82,7 @@ final class KeyboardNavigationUITests: XCTestCase {
     }
 
     func testSendButtonDismissesKeyboard() throws {
-        guard focusTypedInput() else { throw XCTSkip("no software keyboard on this simulator (hardware keyboard attached)") }
+        focusTypedInput()
         app.textFields["typedInput"].typeText("send me")
         let send = app.buttons["sendButton"]
         XCTAssertTrue(send.waitForExistence(timeout: 3))

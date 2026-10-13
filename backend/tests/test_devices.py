@@ -130,6 +130,74 @@ class DeviceTests(unittest.TestCase):
         self.assertEqual(overview["freshness"], "no_snapshot")
         self.assertEqual({c["status"] for c in overview["commands"]}, {"applied", "failed", "queued"})
 
+    def test_failed_transport_never_counts_as_delivered(self):
+        svc = self.server.service
+        sent = []
+
+        def broken(event):
+            sent.append(event)
+            raise OSError("socket gone")
+
+        with svc.device_lock:
+            svc.device_sessions["phone-b"] = ("dead-session", broken)
+        self._json("POST", "/devices/phone-b/commands", {"kind": "snapshot"})  # registers nothing; device row absent
+        conn = connect(self.cfg.db_path)
+        devices.record_hello(conn, "phone-b", session_id="dead-session", app_version=None, build=None)
+        status, cmd = self._json("POST", "/devices/phone-b/commands", {"kind": "snapshot"})
+        self.assertEqual(len(sent), 1, "the transport was attempted")
+        self.assertEqual((cmd["pushed"], cmd["status"]), (False, "queued"))
+        self.assertEqual(self._json("GET", f"/devices/phone-b/commands/{cmd['command_id']}")[1]["status"], "queued")
+        self.assertNotIn("phone-b", svc.live_device_ids())
+        self.assertFalse(self._json("GET", "/devices/phone-b")[1]["connected"])
+        # The real phone connects: both queued commands arrive, and the result lands on the right id.
+        ws = self._phone("phone-b")
+        got = sorted(json.loads(ws.receive())["command_id"] for _ in range(2))
+        self.assertIn(cmd["command_id"], got)
+        ws.send_json({"type": "command_result", "command_id": cmd["command_id"], "status": "applied", "result": {}})
+        json.loads(ws.receive())
+        self.assertEqual(self._json("GET", f"/devices/phone-b/commands/{cmd['command_id']}")[1]["status"], "applied")
+
+    def test_restart_forgets_connections_and_background_is_not_live(self):
+        ws = self._phone()
+        ws.send_json({"type": "snapshot", "reason": "connect", "snapshot": {"scene_phase": "active"}})
+        json.loads(ws.receive())
+        self.assertEqual(self._json("GET", "/devices/phone-a/snapshot")[1]["freshness"], "live")
+        ws.send_json({"type": "snapshot", "reason": "background", "snapshot": {"scene_phase": "background"}})
+        json.loads(ws.receive())
+        body = self._json("GET", "/devices/phone-a/snapshot")[1]
+        self.assertEqual((body["freshness"], body["connected"], body["scene_phase"]), ("connected_background", True, "background"))
+        # A new service on the same database (restart) has no sockets: nothing is connected or live.
+        self.server.shutdown()
+        self.server.server_close()
+        self.server = make_server(self.cfg)
+        self.port = self.server.server_address[1]
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        body = self._json("GET", "/devices/phone-a/snapshot")[1]
+        self.assertEqual((body["freshness"], body["connected"]), ("offline", False))
+        self.assertFalse(self._json("GET", "/devices")[1]["devices"][0]["connected"])
+        ws.close()
+
+    def test_delivered_command_without_result_is_pushed_again_on_reconnect(self):
+        ws = self._phone()
+        status, cmd = self._json("POST", "/devices/phone-a/commands", {"kind": "image"})
+        self.assertEqual((cmd["status"], cmd["pushed"]), ("delivered", True))
+        self.assertEqual(json.loads(ws.receive())["command_id"], cmd["command_id"])
+        ws.close()  # the phone lost the socket before reporting
+        self._wait(lambda: not self._json("GET", "/devices/phone-a")[1]["connected"])
+        self.assertEqual(self._json("GET", f"/devices/phone-a/commands/{cmd['command_id']}")[1]["status"], "delivered")
+        ws = self._phone()
+        again = json.loads(ws.receive())
+        self.assertEqual((again["type"], again["command_id"]), ("command", cmd["command_id"]))
+        ws.send_json({"type": "command_result", "command_id": cmd["command_id"], "status": "applied", "result": {"replayed": "yes"}})
+        json.loads(ws.receive())
+        stored = self._json("GET", f"/devices/phone-a/commands/{cmd['command_id']}")[1]
+        self.assertEqual((stored["status"], stored["result"]), ("applied", {"replayed": "yes"}))
+        ws.close()
+        self._wait(lambda: not self._json("GET", "/devices/phone-a")[1]["connected"])
+        ws = self._phone()
+        ws.send_json({"type": "ping", "t": 1})
+        self.assertEqual(json.loads(ws.receive())["type"], "pong", "a resolved command is not pushed again")
+
     # ----- capture file copies -----
 
     def test_capture_file_copy_verifies_digest_size_and_is_idempotent(self):

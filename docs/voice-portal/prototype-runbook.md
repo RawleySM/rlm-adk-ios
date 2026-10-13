@@ -187,7 +187,7 @@ the assistant text, capture summaries and the last 40 log lines.
 ```bash
 B=http://100.90.105.30:8765
 curl -s $B/devices | python3 -m json.tool                       # known phones, freshness, connected
-curl -s $B/devices/$ID/snapshot | python3 -m json.tool          # freshness: live | stale | offline | no_snapshot
+curl -s $B/devices/$ID/snapshot | python3 -m json.tool          # freshness: live | connected_background | stale | offline | no_snapshot
 curl -s $B/devices/$ID | python3 -m json.tool                   # snapshot + recent commands + latest image/manifest
 curl -s -X POST $B/devices/$ID/commands -H 'Content-Type: application/json' -d '{"kind":"snapshot"}'
 curl -s -X POST $B/devices/$ID/commands -H 'Content-Type: application/json' -d '{"kind":"image"}'
@@ -202,30 +202,46 @@ curl -s $B/devices/$ID/commands/$COMMAND_ID                      # queued | deli
 curl -s $B/devices/$ID/captures/ambient-1791887853-9d265072       # copied files (bytes, sha256, path) + ASR lines
 ```
 
-Command states mean exactly this: `queued` is stored and not yet on the phone (offline or not
-pushed); `delivered` was written to a live socket; `applied`, `failed` and `unsupported` are the
-phone's own report, keyed by command id. Queue acceptance is never execution. A phone that
-disconnects after `delivered` leaves the command there without a result; repeat it.
+Command states mean exactly this: `queued` is stored and not yet on the phone (offline, or the
+socket write failed, which also marks the device offline); `delivered` was actually written to a
+live socket; `applied`, `failed` and `unsupported` are the phone's own report, keyed by command
+id. Queue acceptance is never execution. A command still without a result when the phone says
+hello again (queued, or delivered on a socket that died) is pushed again; the phone keeps a
+bounded persisted cache of results it already reported and answers a re-pushed command from it
+without running it twice. `connected` comes from the service's live socket registry (a restart
+forgets every connection); `connected_background` means the socket is up but the app last said it
+left the foreground, so its state is not live.
 
 Recovery transfers: `copy_capture_files` sends the named closed segment files of one capture
-(all closed segments when `indexes` is omitted), bytes unchanged, re-hashed on the phone and
-verified by digest and size on the backend, into
-`<state root>/evidence/devices/<install id>/captures/<capture id>/`. Identical re-sends are
-idempotent; different bytes for an already stored index are refused. These copies are evidence
-for listening and dating, kept out of the prayer intake. `sync_manifest` uploads every manifest
-with segment identities and lists closed WAVs on disk that no manifest knows (orphans). During
-prayer, the on-device provisional ASR text is appended to `Documents/prayer-asr/<capture>.jsonl`
-with capture id and sequence and synced on reconnect; it is shown with the capture evidence.
+(every closed file on disk for that capture when `indexes` is omitted, including files no manifest
+lists; a capture known only by its directory works too), bytes unchanged, read and re-hashed off
+the UI thread, verified by digest and size on the backend, into
+`<state root>/evidence/devices/<install id>/captures/<capture id>/`. The file a writer is still
+appending to is never named or copied as complete. The result is `applied` only when every named
+file was verified; otherwise `failed` with the exact copied, failed and missing indexes. Identical
+re-sends are idempotent; different bytes for an already stored index are refused. These copies are
+evidence for listening and dating, kept out of the prayer intake. `sync_manifest` uploads every
+manifest with segment identities and lists closed WAVs on disk that no manifest knows (orphans).
+During prayer, the on-device provisional ASR text is appended to
+`Documents/prayer-asr/<capture>.jsonl` with capture id and sequence BEFORE any control phrase acts
+(a line ending in "end prayer" is kept as recognized), a final the recognizer settles within three
+seconds after End prayer is attributed to that prayer rather than becoming a turn, journal write
+failures are shown on the Portal tab and in the snapshot, and lines sync on reconnect. The app log
+is durable (`Documents/recent-log.txt`, bounded) and reloaded on launch.
 
 Honest capture status: a prayer that settles with zero segments is `Failed: no audio captured`,
-never "Saved locally"; Begin prayer checks that audio actually reaches the recorder (engine
-running, a buffer in the last two seconds), tries one restart and otherwise shows "Capture not
-running … not being recorded"; a failed restart after an interruption, route change, media reset
-or return to foreground sets the owner to Failed instead of pretending to record.
+never "Saved locally", and retained manifests from earlier builds in that state are relabelled on
+launch (nothing deleted). During prayer the app checks every second whether audio actually reaches
+the recorder (engine running, a buffer in the last two seconds); the warning states what was
+observed and when, clears itself when buffers resume, and never claims the prayer is lost. A
+failed restart after an interruption, route change, media reset or return to foreground sets the
+owner to Failed instead of pretending to record.
 
 CI exercises all of this against the fixture backend with the real simulator client
 (`scripts/ci_remote_inspection.py`, artifact `remote-inspection.json`, `simulator-remote-image.jpg`)
-including a byte-for-byte copy of a seeded capture file, and runs the keyboard navigation XCUITest.
+including a byte-for-byte copy of a seeded capture file, a portal-to-work tab transition observed
+in the snapshots, and the image matched to its command id; the keyboard navigation XCUITest
+requires the software keyboard (the hardware keyboard is disabled before the simulator boots).
 Simulator evidence only; the phone must install the new build (over TestFlight, not an uninstall).
 
 ## Signing, TestFlight and device
