@@ -9,16 +9,50 @@ targets:
     type: application
     platform: iOS
     sources: [RLMADK]
-    scheme: {}
+    scheme:
+      testTargets: [RLMADKTests]
+    info:
+      path: RLMADK/Info.plist
+      properties:
+        CFBundleDisplayName: RLM-ADK
+        # Version/build come from the build settings so CI can advance CURRENT_PROJECT_VERSION.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # App Store validation (ITMS-90713) wants the top-level key as well as the asset-catalog one.
+        CFBundleIconName: AppIcon
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UILaunchScreen: {}
+        NSMicrophoneUsageDescription: Continuous local recording, prayer capture and live voice turns.
+        NSSpeechRecognitionUsageDescription: On-device transcription of your voice turns; audio is not sent to a speech service.
+        UIBackgroundModes: [audio]
+        # TestFlight: no non-exempt encryption (HTTPS/standard system crypto only).
+        ITSAppUsesNonExemptEncryption: false
+        # Private tailnet backend over plain HTTP/WS (prototype); no public endpoints.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
     settings:
       base:
         PRODUCT_NAME: RLMADK
         PRODUCT_BUNDLE_IDENTIFIER: com.rawleystanhope.rlmadk
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: RLM-ADK
-        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        MARKETING_VERSION: "0.1.0"
-        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "0.2.0"
+        CURRENT_PROJECT_VERSION: "2"
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1"
+        # Signing: Team 4PJBKY2WQR (Individual membership verified 2026-10-13). Simulator CI passes
+        # CODE_SIGNING_ALLOWED=NO; the testflight workflow overrides to manual Apple Distribution signing
+        # (the team has no registered device, so automatic development signing cannot archive).
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 4PJBKY2WQR
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  RLMADKTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [RLMADKTests]
+    dependencies:
+      - target: RLMADK
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.rawleystanhope.rlmadk.tests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.0"
