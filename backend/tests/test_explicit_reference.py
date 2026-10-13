@@ -131,6 +131,7 @@ class ExplicitReferenceTests(unittest.TestCase):
         from voice_portal.references import coverage_note
         note = coverage_note(rep)
         self.assertIn("only Ps.23.5, Ps.23.6", note)
+        self.assertIn("verses 7-99 are not in it", note)
         self.assertNotIn("that passage is included", note)
 
     def test_invalid_verse_zero_and_reversed_range_supply_nothing(self):

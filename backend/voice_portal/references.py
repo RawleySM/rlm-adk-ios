@@ -143,6 +143,23 @@ def resolve_reference(conn: sqlite3.Connection, ref: dict, chunk_cap: int = CHUN
     return hits, report
 
 
+def _compress(numbers: list[int]) -> str:
+    """[7, 8, 9, 12] -> '7-9, 12'"""
+    out: list[str] = []
+    start = prev = None
+    for n in numbers:
+        if start is None:
+            start = prev = n
+        elif n == prev + 1:
+            prev = n
+        else:
+            out.append(f"{start}-{prev}" if prev != start else str(start))
+            start = prev = n
+    if start is not None:
+        out.append(f"{start}-{prev}" if prev != start else str(start))
+    return ", ".join(out)
+
+
 def coverage_note(report: dict) -> str:
     """One sentence for the model describing exactly what of the named reference is in the evidence."""
     name = report["matched"]
@@ -154,5 +171,6 @@ def coverage_note(report: dict) -> str:
         return f"The question names {name}; that passage is included in the evidence."
     if report["verses_missing"]:
         found = ", ".join(report["verses_found"])
-        return f"The question names {name}; only {found} are in the retained chapter and included; verses {', '.join(v.split(':')[-1] for v in report['verses_missing'])} are not in it."
+        missing = _compress([int(v.split(":")[-1]) for v in report["verses_missing"]])
+        return f"The question names {name}; only {found} are in the retained chapter and included; verses {missing} are not in it."
     return f"The question names {name}; only the first {report['chunks_supplied']} of {report['chunks_total']} parts of that chapter are included."
