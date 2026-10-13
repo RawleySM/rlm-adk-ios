@@ -54,10 +54,6 @@ final class PortalModel: ObservableObject {
     private var heartbeat: Timer?
     private var deliveryWatch: Timer?
     private var asrJournals: [String: PrayerASRJournal] = [:]
-    /// Finals from the recognizer may arrive after End prayer; for a short window they still belong
-    /// to that prayer's capture and are never turned into conversational turns.
-    private var recentPrayerEnd: (captureId: String, at: Date)?
-    static let latePrayerFinalWindow: TimeInterval = 3
     /// Results already reported, by command id. A command pushed again (socket lost before the result
     /// reached the backend) is answered from here and never run twice. Persisted, bounded.
     private var completedCommands: [String: CommandResult] = [:]
@@ -138,7 +134,7 @@ final class PortalModel: ObservableObject {
         audio.onWriteError = { [weak self] text in Task { @MainActor in self?.logLine(text); self?.sendSnapshot(reason: "write_error") } }
         recognizer.onAvailability = { [weak self] a in Task { @MainActor in self?.availabilityChanged(a) } }
         recognizer.onPartial = { [weak self] text in Task { @MainActor in self?.partial(text) } }
-        recognizer.onFinal = { [weak self] text in Task { @MainActor in self?.final(text, source: "voice") } }
+        recognizer.onFinal = { [weak self] text, owner in Task { @MainActor in self?.final(text, source: "voice", owner: owner) } }
         recognizer.onGap = { [weak self] gap in Task { @MainActor in self?.recordGap(gap) } }
         recognizer.onRestart = { [weak self] reason in Task { @MainActor in self?.recognitionRestarted(reason) } }
         speaker.onStateChange = { [weak self] s in Task { @MainActor in self?.speaking = s } }
@@ -348,29 +344,32 @@ final class PortalModel: ObservableObject {
 
     /// Test seams for the recognizer paths (the recognizer is not available in the simulator).
     func partialTranscriptReceived(_ text: String) { partial(text) }
-    func finalTranscriptReceived(_ text: String) { final(text, source: "voice") }
+    /// `owner` is the capture id the recognition request was opened under (what the recognizer
+    /// reports with every final); nil means a conversation request.
+    func finalTranscriptReceived(_ text: String, owner: String? = nil) { final(text, source: "voice", owner: owner) }
     var endpointClock: EndpointClock { endpoint }
 
-    private func final(_ text: String, source: String) {
+    private func final(_ text: String, source: String, owner: String? = nil) {
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }
         partialTranscript = ""
         utteranceInterrupted = false
         lastTranscript = cleaned
-        logLine("final (\(source)): \(cleaned)")
-        // Prayer text is journaled BEFORE any control phrase is acted on, with the capture identity it
-        // was recognized under, exactly as recognized: a line that ends with "end prayer" is kept too.
-        if source == "voice", mode.isPraying, let captureId = mode.prayerCaptureId {
-            journalPrayerASR(captureId: captureId, text: cleaned)
-        } else if source == "voice", !mode.isPraying, let recent = recentPrayerEnd, Date().timeIntervalSince(recent.at) < PortalModel.latePrayerFinalWindow {
-            // The recognizer settled this utterance after End prayer: it belongs to that prayer.
-            journalPrayerASR(captureId: recent.captureId, text: cleaned)
-            logLine("late prayer final attributed to \(recent.captureId); not a turn")
+        logLine("final (\(source)\(owner.map { ", prayer \($0)" } ?? "")): \(cleaned)")
+        if let owner {
+            // A request opened under a prayer capture: its text belongs to that capture, however
+            // late it settles and whatever the mode is now. Journaled raw BEFORE any control phrase
+            // acts (a line ending in "end prayer" is kept as recognized); never a turn.
+            journalPrayerASR(captureId: owner, text: cleaned)
             _ = handleVoiceCommand(cleaned)
             return
         }
         if handleVoiceCommand(cleaned) { return }
-        if mode.isPraying { return } // prayer: never a conversational turn
+        if mode.isPraying {
+            // A conversation request that settled after prayer began: not prayer text, not a turn.
+            logLine("conversation final during prayer ignored (request opened before the prayer)")
+            return
+        }
         let turnId = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         apply(.finalTranscript(turnId: turnId))
     }
@@ -487,6 +486,9 @@ final class PortalModel: ObservableObject {
         persistCaptures()
         asrJournals[captureId] = PrayerASRJournal(captureId: captureId)
         apply(.enterPrayer(captureId: captureId))
+        // From here every recognition request belongs to this capture; an open conversation request
+        // is ended and keeps its own identity.
+        recognizer.rebindOwner(captureId)
         // The owner's intent (.running) is not evidence that audio arrives. Check the engine facts,
         // try one restart, and keep observing: the warning tracks delivery for the whole prayer.
         captureWarning = nil
@@ -531,8 +533,10 @@ final class PortalModel: ObservableObject {
     }
 
     func endPrayer() {
-        guard mode.isPraying, let captureId = mode.prayerCaptureId else { return }
-        recentPrayerEnd = (captureId, Date())
+        guard mode.isPraying else { return }
+        // Ends the prayer's open recognition request without dropping its final (it is still
+        // delivered under this capture's identity); later requests are conversation again.
+        recognizer.rebindOwner(nil)
         apply(.endPrayer)
         deliveryWatch?.invalidate()
         deliveryWatch = nil

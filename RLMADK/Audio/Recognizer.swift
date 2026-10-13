@@ -2,6 +2,34 @@ import AVFoundation
 import Foundation
 import Speech
 
+/// Which capture a recognition request belongs to. Each request is bound to the owner in force
+/// when it was opened; that identity travels with the request's final, however late it settles.
+/// Changing the owner ends the open request (its final still arrives under the old owner) and the
+/// next request opens under the new one. No timing is involved.
+struct UtteranceLedger: Equatable {
+    /// Owner for the next request (a prayer capture id, or nil for conversation).
+    private(set) var nextOwner: String?
+    /// Owner bound to the request currently open, if any.
+    private(set) var openOwner: String?
+    private(set) var openId: Int?
+
+    /// A request opens: it takes the owner in force now.
+    mutating func opened(id: Int) { openId = id; openOwner = nextOwner }
+
+    /// The open request settled (final, no speech or error).
+    mutating func closed(id: Int) { if openId == id { openId = nil; openOwner = nil } }
+
+    /// Owner carried by a final from request `id` (nil when no such request is open).
+    func owner(of id: Int) -> String? { openId == id ? openOwner : nil }
+
+    /// Rebinds future requests; returns true when an open request must be ended so that its
+    /// final is delivered under the old owner before the new owner takes effect.
+    mutating func rebind(_ owner: String?) -> Bool {
+        nextOwner = owner
+        return openId != nil && openOwner != owner
+    }
+}
+
 /// On-device `SFSpeechRecognizer` fed from the audio owner's tap. Restarted per utterance without
 /// touching the recorder. Reports whether on-device recognition is actually supported here.
 final class Recognizer: NSObject {
@@ -28,11 +56,13 @@ final class Recognizer: NSObject {
     /// cascade stays available between exchanges without touching the recorder.
     private(set) var continuous = false
     private var utteranceId = 0
+    private(set) var ledger = UtteranceLedger()
     private var lastFinal: (text: String, at: Date)?
     private(set) var restartCount = 0
     private(set) var lastRestartReason = ""
     var onPartial: ((String) -> Void)?
-    var onFinal: ((String) -> Void)?
+    /// Final text with the owner (capture id) the request was opened under; nil = conversation.
+    var onFinal: ((String, String?) -> Void)?
     var onGap: ((GapRecord) -> Void)?
     var onAvailability: ((Availability) -> Void)?
     var onRestart: ((String) -> Void)?
@@ -78,13 +108,16 @@ final class Recognizer: NSObject {
         request.taskHint = .dictation
         self.request = request
         isListening = true
+        ledger.opened(id: id)
         task = recognizer.recognitionTask(with: request) { [weak self] result, error in
             guard let self, id == self.utteranceId else { return } // stale utterance: never re-submit
             if let result {
                 let text = result.bestTranscription.formattedString
                 if result.isFinal {
                     self.isListening = false
-                    self.deliverFinal(text)
+                    let owner = self.ledger.owner(of: id)
+                    self.ledger.closed(id: id)
+                    self.deliverFinal(text, owner: owner)
                     self.scheduleRestart(after: 0.2, reason: "final")
                 } else {
                     self.onPartial?(text)
@@ -92,6 +125,7 @@ final class Recognizer: NSObject {
             }
             if let error {
                 self.isListening = false
+                self.ledger.closed(id: id)
                 let code = (error as NSError).code
                 // 1110 = no speech detected; 216/301 = cancelled. Report others as recognition gaps.
                 if code != 1110, code != 216, code != 301 {
@@ -105,12 +139,22 @@ final class Recognizer: NSObject {
     }
 
     /// Identical final text within three seconds (restart overlap) is delivered once.
-    private func deliverFinal(_ text: String) {
+    private func deliverFinal(_ text: String, owner: String?) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         if let last = lastFinal, last.text == trimmed, Date().timeIntervalSince(last.at) < 3 { return }
         lastFinal = (trimmed, Date())
-        onFinal?(trimmed)
+        onFinal?(trimmed, owner)
+    }
+
+    /// Binds future requests to `owner` (a prayer capture id, or nil for conversation). An open
+    /// request under a different owner is ended now: its final, whenever it settles, is delivered
+    /// under the owner it was opened with, and the supervised restart opens the next request under
+    /// the new owner. Audio recording is untouched.
+    func rebindOwner(_ owner: String?) {
+        if ledger.rebind(owner), isListening {
+            request?.endAudio()
+        }
     }
 
     private func scheduleRestart(after delay: Double, reason: String) {
@@ -131,6 +175,7 @@ final class Recognizer: NSObject {
         request?.endAudio()
         request = nil
         isListening = false
+        if let id = ledger.openId { ledger.closed(id: id) }
     }
 
     func append(_ buffer: AVAudioPCMBuffer) {

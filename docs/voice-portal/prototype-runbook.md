@@ -224,9 +224,12 @@ evidence for listening and dating, kept out of the prayer intake. `sync_manifest
 manifest with segment identities and lists closed WAVs on disk that no manifest knows (orphans).
 During prayer, the on-device provisional ASR text is appended to
 `Documents/prayer-asr/<capture>.jsonl` with capture id and sequence BEFORE any control phrase acts
-(a line ending in "end prayer" is kept as recognized), a final the recognizer settles within three
-seconds after End prayer is attributed to that prayer rather than becoming a turn, journal write
-failures are shown on the Portal tab and in the snapshot, and lines sync on reconnect. The app log
+(a line ending in "end prayer" is kept as recognized). Each recognition request is bound to the
+capture it was opened under: Begin prayer and End prayer end the open request (its final is still
+delivered under the owner it was opened with, however late it settles) and the next request opens
+under the new owner, so a prayer final can never become a conversational turn or land in a later
+prayer, and a conversation final is never journaled as prayer. No time window is involved. Journal
+write failures are shown on the Portal tab and in the snapshot, and lines sync on reconnect. The app log
 is durable (`Documents/recent-log.txt`, bounded) and reloaded on launch.
 
 Honest capture status: a prayer that settles with zero segments is `Failed: no audio captured`,
