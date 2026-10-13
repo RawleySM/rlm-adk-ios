@@ -30,7 +30,7 @@ struct PortalView: View {
                 Text(model.connection.label).font(.caption)
                 Spacer()
                 Circle().fill(model.audioState == .running ? .red : .gray).frame(width: 10, height: 10)
-                Text(model.audioState.label).font(.caption)
+                Text(PortalModel.skipPermissionPrompts ? "Capture not requested (fixture mode)" : model.audioState.label).font(.caption)
             }
             HStack {
                 Text("Mode: \(model.mode.label)").font(.headline)

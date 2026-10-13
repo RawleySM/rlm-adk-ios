@@ -22,7 +22,7 @@ struct DiagnosticsView: View {
                     Button("Refresh status") { Task { await model.refreshStatus() } }.font(.caption)
                 }
                 Section("Audio") {
-                    Text("Owner: \(model.audioState.label)").font(.caption)
+                    Text("Owner: \(PortalModel.skipPermissionPrompts ? "not started (fixture mode: capture and recognition not requested)" : model.audioState.label)").font(.caption)
                     Text(model.recognizerAvailability.label).font(.caption)
                     Text("Recognition: \(model.recognizer.continuous ? "continuous" : "stopped") · listening \(model.recognizer.isListening ? "yes" : "no") · restarts \(model.recognizer.restartCount) (\(model.recognizer.lastRestartReason))").font(.caption2)
                     if let p = model.progress { Text("Devotional progress: \(p.passage) @ \(p.revision.prefix(12)) resume \(p.resumeIndex + 1)/\(p.total)\(p.finished ? " finished" : "")").font(.caption2) }
