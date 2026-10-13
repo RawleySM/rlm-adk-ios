@@ -142,7 +142,11 @@ launched as `SIMCTL_CHILD_RLMADK_BACKEND_URL=http://127.0.0.1:18765`.
 ## Recovering locally retained captures (issue #4)
 
 Prayer segments upload as they close; End prayer finalizes the ordered recording. Ambient segments
-remain local. Files live in the app container: `Documents/captures/<captureId>/NNNNNNNN.wav`
+remain local. Upload and finalization share one in-flight owner per capture. If a segment-close,
+End prayer, reconnect or Retry callback arrives during a network request, it asks the owner to
+re-read the pending manifest afterward instead of sending a duplicate request. Different captures
+can progress independently. A failed pass releases ownership; it does not spin retrying. The
+regression tests hold actual URLSession responses across these callback races. Files live in the app container: `Documents/captures/<captureId>/NNNNNNNN.wav`
 (roughly 60-second segments, with shorter segments at capture boundaries),
 `Documents/captures.json` (per-segment `startedAt`/`endedAt`, bytes, sha256, gaps) and
 `Documents/mode.json`. Builds that include `UIFileSharingEnabled` and
@@ -341,8 +345,12 @@ Apple still issues the certificate, the registered device and the provisioning p
 certificate check runs at first launch, but there is no upload, processing, review or TestFlight.
 Signing a build and installing it on the phone are two separate steps.
 
-One-time device setup (registration and Ad Hoc profile pending as of 2026-10-13; the team and
-distribution certificate already exist):
+One-time device setup completed on 2026-10-13: the registered iPhone 12 is paired to Spark-A USB,
+Developer Mode is enabled, and Ad Hoc profile `83XW724QDD` reuses certificate `AUBJ7C9S7Y`.
+Direct Build 7 was installed without uninstalling; 86 completed audio segments retained their
+exact size and hash. Remote diagnostics and still screenshots were exercised while native WAV
+files continued growing. The HTTPS package is hosted but OTA installation has not been exercised.
+The setup steps below are a reference, not a request to repeat enrollment:
 
 1. The phone's UDID. Cable the phone to the MacBook or Spark once (unlock it and accept "Trust This
    Computer", the computer-pairing trust, which is unrelated to any "trust developer" setting):

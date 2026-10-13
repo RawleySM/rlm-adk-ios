@@ -27,10 +27,10 @@ final class PortalClient: NSObject, URLSessionWebSocketDelegate {
     private var wantConnected = false
     private var backoff: Double = 1
 
-    init(baseURL: URL) {
+    init(baseURL: URL, configuration: URLSessionConfiguration = .default) {
         self.baseURL = baseURL
         super.init()
-        let config = URLSessionConfiguration.default
+        let config = configuration
         config.waitsForConnectivity = false
         config.timeoutIntervalForRequest = 30
         session = URLSession(configuration: config, delegate: self, delegateQueue: nil)

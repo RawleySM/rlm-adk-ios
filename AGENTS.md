@@ -43,5 +43,7 @@ Xcode, so all Xcode work happens on GitHub-hosted macOS runners.
   certificate check runs online at first launch. Signing a build and installing it on the phone
   are separate steps. Upgrade the same bundle id without uninstalling; copy retained prayer and
   ambient captures before changing installation channels and verify their bytes afterward.
-  Physical-device validation remains pending.
+  Direct Build 7 was installed over paired Spark-A USB on 2026-10-13; build/signer,
+  retained audio hashes, remote diagnostics and ongoing recording were verified. Actual OTA
+  installation and the full interruption/Bluetooth matrix remain unverified.
   See `docs/voice-portal/prototype-runbook.md`, "Direct private installation".
