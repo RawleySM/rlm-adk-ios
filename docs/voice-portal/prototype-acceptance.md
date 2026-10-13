@@ -119,17 +119,32 @@ heard-passage context retrieved 1 Peter 5 and Hebrews 4 (topic hits for "rest"),
 the model correctly refused to explain a passage it had not been given. The chapter is in the retained
 edition (`/devotional?passage=PSA.23`).
 
-Smallest correction (`voice_portal/references.py`, wired in `gather_evidence`): a reference written
-in the question (book name or spoken alias, optional ordinal, chapter, optional verse or range) is
-resolved against the current retained chapter document and its verse locators before topic
-retrieval, with the chapter's chunks (or only the chunks holding the named verses) as
-revision-qualified citations. An unknown book, a chapter not in the retained edition, or verse
-numbers beyond the chapter are reported in `scope.explicit_references` and in the prompt as not
-retained; nothing is invented. Heard-passage evidence still comes first at its exact revision;
-focus-first topic retrieval and the Scripture/teaching/prayer distinction are unchanged. Tests cover
-"Psalm"/"Psalms"/"Ps" 23, `1 John 3` vs `John 3`, `1 Peter 5(:7)`, `Psalm 23:4-6`, `Genesis 51`, and
-the heard-passage ordering. Real-data evidence: see the handoff file
-`fable-explicit-passage-status.md` and `receipts/evidence/turn-explicit-psalm23.json` on the desktop.
+Smallest correction (`voice_portal/references.py`, wired in `gather_evidence`): a reference written in
+the user's own transcript (canonical book name or its numbered form with a written or spoken ordinal,
+plus Psalm/Psalms/Ps; chapter; optional verse or range) is resolved against the current retained
+chapter document and its verse locators before topic retrieval, with the chapter's chunks (or only the
+chunks holding the named verses) as revision-qualified citations. References are parsed from the
+transcript only, never from the topic query augmented with a heard-passage title, so "Why?" after a
+devotional does not become a reference and a historical heard revision is not shadowed by the current
+chapter. Coverage is reported exactly in `scope.explicit_references[]` and in the prompt:
+
+| Case | `supplied` | `coverage` | `reason` |
+| --- | --- | --- | --- |
+| whole chapter, up to 8 chunks | true | full | – |
+| chapter longer than 8 chunks | true (first 8) | partial | `chapter_longer_than_supplied_chunks` |
+| verse or range fully in the chapter | true (chunks holding them) | full | – |
+| range partly beyond the chapter (e.g. 23:5-99) | true (chunks holding 5–6) | partial | `some_verses_not_in_retained_chapter`, `verses_missing` listed |
+| verses entirely beyond the chapter (e.g. 1 Peter 5:7 in a 4-verse fixture) | false | none | `verses_not_in_retained_chapter` |
+| chapter not retained (e.g. Genesis 51) | false | none | `chapter_not_in_retained_edition` |
+| verse 0, chapter 0, reversed range | false | none | `invalid_verse` / `invalid_chapter` / `reversed_range` |
+| unknown book or bare numbered base ("Peter 5") | not a reference | – | – |
+
+Heard-passage evidence still comes first at its exact revision; focus-first topic retrieval and the
+Scripture/teaching/prayer distinction are unchanged. Tests (`tests/test_explicit_reference.py`, 15)
+cover the parser forms above, each coverage row, a valid verse inside a multi-chunk chapter, the
+chunk-cap partial case tied to the supplied cite ids, the heard-passage ordering, and two
+`run_turn`-level cases (a historical heard citation with "Why?" plus a heard title; an explicit
+reference in the transcript). Real-data evidence: `fable-explicit-passage-status.md`.
 
 ## Proof boundaries
 

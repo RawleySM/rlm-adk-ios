@@ -12,7 +12,7 @@ from collections.abc import Callable
 from .config import Config
 from .db import now
 from .reasoning import ReasoningError, stream_chat
-from .references import explicit_references, resolve_reference
+from .references import coverage_note, explicit_references, resolve_reference
 from .retrieval import cite_id, document_by_source, focus_terms, resolve_citation, search
 from .sources.scripture import BOOK_NAMES
 from .sources.theographic import passage_entities
@@ -42,9 +42,10 @@ def _evidence_block(hits: list[dict]) -> str:
     return "\n\n".join(lines)
 
 
-def gather_evidence(conn: sqlite3.Connection, query: str, *, families: list[str] | None, passage_cite_ids: list[str] | None, per_family: int = 2) -> tuple[list[dict], dict]:
+def gather_evidence(conn: sqlite3.Connection, query: str, *, families: list[str] | None, passage_cite_ids: list[str] | None, per_family: int = 2, reference_text: str | None = None) -> tuple[list[dict], dict]:
     """Balanced evidence: the passage actually heard first (its exact revision, even if a later import
-    made it historical), then the best chunks of each source family. Returns (hits, scope)."""
+    made it historical), then references the user named (`reference_text`, the user's own words; never the
+    topic query augmented with a heard title), then the best chunks of each source family."""
     hits: list[dict] = []
     seen: set[str] = set()
     supplied: list[str] = []
@@ -66,10 +67,10 @@ def gather_evidence(conn: sqlite3.Connection, query: str, *, families: list[str]
     # Explicit references in the question ("Psalm 23", "1 Peter 5:7") are grounded in the requested
     # retained chapter before any topic retrieval; a reference that is not retained is reported, not invented.
     references: list[dict] = []
-    for ref in explicit_references(query):
+    for ref in explicit_references(query if reference_text is None else reference_text):
         ref_hits, report = resolve_reference(conn, ref)
         references.append(report)
-        for hit in ref_hits[:4]:
+        for hit in ref_hits:
             if hit["cite_id"] not in seen:
                 seen.add(hit["cite_id"])
                 hits.append(hit)
@@ -108,19 +109,14 @@ def run_turn(
     context = context or {}
     if context.get("passage_title"):
         query = f"{transcript} {context['passage_title']}"
-    hits, scope = gather_evidence(conn, query, families=families, passage_cite_ids=context.get("passage_cite_ids"))
+    hits, scope = gather_evidence(conn, query, families=families, passage_cite_ids=context.get("passage_cite_ids"), reference_text=transcript)
     passage_note = ""
     if scope["passage_supplied"]:
         passage_note = f"\nThe user has just been listening to: {context.get('passage_title')}. That passage is included in the evidence."
     elif context.get("passage_cite_ids"):
         passage_note = f"\nThe user was listening to {context.get('passage_title')}, but that passage could not be supplied as evidence; do not quote it."
     for ref in scope.get("explicit_references") or []:
-        if ref["supplied"] and ref.get("reason") == "verses_not_in_retained_chapter":
-            passage_note += f"\nThe question names {ref['matched']}; the retained chapter is included but those verse numbers are not in it."
-        elif not ref["supplied"]:
-            passage_note += f"\nThe question names {ref['matched']}, which is not in the retained Scripture edition; say so and do not quote it."
-        else:
-            passage_note += f"\nThe question names {ref['matched']}; that passage is included in the evidence."
+        passage_note += "\n" + coverage_note(ref)
     if scope["focus_terms"]:
         passage_note += f"\nThe retrieval looked for excerpts about: {', '.join(scope['focus_terms'])}."
     messages = [
