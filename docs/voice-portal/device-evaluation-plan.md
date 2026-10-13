@@ -1,7 +1,8 @@
 # Physical iPhone UI and acoustic evaluation plan
 
 Date: 2026-10-13. Owner: Codex; requested independent reviewer: Claude Code `fable`.
-Status: Fable reviewed; root adjudicated 2026-10-13. Implement the revised design below.
+Status: Fable reviewed and implementation exercised on the physical device, 2026-10-13.
+See device-evaluation-acceptance.md for measured results and remaining limits.
 
 ## Outcome and current evidence
 
@@ -12,14 +13,17 @@ reachability. Keep the native AVAudioEngine app and direct private signed delive
 
 Build 8 is installed on iPhone 12, iOS 26.6.2, UDID `00008101-000C35463A32001E`, bundle
 `com.rawleystanhope.rlmadk`, team `4PJBKY2WQR`. Spark-A USB pairing, Developer Mode, DVT
-screenshots, launch/stop, InstallationProxy and container reads work. No WDA runner is installed.
+screenshots, launch/stop, InstallationProxy and container reads work. A separate development-signed
+WebDriverAgent 16.15.0 runner is installed; the main app remains Build 8.
 The app has stable accessibility identifiers for prayerButton, quietButton, typedInput,
 sendButton, keyboardDone, backendURLField and keyboardDoneDiagnostics. Do not modify the app
 unless actual evaluation needs a missing identifier or reveals a bug.
 
 All three physical endpoints are within three feet:
 - `ssh desktop`, user rawley-stanhope: PipeWire speaker node
-  `alsa_output.usb-1130_USB_AUDIO-00.iec958-stereo`, current volume 0.44. SSH commands need
+  `alsa_output.usb-1130_USB_AUDIO-00.analog-stereo`. Rawley selected USB analog output;
+  the accepted calibration uses a separately loudness-normalized fixture and per-stream volume 0.5.
+  Preserve the user-selected hardware/global volume. SSH commands need
   `XDG_RUNTIME_DIR=/run/user/1000` to address the existing audio session.
 - Spark-B `ssh -l rawleysm spark-media`: Razer Seiren Mini microphone, active in that user's
   PipeWire session. The default mediaops SSH user has a separate dummy audio graph; do not
@@ -48,21 +52,22 @@ All three physical endpoints are within three feet:
 
 ## Acoustic method: three recordings, then reverse direction
 
-Keep the source waveform and exact words as ground truth. Capture a second waveform with
+Keep the original source waveform; use only human-verified words as transcript ground truth. Capture a second waveform with
 Spark-B's microphone as the independent room reference, and retrieve the third waveform
 from the phone's retained capture. This disambiguates source/playback silence, room/noise,
 phone capture loss, upload corruption, and ASR errors. The external mic does not prove exactly
 what reached the phone's microphone and is not a calibrated SPL meter.
 
-First run a short calibration: background noise, a low-volume time-coded chirp sequence,
-and a short intelligible speech fixture. Start at the existing speaker level with conservative
-per-stream gain; do not set device volume to maximum. Save source/sink metadata and levels.
+First run a short calibration with older Drive prayer speech and its natural pauses.
+The USB hardware mixer was initially attenuated by 48 dB, independent of PipeWire volume.
+Rawley subsequently selected USB analog; he confirmed the normalized 45-second excerpt at
+per-stream volume 0.5 was perfect. Save source/sink metadata and levels; do not change global volume.
 Gate on audible-in-reference energy, clipping, marker detectability and channel/sample format.
 No acoustic proof if the independent mic did not hear the fixture. Use distinctive start/end
 markers, detected from audio correlation, so cross-host wall-clock skew is not latency evidence.
 
-Then use a fixture containing spoken run identity, several known clauses, a long intentional
-pause and a final clause. Operate Begin/End Prayer using WDA. Verify all clauses and the final
+Then use a longer excerpt preserving its opening silence, several known clauses, and intentional
+pauses. Keep run identity in receipts instead of adding generated speech to the source. Operate Begin/End Prayer using WDA. Verify all clauses and the final
 word were captured, the pause did not auto-end prayer, and the app stayed silent. Retrieve
 manifest, original phone WAV, independent room WAV, pipeline receipt and transcript. Preserve
 real prayer/ambient files. Clearly identify test captures and prefer a separate real-service test
