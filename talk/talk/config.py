@@ -53,7 +53,9 @@ class TalkConfig:
     quiet_phrases: list[str] = field(default_factory=lambda: ["quiet please", "be quiet", "go quiet"])
     wake_phrases: list[str] = field(default_factory=lambda: ["wake up", "portal wake"])
     backchannel_words: list[str] = field(default_factory=lambda: ["mm-hmm", "mhm", "uh-huh", "yeah", "yes", "right", "okay", "ok", "amen", "hmm"])
-    backchannel_max_s: float = 0.32
+    # The dossier's 320 ms assumes energy and semantic cues too; with duration alone, a spoken "mm-hmm"
+    # (0.70 s voiced in the suite's fixture) needs a wider window. Barge-in is measured from the window's end.
+    backchannel_max_s: float = 0.75
     duck_db: float = 3.0
     duck_hold_s: float = 0.4
     bridge_after_s: float = 0.35

@@ -9,6 +9,7 @@ arrive. Every tool returns plain spoken-ready text plus structured fields the ap
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 import aiohttp
@@ -20,6 +21,8 @@ from pipecat.services.llm_service import FunctionCallParams
 from talk.config import TalkConfig
 
 _cfg: TalkConfig | None = None
+# The last read_scripture result (reference, chapter_reference, verses) for the reading tracker.
+LAST_READING: dict[str, Any] | None = None
 
 
 UNAVAILABLE_NOTE = (
@@ -76,6 +79,13 @@ async def read_scripture(params: FunctionCallParams) -> None:
     args = params.arguments or {}
     try:
         result = await _get("/tools/scripture", {"reference": args.get("reference", "")})
+        if isinstance(result, dict) and result.get("available") and result.get("verses"):
+            global LAST_READING
+            first = result["verses"][0]
+            osis = str(first.get("osis") or "")
+            chapter_ref = args.get("reference", "")
+            m = re.match(r"^(.*?\d+)", chapter_ref.strip())
+            LAST_READING = {"reference": args.get("reference", ""), "chapter_reference": (m.group(1) if m else chapter_ref), "osis": osis, "verses": result["verses"]}
         await params.result_callback(result)
     except Exception as exc:
         await params.result_callback(_unavailable(str(exc)))

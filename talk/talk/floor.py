@@ -62,6 +62,7 @@ class FloorProcessor(FrameProcessor):
         self._amen = sorted((_norm(p) for p in cfg.amen_phrases), key=len, reverse=True)
         self._quiet = [_norm(p) for p in cfg.quiet_phrases]
         self._wake = [_norm(p) for p in cfg.wake_phrases]
+        self._backchannel = {_norm(w) for w in cfg.backchannel_words}
         self.events: list[dict] = []
 
     def bind(self, task) -> None:
@@ -172,6 +173,11 @@ class FloorProcessor(FrameProcessor):
                 return
             if self.mode == "quiet" and final:
                 # Heard, journaled by the app, not answered.
+                return
+            if final and n and len(n.split()) <= 2 and all(w in self._backchannel for w in n.split()):
+                # "mm-hmm", "yeah", "okay": an acknowledgement, never a turn.
+                logger.info(f"floor: backchannel transcript dropped: {text!r}")
+                self.events.append({"t": time.time(), "backchannel_dropped": text})
                 return
 
         await self.push_frame(frame, direction)

@@ -50,6 +50,7 @@ from talk.cohere_stt import CohereSparkSTTService  # noqa: E402
 from talk.config import TalkConfig, load_config  # noqa: E402
 from talk.floor import FloorProcessor, OutputGate  # noqa: E402
 from talk.pcm_serializer import PCMFrameSerializer  # noqa: E402
+from talk.reading_tracker import ReadingTracker  # noqa: E402
 from talk.session_log import SessionLog  # noqa: E402
 from talk.tools import register_tools, tools_schema  # noqa: E402
 
@@ -58,7 +59,10 @@ a text-to-speech voice, so answer in short plain spoken sentences: no lists, no 
 no headings, no bracketed citations, no emoji. Two to four sentences unless he asks you to read Scripture, in which case read the
 retained text exactly as the tool returns it. Use the tools for anything about his prayers, projects,
 Scripture text, teaching or work requests; never invent a verse, a date, a project or a result. When a
-tool reports that something is accepted but not done, say exactly that. Keep Scripture, a teacher's
+tool reports that something is accepted but not done, say exactly that. When a tool result carries a
+"spoken" field, say that text first, as given (it already names operation ids, verses and teachers), then
+add at most one sentence of your own. A one-word acknowledgement from Rawley such as "mm-hmm", "yeah" or
+"okay" is not a request: do not answer it and do not restart anything. Keep Scripture, a teacher's
 interpretation and his own prayers clearly distinguished when you speak."""
 
 
@@ -126,6 +130,7 @@ async def run_bot(transport, cfg: TalkConfig, *, session_label: str) -> None:
             aggregators.user(),
             llm,
             tts,
+            ReadingTracker(),
             duck,
             gate,
             transport.output(),
