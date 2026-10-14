@@ -63,6 +63,10 @@ class TalkConfig:
     duck_db: float = 3.0
     duck_hold_s: float = 0.4
     bridge_after_s: float = 0.2
+    # A second notice when nothing has come back after this long (a cold LLM owner takes ~200 s); it
+    # keeps the turn alive instead of letting Rawley talk over a silent bot. 0 disables.
+    bridge_followup_s: float = 8.0
+    bridge_followup_phrase: str = "Still working on it. The model is waking up; give me a moment."
     bridge_phrases: list[str] = field(default_factory=lambda: ["Let me look.", "One moment.", "Looking into that."])
     # Audio
     audio_in_sample_rate: int = 16000
