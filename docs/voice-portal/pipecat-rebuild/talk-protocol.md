@@ -39,6 +39,26 @@ pipeline:
 | `{"type":"mode","mode":"available","reason":"amen"}` | Prayer ended by the amen rule (final transcript ended with an amen phrase and `amen_silence_s` passed without new speech). Nothing is spoken (save and wait). |
 | `{"type":"mode","mode":"quiet","reason":"phrase"}` / `{"mode":"available","reason":"wake"}` | Quiet entered by phrase or client; left by the wake phrase. |
 | `{"type":"prayer_text","text":"...","final":true}` | Transcript text heard while praying; never sent to the LLM. The app journals it against its capture. |
+| `{"type":"node","node":"devotional","reason":"turn","t":<unix>}` | The Pipecat Flows node changed (see below). `mode` messages also carry the current `node`. |
+
+## Conversation states (Pipecat Flows, `talk/flows.py`)
+
+One `FlowManager` per session with six `NodeConfig`s, every node sharing the role message and never
+speaking on entry (`respond_immediately` False) except `project`:
+
+| Node | Entered by | Functions | Left by |
+|---|---|---|---|
+| `available` | session start; leaving prayer or quiet | all tools | the first forwarded request (→ `conversation`), a tool's transition, the floor |
+| `conversation` | first request; `word_from_prayer` from `available` | all tools | tool transitions, the floor |
+| `prayer` | the floor on an address phrase or `client_mode prayer` | none | amen (→ `available`) |
+| `devotional` | `read_scripture` after it spoke a reading | `continue_reading` first, then the rest | `project_checkin` (→ `project`), the floor |
+| `project` | `project_checkin` (entry runs the LLM once: the report or the confirmation question) | project and work tools first, then the rest | tool transitions, the floor |
+| `quiet` | the floor on the quiet phrase or `client_mode quiet`; operator hold | none | wake phrase (→ `available`), release |
+
+Exact-speech tools (`read_scripture`, `continue_reading`, `word_from_prayer`, `request_work`) queue
+their sentences as `TTSSpeakFrame`s and return Flows' `NO_RESPONSE` (or a node whose entry does not
+respond), so the model adds nothing after them; their spoken text is in the function result so a
+devotional question can be answered from the passage heard.
 
 ## Turn and floor rules implemented server-side (talk/floor.py)
 

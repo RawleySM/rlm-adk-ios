@@ -10,6 +10,8 @@ Environment=PIPECAT_LOG_LEVEL=INFO
 Environment=VOICE_TALK_CONFIG=/home/rawleysm/.config/voice-talk/config.json
 ExecStartPre=-/home/rawleysm/srv/voice-talk/.venv/bin/python /home/rawleysm/srv/voice-talk/tools/warm.py
 ExecStart=/home/rawleysm/srv/voice-talk/.venv/bin/python -m talk.bot --host 0.0.0.0 --port 7860
+# ExecStartPre warms Cohere (~110 s cold) and the LLM (~200 s cold); systemd's default 90 s would kill the start.
+TimeoutStartSec=600
 Restart=on-failure
 RestartSec=5
 StandardOutput=append:/home/rawleysm/.local/state/voice-talk/logs/voice-talk.log

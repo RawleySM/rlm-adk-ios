@@ -8,7 +8,7 @@ How the rebuilt portal is deployed, warmed, tested and recovered. Owners and thr
 
 | Piece | Host | Start / status |
 |---|---|---|
-| Talk tier (Pipecat) | Spark-A, `~/srv/voice-talk`, source `talk/` in this repo | `systemctl --user enable --now voice-talk.service` (unit in `talk/voice-talk.service`; `ExecStartPre` warms the owners). Status: `curl http://127.0.0.1:7860/status`. Logs: `~/.local/state/voice-talk/logs/`, per-session JSONL under `~/.local/state/voice-talk/sessions/`. |
+| Talk tier (Pipecat) | Spark-A, `~/srv/voice-talk`, source `talk/` in this repo | `systemctl --user enable --now voice-talk.service` (unit in `talk/voice-talk.service`; `ExecStartPre` warms the owners, `TimeoutStartSec` 600 s because a cold Cohere takes ~110 s and a cold LLM ~200 s). Status: `curl http://127.0.0.1:7860/status`. Logs: `~/.local/state/voice-talk/logs/`, per-session JSONL under `~/.local/state/voice-talk/sessions/`. |
 | Skill service (voice_portal) | desktop, `~/srv/voice-portal/backend`, state `~/.local/rlm-adk/voice_portal` | `python3 -m voice_portal serve` under setsid/nohup (no unit yet). `curl http://100.90.105.30:8765/healthz`. |
 | Cohere STT | Spark-A `spark-inference.service` (28080) | `curl 127.0.0.1:28080/status | jq .model_admission` |
 | LLM (`qwen-coding-b`) | Spark-B owner (18300) through Spark-A's forward 127.0.0.1:28111 | `curl 127.0.0.1:28111/status | jq .model_admission` |
