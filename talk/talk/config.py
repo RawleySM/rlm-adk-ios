@@ -56,6 +56,8 @@ class TalkConfig:
     # The dossier's 320 ms assumes energy and semantic cues too; with duration alone, a spoken "mm-hmm"
     # (0.70 s voiced in the suite's fixture) needs a wider window. Barge-in is measured from the window's end.
     backchannel_max_s: float = 0.75
+    # Words that mean "stop and wait": they interrupt the bot and are never answered as a turn.
+    pause_phrases: list[str] = field(default_factory=lambda: ["hold on", "wait", "wait a moment", "one moment", "hang on", "stop", "stop there", "pause", "hold on a second", "wait wait"])
     duck_db: float = 3.0
     duck_hold_s: float = 0.4
     bridge_after_s: float = 0.35

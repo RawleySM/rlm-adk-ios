@@ -134,10 +134,12 @@ async def run_bot(transport, cfg: TalkConfig, *, session_label: str) -> None:
             llm,
             bridge,
             tts,
-            ReadingTracker(),
             duck,
             gate,
             transport.output(),
+            # After the output transport, TTSTextFrame arrives as the audio is played out, not as
+            # it is synthesised, so the tracker counts verses the listener actually heard.
+            ReadingTracker(),
             aggregators.assistant(),
         ]
     )

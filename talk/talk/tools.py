@@ -33,6 +33,9 @@ _cfg: TalkConfig | None = None
 
 # Shared with talk.reading_tracker: the verses of the current reading and how far it was spoken.
 READING_STATE: dict[str, Any] = {"reference": None, "chapter_reference": None, "verses": [], "spoken_through": 0}
+# The last user utterance the floor forwarded (set by FloorProcessor); decides whether a long chapter is read or quoted.
+LAST_USER_TEXT: str = ""
+LONG_READING_VERSES = 10
 
 UNAVAILABLE_NOTE = (
     "This source is unavailable right now. Tell Rawley plainly that you could not reach it, answer briefly "
@@ -139,6 +142,15 @@ async def read_scripture(params: FunctionCallParams) -> None:
         await params.result_callback(result if isinstance(result, dict) else _unavailable("bad scripture result"))
         return
     verses = [{"verse": int(v.get("verse") or 0), "text": str(v.get("text") or "").strip(), "osis": v.get("osis")} for v in result["verses"]]
+    wants_reading = bool(re.search(r"\b(read|reads|reading|recite|hear|listen to|play)\b", LAST_USER_TEXT.lower()))
+    if len(verses) > LONG_READING_VERSES and not wants_reading:
+        # A question about a long chapter: hand the text to the model to quote from, instead of reading it all.
+        await params.result_callback({
+            "reference": reference,
+            "verses": [{"verse": v["verse"], "text": v["text"]} for v in verses],
+            "instruction": "Rawley asked a question, not for a reading. Quote the two or three verses that answer it (with their verse numbers) and answer briefly in your own words; do not read the whole chapter.",
+        })
+        return
     READING_STATE.update({"reference": reference, "chapter_reference": _chapter_reference(reference), "verses": verses, "spoken_through": 0})
     sentences = [f"{reference}."] + [v["text"] for v in verses]
     summary = {"reference": reference, "verses_read": [v["verse"] for v in verses], "cite_ids": result.get("cite_ids"), "coverage": result.get("coverage"), "spoken": True}

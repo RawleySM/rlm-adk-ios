@@ -66,6 +66,7 @@ class FloorProcessor(FrameProcessor):
         self._quiet = [_norm(p) for p in cfg.quiet_phrases]
         self._wake = [_norm(p) for p in cfg.wake_phrases]
         self._backchannel = {_norm(w) for w in cfg.backchannel_words}
+        self._pause = {_norm(w) for w in cfg.pause_phrases}
         self.bot_speaking = False
         # True from the moment a transcript was forwarded to the LLM until the bot starts speaking.
         self.pending_turn = False
@@ -191,14 +192,24 @@ class FloorProcessor(FrameProcessor):
                 logger.info(f"floor: backchannel transcript dropped: {text!r}")
                 self.events.append({"t": time.time(), "backchannel_dropped": text})
                 return
+            if final and (n in self._pause or any(n == p or n.startswith(p + " ") for p in self._pause) and len(n.split()) <= 4):
+                # "hold on", "wait", "stop": stop speaking and wait; never a question for the LLM.
+                logger.info(f"floor: pause phrase {text!r}; interrupting and waiting")
+                self.events.append({"t": time.time(), "pause_phrase": text})
+                if self.bot_speaking:
+                    await self.broadcast_interruption()
+                return
             if final and self.bot_speaking:
-                # A short utterance that outlasted nothing but is not a backchannel ("hold on", "wait")
-                # is an interruption decided by its words rather than its length.
+                # A short utterance that outlasted nothing but is not a backchannel is an interruption
+                # decided by its words rather than its length.
                 logger.info(f"floor: words interrupt the bot: {text!r}")
                 self.events.append({"t": time.time(), "word_interrupt": text})
                 await self.broadcast_interruption()
             if final:
                 self.pending_turn = True
+                from talk import tools
+
+                tools.LAST_USER_TEXT = text
 
         await self.push_frame(frame, direction)
 
