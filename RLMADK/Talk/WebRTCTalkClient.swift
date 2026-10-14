@@ -5,11 +5,14 @@ import PipecatClientIOSSmallWebrtc
 import WebRTC
 
 /// Bot audio on the WebRTC transport plays through libwebrtc's own audio unit, which the app does
-/// not own. The gate therefore works at the unit: with `RTCAudioSession.useManualAudio`, the unit
-/// runs only while `isAudioEnabled` is true, and it is true only while connected, the gate is open
-/// (not praying, not quiet) and the current bot turn was not stopped. Closing the gate stops the
-/// bot's sound at once (and the WebRTC microphone with it; the audio owner keeps recording and
-/// recognizing either way).
+/// not own, and that unit also carries the WebRTC microphone. Build 12 closed the gate at the unit
+/// (`isAudioEnabled` false in prayer, quiet or after a stop), which silenced the bot but also
+/// stopped the microphone: a session that entered quiet was deaf to the wake phrase and the talk
+/// tier heard nothing in prayer (voicesim WebRTC subset 2026-10-14, 0 of 5). The talk tier's floor
+/// already gates every spoken frame in prayer and quiet and interrupts on barge-in, so from build 13
+/// the unit stays enabled for the whole connection: `gateOpen` and `stop()` are recorded for the
+/// status line but never touch the unit. The floor messages (`mode`, `node`) and the app's own
+/// `client_mode` keep both sides agreeing on when speech is allowed.
 final class WebRTCVoiceOutput: VoiceOutput {
     var onPlayingChange: ((Bool) -> Void)?
     private var _gateOpen = true
@@ -28,19 +31,19 @@ final class WebRTCVoiceOutput: VoiceOutput {
         }
     }
 
-    var isPlaying: Bool { botSpeaking && RTCAudioSession.sharedInstance().isAudioEnabled }
+    var isPlaying: Bool { botSpeaking && !suppressed && _gateOpen && RTCAudioSession.sharedInstance().isAudioEnabled }
 
     var statusLine: String {
         let rtc = RTCAudioSession.sharedInstance()
         return "webrtc unit: \(rtc.isAudioEnabled ? "enabled" : "disabled") (manual \(rtc.useManualAudio ? "yes" : "no"), active \(rtc.isActive ? "yes" : "no"), toggles \(unitToggles)) · gate \(_gateOpen ? "open" : "closed")\(suppressed ? ", turn suppressed" : "")"
     }
 
-    /// Only a bot turn in progress is suppressed: with nothing speaking, stopping the unit would
-    /// also stop the WebRTC microphone with nothing to bring it back.
+    /// The talk tier interrupts its own output on barge-in (`interruption` / `bot-interrupted`);
+    /// the unit is never stopped here because it carries the microphone.
     func stop() {
         if botSpeaking {
             suppressed = true
-            apply()
+            onPlayingChange?(isPlaying)
         }
     }
 
@@ -59,7 +62,8 @@ final class WebRTCVoiceOutput: VoiceOutput {
     }
 
     private func apply() {
-        let enable = connected && _gateOpen && !suppressed
+        // The unit carries the microphone: it runs whenever connected (see the type comment).
+        let enable = connected
         let rtc = RTCAudioSession.sharedInstance()
         guard rtc.isAudioEnabled != enable else { return }
         rtc.isAudioEnabled = enable
