@@ -1,0 +1,9 @@
+[Unit]
+Description=Keep the voice talk tier's owners warm (Cohere on Spark-A, LLM on Spark-B)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/rawleysm/srv/voice-talk/.venv/bin/python /home/rawleysm/srv/voice-talk/tools/warm.py
+StandardOutput=append:/home/rawleysm/.local/state/voice-talk/logs/warm.log
+StandardError=append:/home/rawleysm/.local/state/voice-talk/logs/warm.log

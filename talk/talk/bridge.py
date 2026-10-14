@@ -18,6 +18,8 @@ import time
 from loguru import logger
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
+    FunctionCallResultFrame,
+    LLMTextFrame,
     Frame,
     InterruptionFrame,
     TTSSpeakFrame,
@@ -38,12 +40,26 @@ class BridgeProcessor(FrameProcessor):
         self._cfg = cfg
         self._floor = floor
         self._timer: asyncio.Task | None = None
+        self._followup: asyncio.Task | None = None
         self.bridges: list[dict] = []
 
     def _cancel(self) -> None:
         if self._timer and not self._timer.done():
             self._timer.cancel()
         self._timer = None
+
+    def _cancel_followup(self) -> None:
+        if self._followup and not self._followup.done():
+            self._followup.cancel()
+        self._followup = None
+
+    async def _fire_followup(self, turn_ended_at: float) -> None:
+        await asyncio.sleep(self._cfg.bridge_followup_s)
+        if self._floor.mode != "available" or not self._cfg.bridge_followup_phrase:
+            return
+        self.bridges.append({"t": time.time(), "after_s": time.time() - turn_ended_at, "phrase": self._cfg.bridge_followup_phrase, "followup": True})
+        logger.info(f"bridge: follow-up after {time.time() - turn_ended_at:.1f}s with no reply")
+        await self.push_frame(TTSSpeakFrame(self._cfg.bridge_followup_phrase))
 
     async def _fire(self, turn_ended_at: float) -> None:
         await asyncio.sleep(self._cfg.bridge_after_s)
@@ -59,12 +75,21 @@ class BridgeProcessor(FrameProcessor):
         if isinstance(frame, UserStoppedSpeakingFrame):
             # The aggregator closed the user turn: the LLM runs now if the floor forwarded a transcript.
             self._cancel()
+            self._cancel_followup()
             if self._floor.pending_turn and self._floor.mode == "available":
                 self._timer = asyncio.create_task(self._fire(time.time()))
+                if self._cfg.bridge_followup_s > 0:
+                    self._followup = asyncio.create_task(self._fire_followup(time.time()))
         elif isinstance(frame, UserStartedSpeakingFrame):
             self._cancel()
-        elif isinstance(frame, (BotStartedSpeakingFrame, InterruptionFrame)):
+            self._cancel_followup()
+        elif isinstance(frame, InterruptionFrame):
             self._cancel()
+            self._cancel_followup()
+        elif isinstance(frame, BotStartedSpeakingFrame):
+            self._cancel()  # the bridge phrase itself starts bot speech; the follow-up waits for a real reply
+        elif isinstance(frame, (LLMTextFrame, TTSSpeakFrame, FunctionCallResultFrame)) and direction == FrameDirection.DOWNSTREAM:
+            self._cancel_followup()  # the model or a tool is answering
         await self.push_frame(frame, direction)
 
 
@@ -79,7 +104,7 @@ class ContextScrubber(FrameProcessor):
 
     def __init__(self, cfg: TalkConfig):
         super().__init__(name="context-scrubber")
-        self._phrases = {p.strip().lower() for p in cfg.bridge_phrases}
+        self._phrases = {p.strip().lower() for p in [*cfg.bridge_phrases, cfg.bridge_followup_phrase] if p}
 
     async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)

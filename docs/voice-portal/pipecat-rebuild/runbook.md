@@ -44,6 +44,25 @@ curl -s http://127.0.0.1:8765/healthz
 
 Imports (`python3 -m voice_portal import <family>`) run with the server stopped; see `skill-service.md`.
 
+## Keep the owners warm (the 2026-10-14 12:05 UTC outage)
+
+The Spark-B owner unloads Qwen after roughly 80 minutes idle and Spark-A's owner does the same with
+Cohere. A cold Qwen takes about 200 s to start and a cold Cohere about 110 s. On 2026-10-14 the
+phone's first request after the campaign hit a cold Qwen; every turn's request started a model load
+that the next utterance's interruption cancelled (`model_start_cancelled` in the Spark-B owner log,
+eight times in seven minutes), so the bot only ever spoke bridge phrases for nine minutes. Two
+things now stand against that:
+
+* `voice-talk-warm.timer` (unit files in `talk/`, installed next to `voice-talk.service`) runs
+  `tools/warm.py` every 10 minutes, so neither owner idles out; its log is
+  `~/.local/state/voice-talk/logs/warm.log`.
+* The bridge speaks a follow-up (`bridge_followup_phrase`, 8 s after the turn with no reply) so a
+  slow owner is announced instead of silent; a listener who waits lets the load finish.
+
+Symptom to recognise: user transcripts arrive, LLM TTFB of 50 s or more in the talk log, and the
+Spark-B owner log shows `model_start_cancelled`. Remedy: run `tools/warm.py` once in the
+foreground (it waits out the cold start) and check the timer is active.
+
 ## Warm before any proof run
 
 ```bash
