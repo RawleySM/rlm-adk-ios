@@ -1,6 +1,6 @@
 # iOS client for the Pipecat talk tier
 
-Branch `claude/ios-pipecat-client`, builds 9 to 11 (`0.2.0 (11)` installed last; see "Builds"). The app's voice is no longer Apple's
+Branch `claude/ios-pipecat-client`, builds 9 to 12 (`0.2.0 (12)` installed last; see "Builds"). The app's voice is no longer Apple's
 synthesizer: spoken output comes from the Pipecat talk tier on Spark-A as audio, over one of two
 transports behind one `TalkClient` protocol. The native capture, segment writer, prayer journal,
 uploads, device inspection and work list are unchanged in what they do.
@@ -183,7 +183,7 @@ fresh state under the session scratchpad), so no test prayer reached the product
 | 9 | 6090dfd | `4bc3f73e00accf60ef436dcd8aed859fdc44cbd90fb6f80c36f6ea77bc2f4a03` (5,674,826 B) | the rebuild |
 | 10 | cbed5d2 | `d94c55b2d88f92a6c31aeb3961e94c09f8d11ee4b99ccff8e0cadaa28b91d175` (5,676,788 B) | device findings: suppression after prayer, amen anchor allowance, journal on iOS 26 |
 | 11 | 3b476d3 | `fdb7e85e39829acb78bfcbbdcfba0a65e3ba011b0db87a337691b5c0f3323674` (5,677,228 B) | device findings: level tracker floor after digital silence, `bot-output` display |
-| 12 | see the final PR comment | see the final PR comment | review findings: typed text as RTVI `send-text` on WebRTC; a capture switch during an input-format restart is applied after it instead of being overwritten |
+| 12 | 6d60653 | `c922a334bc02f57522a010338fe0340bb764787155a3c3e2f7ab026c63a7cba2` (5,678,358 B) | review findings: typed text as RTVI `send-text` on WebRTC; a capture switch during an input-format restart is applied after it instead of being overwritten |
 
 All three were signed by `direct-install.yml` (Ad Hoc profile `rlm-adk-ios adhoc iPhone 12`,
 expires 2027-10-13) and installed with `pymobiledevice3 apps install` without uninstalling.
@@ -195,9 +195,10 @@ complete within 3 s. The recording app is not terminated by the installer on iOS
 it first. A stuck first attempt also left a process-scoped coordinator that made a `--streaming`
 retry fail with `IXErrorDomain Code=48`.
 
-**Retention** (manifest via `sync_manifest`, `GET /devices/<id>/manifest`). Build 10 to 11:
-497 of 497 then 514 of 514 segments identical. Final check after build 11, against the build 8
-baseline: 450 of 450 identical, 9 captures, 521 segments, 0 orphans. **Build 8 to 9:**
+**Retention** (manifest via `sync_manifest`, `GET /devices/<id>/manifest`). Builds 10, 11 and
+12: 497 of 497, 514 of 514 and 538 of 538 segments identical across each install. Final check
+after build 12, against the build 8 baseline: 450 of 450 identical, 9 captures, 540 segments, 0
+orphans. **Build 8 to 9:**
 before 5 captures, 450 segments, 2,536,078,464 bytes (open `00000445.wav`); after 5 captures, 475
 segments; **450 of 450 identical in bytes and sha256**, 0 missing, 0 changed, 25 new (445 to 469;
 the segment open at termination was recovered as a closed file), capture continuing. The data
@@ -256,7 +257,9 @@ the phone pointed at the silent instance or ran while no room run was active.
 
 ### State left on the phone
 
-Build 11, production backend `http://100.90.105.30:8765`, talk server `http://100.121.221.42:7860`,
+Build 12 (installed 05:08:05; no acoustic re-test, its changes are the WebRTC typed-text path and
+a rare capture-switch race, covered by CI), production backend `http://100.90.105.30:8765`, talk
+server `http://100.121.221.42:7860`,
 transport **WebSocket** (persisted choice; the default for a fresh install is still `webrtc`), mode
 Available, recording. The fresh-install default stays `webrtc` as specified (a review suggested WebSocket
 until the server changes land; recorded here, not applied). Choice for this phone: WebSocket is
