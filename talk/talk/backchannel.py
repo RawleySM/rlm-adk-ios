@@ -52,7 +52,10 @@ class BackchannelAwareStartStrategy(BaseUserTurnStartStrategy):
         self._pending = None
 
     async def _window(self) -> None:
-        await asyncio.sleep(self._cfg.backchannel_max_s)
+        # The VAD reports the end of speech ``vad_stop_secs`` after it happens, so the stop frame of a
+        # backchannel that lasted ``backchannel_max_s`` arrives ``backchannel_max_s + vad_stop_secs``
+        # after its start; the window must be measured on that clock.
+        await asyncio.sleep(self._cfg.backchannel_max_s + self._cfg.vad_stop_secs)
         # Still speaking after the window: a real turn, which interrupts the bot.
         self.decisions.append({"t": time.time(), "decision": "barge_in", "after_s": time.time() - (self._speech_started_at or time.time())})
         logger.info("floor: user speech outlasted the backchannel window; interrupting")
@@ -73,7 +76,7 @@ class BackchannelAwareStartStrategy(BaseUserTurnStartStrategy):
         elif isinstance(frame, VADUserStoppedSpeakingFrame):
             if self._pending and not self._pending.done():
                 self._cancel()
-                dur = time.time() - (self._speech_started_at or time.time())
+                dur = time.time() - (self._speech_started_at or time.time()) - self._cfg.vad_stop_secs
                 self.decisions.append({"t": time.time(), "decision": "backchannel", "duration_s": dur})
                 logger.info(f"floor: backchannel ({dur:.2f}s) while the bot speaks; not interrupting")
         return ProcessFrameResult.CONTINUE

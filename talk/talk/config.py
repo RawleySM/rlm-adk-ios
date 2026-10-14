@@ -76,7 +76,7 @@ class TalkConfig:
     vad_stop_secs: float = 0.8
     # Smart Turn's fallback when it keeps judging a pause as mid-sentence: end the turn after this
     # much silence anyway. Pipecat's default of 3.0 s put first audio past the 3.0 s acceptance bound.
-    smart_turn_stop_secs: float = 1.5
+    smart_turn_stop_secs: float = 1.2
     # Where runs and receipts go.
     state_root: str = str(Path.home() / ".local/state/voice-talk")
 

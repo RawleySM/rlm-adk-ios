@@ -91,6 +91,24 @@ class FloorProcessor(FrameProcessor):
             except Exception as exc:  # noqa: BLE001 - the WebSocket path already has the message
                 logger.warning(f"rtvi server message failed: {exc}")
 
+
+    async def _swallow(self, frame) -> None:
+        """Drop a transcript's words but still tell the aggregator a transcript came.
+
+        Pipecat's turn-stop strategy waits for a finalized transcript after Smart Turn says the turn is
+        complete; a transcript dropped here (prayer text, a pause word, a backchannel) left it waiting
+        the full ``user_turn_stop_timeout`` (15 s) with the bot interrupted. An empty finalized
+        TranscriptionFrame satisfies the wait; the aggregator ignores empty text, so no LLM turn runs.
+        """
+        if not isinstance(frame, TranscriptionFrame):
+            return
+        empty = TranscriptionFrame(text="", user_id=getattr(frame, "user_id", ""), timestamp=getattr(frame, "timestamp", ""))
+        try:
+            empty.finalized = True
+        except Exception:  # noqa: BLE001 - older frame classes have no such attribute
+            pass
+        await self.push_frame(empty, FrameDirection.DOWNSTREAM)
+
     # ----- mode transitions -----
     async def set_mode(self, mode: str, reason: str) -> None:
         if mode == self.mode:
@@ -182,39 +200,53 @@ class FloorProcessor(FrameProcessor):
                     self._pending_amen = asyncio.create_task(self._end_prayer_after_silence(time.time()))
                 # Prayer text never reaches the LLM: it is addressed to God, journaled by the app.
                 await self._tell_client({"type": "prayer_text", "text": text, "final": final})
+                await self._swallow(frame)
                 return
             if final and any(n == p or n.endswith(" " + p) for p in self._quiet):
                 await self.set_mode("quiet", "phrase")
+                await self._swallow(frame)
                 return
             if final and self.mode == "quiet" and any(n == p or n.startswith(p) for p in self._wake):
                 if self.held:
                     logger.info("floor: wake phrase ignored while held")
+                    await self._swallow(frame)
                     return
                 await self.set_mode("available", "wake")
+                await self._swallow(frame)
                 return
             address = self._starts_with_address(text)
             if address and self.mode != "prayer":
                 await self.set_mode("prayer", f"address:{address}")
                 await self._tell_client({"type": "prayer_text", "text": text, "final": final})
+                await self._swallow(frame)
                 return
             if self.mode == "quiet" and final:
                 # Heard, journaled by the app, not answered.
+                await self._swallow(frame)
                 return
             if final and n and (n in self._backchannel or (len(n.split()) <= 2 and all(w in self._backchannel for w in n.split()))):
                 # "mm-hmm", "yeah", "okay": an acknowledgement, never a turn.
                 logger.info(f"floor: backchannel transcript dropped: {text!r}")
                 self.events.append({"t": time.time(), "backchannel_dropped": text})
+                await self._swallow(frame)
                 return
             lead = next((p for p in sorted(self._pause, key=len, reverse=True) if n == p or n.startswith(p + " ")), None) if final else None
             if lead is not None:
-                # "hold on", "wait", "stop": stop speaking. Alone, it is never a question for the LLM;
-                # followed by more words ("Hold on. What are the green pastures about?") the rest is the turn.
+                # "hold on", "wait", "stop": stop speaking. Alone (or stacked: "Wait. Stop there."), it is
+                # never a question for the LLM; followed by more words ("Hold on. What are the green
+                # pastures about?") the rest is the turn.
                 remainder = n[len(lead):].strip()
+                while remainder:
+                    more = next((p for p in sorted(self._pause, key=len, reverse=True) if remainder == p or remainder.startswith(p + " ")), None)
+                    if more is None:
+                        break
+                    remainder = remainder[len(more):].strip()
                 logger.info(f"floor: pause phrase {lead!r} in {text!r}; interrupting" + ("; waiting" if not remainder else f"; forwarding {remainder!r}"))
                 self.events.append({"t": time.time(), "pause_phrase": lead, "remainder": remainder})
                 if self.bot_speaking:
                     await self.broadcast_interruption()
                 if not remainder or len(remainder.split()) < 2:
+                    await self._swallow(frame)
                     return
                 frame.text = text[len(text) - len(remainder) :] if text.lower().endswith(remainder) else remainder
                 text = frame.text
@@ -234,6 +266,7 @@ class FloorProcessor(FrameProcessor):
                     for v in remaining:
                         await self.push_frame(TTSSpeakFrame(v["text"]))
                     await self.push_frame(LLMMessagesAppendFrame(messages=[{"role": "user", "content": text}, {"role": "assistant", "content": " ".join(v["text"] for v in remaining)}], run_llm=False))
+                    await self._swallow(frame)
                     return
             if final and self.bot_speaking:
                 # A short utterance that outlasted nothing but is not a backchannel is an interruption
