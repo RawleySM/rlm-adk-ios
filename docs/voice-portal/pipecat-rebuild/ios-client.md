@@ -185,6 +185,7 @@ fresh state under the session scratchpad), so no test prayer reached the product
 | 11 | 3b476d3 | `fdb7e85e39829acb78bfcbbdcfba0a65e3ba011b0db87a337691b5c0f3323674` (5,677,228 B) | device findings: level tracker floor after digital silence, `bot-output` display |
 | 12 | 6d60653 | `c922a334bc02f57522a010338fe0340bb764787155a3c3e2f7ab026c63a7cba2` (5,678,358 B) | review findings: typed text as RTVI `send-text` on WebRTC; a capture switch during an input-format restart is applied after it instead of being overwritten |
 | 13 (installed 2026-10-14 12:44 UTC) | PR #17 (`a863534`) | `1c0f72ddee4e540821a99d91ece6a182b7e470a6255b057db3ca904ace8a82fb` | WebRTC keeps libwebrtc's audio unit (and the microphone) running for the whole connection; the talk tier's floor gates speech. Retention 894 of 894 segments. WebRTC subset 5 of 5 (`20261014T124621Z-phone-phone-webrtc-2`). |
+| 14 (signed 2026-10-14 21:58 UTC, not yet installed) | PR #24 (`374adaf`) | `56b00968be30762075ec92ee8f20c93febf27798baf4f5c24d6a29f53ca29c9c` | double-talk investigation: `AudioTuning` launch knobs (`RLMADK_AUDIO_MODE`, `RLMADK_VOICE_PROCESSING`, `RLMADK_VP_AGC`, `RLMADK_BOT_GAIN_DB`), persisted like the backend URL, shown in the snapshot (`audio_tuning`) and Diagnostics. Defaults reproduce build 13. |
 
 All three were signed by `direct-install.yml` (Ad Hoc profile `rlm-adk-ios adhoc iPhone 12`,
 expires 2027-10-13) and installed with `pymobiledevice3 apps install` without uninstalling.
@@ -204,6 +205,42 @@ before 5 captures, 450 segments, 2,536,078,464 bytes (open `00000445.wav`); afte
 segments; **450 of 450 identical in bytes and sha256**, 0 missing, 0 changed, 25 new (445 to 469;
 the segment open at termination was recovered as a closed file), capture continuing. The data
 container path changed (`4D009E8A…` to `0036F8A0…`); the data moved with it.
+
+### Double talk during playback: the phone's microphone goes quiet (2026-10-14 evening)
+
+Live use at 13:01 local (talk session `websocket-d33b013b89`, WebSocket transport, build 13): the
+user asked for Romans 4 and tried to interrupt the reading by voice. The talk tier logged **no VAD
+event between the request (13:01:37) and 13:04:59**, when verse 25 of 25 was being spoken; the next
+utterances arrived at RMS 2,700 to 6,200 (loud). The app has no microphone gate of its own: the
+capture tap always feeds `PCMUplink`, and the uplink keeps sending 20 ms frames. The capture
+engine's input node runs Apple's voice processing with the bot's player on the same engine as its
+echo reference, and that processing attenuates the near-end voice while the far end plays. The
+room-loop runs of case 07b that passed earlier used the fixture voice from Spark-B's speakers; the
+user's own voice at speaking distance did not get through at all.
+
+Instrumentation and knobs (PR #24):
+
+* Talk tier `UplinkProbe` (after the input transport) logs uplink RMS/peak once a second while
+  the bot speaks, tags every VAD start with its level, and with `uplink_record_s` > 0 records the
+  first N seconds of uplink per session under `~/.local/state/voice-talk/uplink/<session>.wav`
+  with a JSONL of bot-speaking spans. Deployed with 900 s per session.
+* App build 14: `AudioTuning` (`RLMADK/Audio/AudioTuning.swift`) reads
+  `RLMADK_AUDIO_MODE` (voiceChat | videoChat | default), `RLMADK_VOICE_PROCESSING` (1 | 0),
+  `RLMADK_VP_AGC` (1 | 0) and `RLMADK_BOT_GAIN_DB` from the launch environment, persists them, and
+  applies them when the engine starts; the WebRTC session uses the same mode. A relaunch over USB
+  (`pymobiledevice3 developer dvt launch --env ...`, as `phone-suite.sh` does) switches variants
+  without a rebuild. The session description, the device snapshot (`audio_tuning`) and
+  Diagnostics show the tuning in force.
+* Talk tier barge-in: at the end of the backchannel window (0.75 s after the VAD start) the start
+  strategy now reads the uplink energy; voice in the last 0.3 s cuts the bot at once instead of
+  waiting the VAD's 0.8 s stop lag (about 0.95 s after onset instead of 1.75 s). Backchannels and
+  quiet speech are decided by the VAD as before.
+
+Measurement plan (needs the phone on USB in front of Spark-B's speakers): install build 14, then
+`scripts/phone-suite.sh suites/conversation-core --mode phone --case 07b --case 08` once per
+variant (build-13 defaults; AGC off; videoChat; voice processing off, which also shows how much of
+the bot's own speech reaches the uplink raw), comparing the probe's RMS during bot speech and the
+VAD/interruption timing in each session's uplink JSONL.
 
 ### WebRTC coexistence spike: capture holds
 
