@@ -120,3 +120,128 @@ cases with verbatim ground truth, a judge, timing endpoints and the same fixture
    coding profile only.
 
 Nothing here changes rlm-adk; the owner profile and the talk config are the only moving parts.
+
+## 6. A/B run: PhoneLLM Alpha 1 NVFP4 against Swift-Qwen3.8-27B (2026-10-14)
+
+### Setup
+
+* Candidate owner profile `phonellm` on Spark-A (spark-inference PR #5, release 85e8fc3): the
+  vendor's vLLM 0.27.1 recipe, which is the vLLM version inside the owner's default image; engine
+  source pinned to snapshot 61f182c2; bf16 KV, Mamba `align` cache, FlashInfer attention and
+  FLASHINFER_CUTLASS NVFP4 MoE, `--max-num-seqs 4` with four admitted requests so a barge-in cancel
+  is a verified per-request abort rather than a circuit; `--gpu-memory-utilization 0.22`.
+  Qualified by hand first (`docker run` on port 28199): loads on SM121, TTFT 0.106 s, about 52
+  tokens/s single stream, complete tool calls in 0.7 to 0.9 s. Through the owner the cold start is
+  about 225 s (torch.compile and CUDA-graph capture dominate; Qwen's is about 200 s), so the
+  keep-warm timer matters as much as before.
+* Talk tier config for the candidate arm: `llm_base_url` 127.0.0.1:28080/v1, `llm_model phonellm`,
+  `llm_temperature 0` (the vendor's tested setting; the baseline arm keeps its 0.4). Everything
+  else, including the system prompt, tools, Flows nodes, voice, VAD and endpointing, is identical.
+  Both PhoneLLM and Cohere are resident on Spark-A's owner, so the candidate arm has no Spark-B hop.
+* Judge: `qwen-coding-b` on Spark-B for both arms (unchanged from the campaign).
+* Protocol: three file-mode runs of conversation-core per arm (`--label llm-qwen-N` /
+  `llm-phonellm-N`), then one room run per arm through `scripts/phone-suite.sh`. Per-turn LLM
+  timings come from the talk tier's session JSONL via `rlm-voice-sim/scripts/llm_turn_timings.py`
+  (user turn end to first LLM text; response start to first tool call; tool result to next first
+  text; full response).
+
+### Finding: PhoneLLM routes "read me Psalm 23" to the tool only about half the time
+
+In candidate run 1, case 02a failed because the model answered the reading request with text
+instead of calling `read_scripture` (once as a garbled call literal,
+`<|tool_call>call:read_scripture{reference:...}`, spoken as text; otherwise as Psalm 23 recited from
+memory, two or three verses). Cases 07a, 07b and 08 then score low for the same reason: the
+"reading" they interrupt is the model's recital, not the tool's, so the reading tracker and
+`continue_reading` have nothing to resume. Replaying the talk tier's exact context (system prompt,
+seven tool schemas, temperature 0) against the owner eight times gave 2 to 5 tool calls out of 8 for
+"Read me Psalm twenty three." while "check in on that project" and "interpretations of Romans 8:28"
+routed 8/8 every time. Identical requests at temperature 0 give different answers, so the engine is
+not deterministic at this near-tie; a sweep of engine variants on the same eight replays did not
+change the rate:
+
+| Engine variant | tool calls / 8 (Psalm 23) | other two prompts |
+|---|---|---|
+| vendor recipe (owner) | 2 | 8/8, 8/8 |
+| `--no-enable-prefix-caching` | 4 | 8/8, 8/8 |
+| plus `--no-async-scheduling` | 5 | 8/8, 8/8 |
+| `--moe-backend marlin` | 5 | 8/8, 8/8 |
+
+Prompt variants (an explicit "never recite Scripture from memory" rule in the system prompt; a
+stronger `read_scripture` description) moved the rate to 3/8 and 6/8, within the noise. Enabling
+thinking makes the model spend the whole token budget in `reasoning_content` and speak nothing.
+Qwen3.8-27B called the tool in every one of its 39 case runs. This is a model-level preference
+(customer-service training; a famous passage the model "knows"), amplified by non-deterministic
+numerics; the fix that does not depend on the model is a rule in the floor that routes an explicit
+"read me <reference>" straight to `read_scripture` (as the pause, continue and wake phrases already
+are), which would also remove 1.5 to 2 s of tool-call emission from the Qwen path.
+
+### Results
+
+Pass counts and judge scores per run (file mode, 13 cases; judge 1 to 5):
+
+| Run | Pass | Failures | Judge 02a / 02b / 03 / 04 / 05 / 06 / 07a / 07b / 08 |
+|---|---|---|---|
+| qwen-1 | 12/13 | 03 (judge 1: no passages) | 5 / 5 / 1 / 3 / 5 / 5 / 5 / 5 / 5 |
+| qwen-2 | 13/13 | | 5 / 5 / 5 / 3 / 5 / 5 / 5 / 5 / 5 |
+| qwen-3 | 13/13 | | 5 / 5 / 5 / 5 / 5 / 5 / 5 / 5 / 5 |
+| phonellm-1 | 11/13 | 02a (recital), 07a (recital) | 1 / 5 / 5 / 3 / 5 / 5 / 1 / 3 / 3 |
+| phonellm-2 | 10/13 | 02a (recital), 05 (asked for the description it was given), 07a | 3 / 5 / 5 / 3 / 1 / 5 / 1 / 5 / 5 |
+| phonellm-3 | 8/13 | 02a, 05, 06 (asked "what should I call it?" instead of calling request_work), 07a, 08 | 3 / 5 / 5 / 3 / 1 / 1 / 1 / 3 / 1 |
+
+Totals: Qwen 38/39, PhoneLLM 29/39. Every PhoneLLM failure is a routing failure, not a wrong
+answer: it recites Psalm 23 instead of calling `read_scripture` (02a, and the floor cases 07a/07b/08
+that interrupt that reading), and in runs 2 and 3 it slipped into a customer-service slot-filling
+register for the two open-ended requests ("What is the description of the project you'd like to
+check in on?" after being given it; "I'll start a research project on that. What should I call it?"
+without calling the tool). Judge scores where it did route are equal to Qwen's (02b, 03, 04 and 06
+at 5/5/3/5).
+
+Per-turn LLM timings (seconds; p50 over the run's LLM turns):
+
+| Run | first text | tool-call emission | post-tool first text | full response | word tool first text |
+|---|---|---|---|---|---|
+| qwen-1 | 3.53 | 1.97 | 1.47 | 3.85 | 24.4 |
+| qwen-2 | 2.96 | 1.57 | 1.13 | 1.86 | 11.6 |
+| qwen-3 | 2.70 | 1.63 | 1.20 | 1.89 | 8.9 |
+| phonellm-1 | 0.24 | 1.00 | 2.81 | 0.89 | 0.7 (tool call; theming stays on Qwen) |
+| phonellm-2 | 0.24 | 0.93 | 3.08 | 0.73 | 0.7 (same) |
+| phonellm-3 | 0.24 | 0.95 | 2.89 | 0.79 | 0.7 (same) |
+
+First audio (bridge phrase, endpointing-bound) is unchanged: p50 1.38 to 1.50 s in every run; amen
+to end 0.95 to 0.98 s in every run. PhoneLLM's post-tool first text is slower (2.5 to 4.0 s against
+1.1 to 1.6 s): the second request carries the tool result (several hundred to a few thousand
+tokens) and this model's prefill on GB10 is not faster than Qwen's per token.
+
+First-audio latency over cases 2 to 5 (benchmark_tables.py): Qwen p50 1.38 to 1.50 s, p95 2.50 to
+2.64 s; PhoneLLM p50 1.46 to 1.61 s, p95 2.63 to 2.70 s. The room runs were not performed: the
+file layer already separates the arms on routing reliability, and a room run per arm adds acoustic
+variance to a decision that does not depend on it.
+
+### Decision
+
+**Keep Swift-Qwen3.8-27B (`qwen-coding-b`) as the talk LLM.** PhoneLLM Alpha 1 is 6 to 12 times
+faster on the LLM leg (first text 0.24 s against 2.7 to 3.5 s; full response 0.7 to 0.9 s against
+1.9 to 3.9 s) but drops 10 of 39 case runs on tool routing that Qwen gets right 39 of 39 times, and
+the misses are the ones that matter most here: exact Scripture and the two agentic requests. The
+talk tier was switched back to `qwen-coding-b` at 14:58 UTC; the `phonellm` owner profile stays in
+spark-inference for the next alpha and for the mitigations below.
+
+What would make a fast MoE model viable on this suite, in order of expected value:
+
+1. Route explicit reading requests by rule in the floor (book name plus chapter, "read me",
+   "read"), calling `read_scripture` directly as pause, continue and wake phrases already are. That
+   removes the near-tie that PhoneLLM loses half the time and 1.5 to 2 s of tool-call emission
+   from the Qwen path. It changes no model.
+2. Re-test PhoneLLM's next release (the card calls this an alpha trained on synthetic customer
+   service data) and Nemotron 3.5 Lightning (`spark-small`, already a profile) with the same three
+   replays times eight before any suite run: a model must route "read me Psalm 23", the long project
+   description and the work request 8/8 at temperature 0 to be worth a run.
+3. If a fast model is adopted, keep the judge and the word tool's theming on Qwen until the fast
+   model's long-answer quality is scored separately.
+
+Evidence: run directories `~/.local/state/voicesim/runs/talk-suites/conversation-core/runs/
+20261014T13*-file-llm-qwen-{1,2,3}` and `20261014T1{359,434,446}*-file-llm-phonellm-{1,2,3}`;
+engine sweep tallies in `~/.local/state/phonellm/sweep.log`; manual qualification logs in
+`~/.local/state/phonellm/manual*.log`; the talk config for each arm in
+`~/.local/state/voicesim/llm-ab/config.{qwen,phonellm}.json` with `switch-llm.sh`.
+

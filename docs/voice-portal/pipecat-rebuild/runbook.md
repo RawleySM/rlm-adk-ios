@@ -12,6 +12,7 @@ How the rebuilt portal is deployed, warmed, tested and recovered. Owners and thr
 | Skill service (voice_portal) | desktop, `~/srv/voice-portal/backend`, state `~/.local/rlm-adk/voice_portal` | `python3 -m voice_portal serve` under setsid/nohup (no unit yet). `curl http://100.90.105.30:8765/healthz`. |
 | Cohere STT | Spark-A `spark-inference.service` (28080) | `curl 127.0.0.1:28080/status | jq .model_admission` |
 | LLM (`qwen-coding-b`) | Spark-B owner (18300) through Spark-A's forward 127.0.0.1:28111 | `curl 127.0.0.1:28111/status | jq .model_admission` |
+| LLM candidate (`phonellm`, not in production) | Spark-A owner (28080), spark-inference release 85e8fc3 | A/B 2026-10-14 kept Qwen (`llm-selection.md` §6). To re-run an arm: `~/.local/state/voicesim/llm-ab/switch-llm.sh qwen|phonellm` swaps `~/.config/voice-talk/config.json` and restarts the talk tier. |
 | Fish S2-Pro (voicesim speaker) | Spark-B `fish-speech-s2pro.service`, tunnel 18085 on Spark-A and desktop | `voicesim server status` |
 | Isolated prayer intake (tests only) | Spark-A port 18091, started by `rlm-voice-sim/scripts/phone-trial.sh` | never the production store |
 | iPhone 12 | Spark-A USB; direct-install builds from `.github/workflows/direct-install.yml` | `pymobiledevice3 usbmux list` |

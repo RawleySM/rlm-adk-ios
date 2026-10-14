@@ -13,7 +13,7 @@ are rendered by `rlm-voice-sim/scripts/benchmark_tables.py <run_dir>`.
 |---|---|
 | Talk tier | rlm-adk-ios main `08327bc` (PR #14 on PR #13) plus the devotional prompt change in this PR: Pipecat Flows with six nodes (`talk/flows.py`) (Pipecat 1.12.0, Python 3.12.3, Spark-A `~/srv/voice-talk`), voice Kokoro `bm_george`; config: VAD stop 0.8 s, Smart Turn v3 fallback 1.2 s, bridge 0.2 s, amen silence 1.2 s, STT gate 120 RMS; `voice-talk.service` with `TimeoutStartSec` 600 |
 | Skill service | rlm-adk-ios `8dee970d6f47c1b3e36e89d2ae23437ab854b79c` on the desktop (`/healthz` reports it); projection with Edwards and BibleProject |
-| spark-inference | `7e98c9d58fb5d8997dd35b1feae3450546148aa9` on Spark-A (28080, Cohere `cohere-transcribe-03-2026`) and Spark-B (`qwen-coding-b` through 28111) |
+| spark-inference | `7e98c9d58fb5d8997dd35b1feae3450546148aa9` on Spark-A (28080, Cohere `cohere-transcribe-03-2026`) and Spark-B (`qwen-coding-b` through 28111); Spark-A moved to `85e8fc3dcc0734a8d8d906252bb2563d3d7cbac4` at 13:53 UTC for the PhoneLLM A/B (adds the `phonellm` profile; Qwen kept, see `../llm-selection.md` §6) |
 | voicesim | rlm-voice-sim `26540cb` (`voicesim talk`, modes text/file/room/phone, `scripts/phone-suite.sh`), fixtures voice `rawley-prayer` (S2-Pro, seed 7), 21 fixtures incl. `wake`/`quiet` controls |
 | iPhone app | build 12 for the campaigns; **build 13** (`0.2.0 (13)`, PR #17 `a863534`, installed 12:44 UTC) for the WebRTC proof; iPhone 12 `00008101-000C35463A32001E`, iOS 26.6.2 (23G90), WebSocket transport, backend production except during wrapped runs |
 
