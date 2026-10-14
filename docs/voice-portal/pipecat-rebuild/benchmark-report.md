@@ -7,14 +7,14 @@ wrapper evidence under `~/.local/state/voicesim/phone-suite/` (isolated intake p
 phone-trial run `~/.local/state/voicesim/phone-trial/runs/20261014T004931Z` (prayer capture). Tables
 are rendered by `rlm-voice-sim/scripts/benchmark_tables.py <run_dir>`.
 
-## Versions under test (final campaign, 2026-10-14 07:04 to 07:45 UTC)
+## Versions under test (final campaign, 2026-10-14 07:54 to 08:33 UTC)
 
 | Piece | Version |
 |---|---|
-| Talk tier | rlm-adk-ios branch `claude/talk-tier`, `talk/` at `d9c10ab` (Pipecat 1.12.0, Python 3.12.3, Spark-A `~/srv/voice-talk`), voice Kokoro `bm_george`; config: VAD stop 0.8 s, Smart Turn v3 fallback 1.5 s, bridge 0.2 s, amen silence 1.2 s, STT gate 120 RMS |
+| Talk tier | rlm-adk-ios branch `claude/talk-tier` (PR #13), `talk/` at `a790d3b` (Pipecat 1.12.0, Python 3.12.3, Spark-A `~/srv/voice-talk`), voice Kokoro `bm_george`; config: VAD stop 0.8 s, Smart Turn v3 fallback 1.2 s, bridge 0.2 s, amen silence 1.2 s, STT gate 120 RMS |
 | Skill service | rlm-adk-ios `8dee970d6f47c1b3e36e89d2ae23437ab854b79c` on the desktop (`/healthz` reports it); projection with Edwards and BibleProject |
 | spark-inference | `7e98c9d58fb5d8997dd35b1feae3450546148aa9` on Spark-A (28080, Cohere `cohere-transcribe-03-2026`) and Spark-B (`qwen-coding-b` through 28111) |
-| voicesim | rlm-voice-sim `7da4af5`+ (`voicesim talk`, modes text/file/room/phone, `scripts/phone-suite.sh`), fixtures voice `rawley-prayer` (S2-Pro, seed 7), 21 fixtures incl. `wake`/`quiet` controls |
+| voicesim | rlm-voice-sim `26540cb` (`voicesim talk`, modes text/file/room/phone, `scripts/phone-suite.sh`), fixtures voice `rawley-prayer` (S2-Pro, seed 7), 21 fixtures incl. `wake`/`quiet` controls |
 | iPhone app | build 12 (`0.2.0 (12)`, commit `6d60653`, PR #12 merged as `0e793ce`) on the iPhone 12 `00008101-000C35463A32001E`, iOS 26.6.2 (23G90), WebSocket transport, backend production except during wrapped runs |
 
 ## Layer 1: text harness against the skill service
@@ -25,7 +25,96 @@ top-1 5 of 5; Psalm 23 verbatim WEB; Romans 8:28-30; word tool 0.3 s warm with 3
 sentence, every passage cited; interpretations 3 teachers with traditions; policy version
 `1a77aaff19de1ba3`, 17 address phrases, `amen_silence_s` 1.2).
 
-RESULTS_PLACEHOLDER
+## Layers 2 and 3: the conversation-core suite, final campaign
+
+Thirteen cases, one pass each per layer, against the systemd-managed talk tier (`voice-talk.service`
+active), owners warmed first. Phone and room runs went through `scripts/phone-suite.sh` (isolated
+intake; each published its two fixture prayers there; production untouched).
+
+| Layer | Passed | First-audio p50 / p95 (cases 2 to 5) | Notes |
+|---|---|---|---|
+| Digital injection (`file`) | **13 of 13** | 1.35 s / 2.54 s | amen-to-end 0.95 to 0.98 s |
+| Room loop (speakers → Spark-B mic → talk tier) | **13 of 13** | 1.70 s / 2.92 s | amen-to-end 1.26 to 1.47 s |
+| Phone loop (speakers → iPhone → talk tier → phone speaker → Spark-B mic) | **11 of 13** | 1.76 s / 2.12 s | amen-to-end 1.26 to 1.44 s (bound 1.8 s, uplink); see the two misses below |
+
+Phone-layer misses:
+
+* **01 prayer by address, `bot_silent`**: the prayer itself was silent (`no_bot_audio_while_prayer`
+  passed; amen-to-end 1.26 s) but the room microphone recorded 0.40 s of sound 4.4 s after the amen,
+  with no `bot-started-speaking` event: not bot speech. Origin unknown (phone UI sound or room noise);
+  the check counts every room-energy span in the case window.
+* **07c bridge, first audio 2.08 s** against the 2.0 s bound: the uplink adds about 0.45 s on the
+  phone path (the room layer measured 1.56 s for the same case). The suite now carries a 2.5 s
+  phone-layer allowance for this case, recorded in the matrix amendments; it was added after this
+  run, so the run is reported as it scored.
+
+Per-case tables (rendered from the run directories):
+
+### `20261014T075445Z-phone-full-phone-6` (phone mode)
+
+| Case | Result | First audio (s) | Amen to end (s) | Judge | Failed checks / note |
+|---|---|---|---|---|---|
+| 01-prayer-address-amen | fail |  | 1.26 |  | bot_silent |
+| 01b-prayer-lets-pray | **pass** |  | 1.10 |  |  |
+| 02a-scripture-psalm23 | **pass** | 1.76 |  | 5 |  |
+| 02b-scripture-romans8-suffering | **pass** | 2.12 |  | 5 |  |
+| 03-word-from-god | **pass** | 1.67 |  | 3 |  |
+| 04-interpretations | **pass** | 2.07 |  | 5 |  |
+| 05-project-checkin | **pass** | 1.67 |  | 5 |  |
+| 06-work-request | **pass** | 1.95 |  | 5 |  |
+| 07a-backchannel | **pass** |  |  | 5 |  |
+| 07b-barge-in | **pass** |  |  | 5 |  |
+| 07c-bridge | fail | 2.08 |  |  | first_audio_latency |
+| 08-devotional-interruption | **pass** |  |  | 5 |  |
+| 09-quiet-wake | **pass** |  |  |  |  |
+
+**11 of 13 passed.** First-audio latency over cases 2 to 5: p50 1.76 s, p95 2.12 s, max 2.12 s (n=5).
+
+### `20261014T080748Z-room-full-room-6` (room mode)
+
+| Case | Result | First audio (s) | Amen to end (s) | Judge | Failed checks / note |
+|---|---|---|---|---|---|
+| 01-prayer-address-amen | **pass** |  | 1.21 |  |  |
+| 01b-prayer-lets-pray | **pass** |  | 1.43 |  |  |
+| 02a-scripture-psalm23 | **pass** | 1.70 |  | 5 |  |
+| 02b-scripture-romans8-suffering | **pass** | 1.77 |  | 5 |  |
+| 03-word-from-god | **pass** | 1.70 |  | 3 |  |
+| 04-interpretations | **pass** | 1.51 |  | 3 |  |
+| 05-project-checkin | **pass** | 2.92 |  | 5 |  |
+| 06-work-request | **pass** | 1.46 |  | 5 |  |
+| 07a-backchannel | **pass** |  |  | 5 |  |
+| 07b-barge-in | **pass** |  |  | 5 |  |
+| 07c-bridge | **pass** | 1.49 |  |  |  |
+| 08-devotional-interruption | **pass** |  |  | 3 |  |
+| 09-quiet-wake | **pass** |  |  |  |  |
+
+**13 of 13 passed.** First-audio latency over cases 2 to 5: p50 1.70 s, p95 2.92 s, max 2.92 s (n=5).
+
+### `20261014T082047Z-file-full-file-6` (file mode)
+
+| Case | Result | First audio (s) | Amen to end (s) | Judge | Failed checks / note |
+|---|---|---|---|---|---|
+| 01-prayer-address-amen | **pass** |  | 0.98 |  |  |
+| 01b-prayer-lets-pray | **pass** |  | 0.99 |  |  |
+| 02a-scripture-psalm23 | **pass** | 1.35 |  | 5 |  |
+| 02b-scripture-romans8-suffering | **pass** | 1.45 |  | 5 |  |
+| 03-word-from-god | **pass** | 1.35 |  | 3 |  |
+| 04-interpretations | **pass** | 1.33 |  | 3 |  |
+| 05-project-checkin | **pass** | 2.54 |  | 5 |  |
+| 06-work-request | **pass** | 2.10 |  | 5 |  |
+| 07a-backchannel | **pass** |  |  | 5 |  |
+| 07b-barge-in | **pass** |  |  | 5 |  |
+| 07c-bridge | **pass** | 1.46 |  |  |  |
+| 08-devotional-interruption | **pass** |  |  | 5 |  |
+| 09-quiet-wake | **pass** |  |  |  |  |
+
+**13 of 13 passed.** First-audio latency over cases 2 to 5: p50 1.35 s, p95 2.54 s, max 2.54 s (n=5).
+
+Earlier full campaigns the same night, kept for the record: `*-full-*-4` (phone 8/13, room 9/13,
+file 7/13, before the admin-hold mode event, the per-session reading state and the context scrubber
+were right) and `*-full-*-5` (phone 12/13, room 10/13, file 12/13, before the backchannel window was
+put on the VAD clock and stacked pause phrases were consumed).
+
 
 ## Prayer capture (phone, isolated intake)
 
@@ -69,5 +158,5 @@ RESULTS_PLACEHOLDER
 * **Work request.** The allocator is inactive, so every work request is saved as an operation and
   spoken as refused and not done ("Saved as operation …, but the allocator refused it"); the
   acknowledgement path with an operation id is proven, the dispatch is not.
-* The `voice-talk.service` unit was enabled at the end of the campaign; before that the server ran
-  under `setsid nohup` with the same command.
+* `voice-talk.service` was enabled before the final campaign (the development runs earlier that night
+  ran the same command under `setsid nohup`).
