@@ -15,8 +15,9 @@ from collections.abc import AsyncGenerator
 import aiohttp
 import numpy as np
 from loguru import logger
-from pipecat.frames.frames import ErrorFrame, Frame, TranscriptionFrame
+from pipecat.frames.frames import UserStartedSpeakingFrame, UserStoppedSpeakingFrame, VADUserStoppedSpeakingFrame, ErrorFrame, Frame, TranscriptionFrame
 from pipecat.services.settings import STTSettings
+from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.services.stt_service import SegmentedSTTService
 from pipecat.transcriptions.language import Language
 from pipecat.utils.time import time_now_iso8601
@@ -43,6 +44,31 @@ class CohereSparkSTTService(SegmentedSTTService):
 
     def can_generate_metrics(self) -> bool:
         return True
+
+    # ----- one transcript per turn -----
+    # NOTE [Context]: SegmentedSTTService transcribes every VAD segment. A pause inside a sentence
+    # ("Psalm twenty | three", "my son, | and what Scripture") then produced two transcripts, and
+    # Cohere normalised the first half on its own ("Psalm 20?"), so the model answered the wrong
+    # psalm. Smart Turn already decides where the turn ends; here the audio of a turn is kept
+    # across its pauses and sent once, when the aggregator broadcasts UserStoppedSpeakingFrame.
+    # Speech that never opens a turn (a backchannel under the start strategy's window) is still
+    # transcribed per segment, so "mm-hmm" is not glued onto the next question.
+    async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
+        if isinstance(frame, UserStartedSpeakingFrame):
+            self._turn_open = True
+        if isinstance(frame, VADUserStoppedSpeakingFrame) and getattr(self, "_turn_open", False):
+            # Keep buffering through the pause; the turn is still open.
+            await FrameProcessor.process_frame(self, frame, direction)
+            await self.push_frame(frame, direction)
+            return
+        if isinstance(frame, UserStoppedSpeakingFrame):
+            self._turn_open = False
+            await FrameProcessor.process_frame(self, frame, direction)
+            if self._user_speaking or len(self._audio_buffer) > self._audio_buffer_size_1s:
+                await self._handle_user_stopped_speaking(frame)  # flush the whole turn
+            await self.push_frame(frame, direction)
+            return
+        await super().process_frame(frame, direction)
 
     async def run_stt(self, audio: bytes) -> AsyncGenerator[Frame | None, None]:
         # Energy gate: Cohere invents text ("Thank you.") on near-silent utterances that the VAD let

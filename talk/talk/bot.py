@@ -233,6 +233,14 @@ if _runner_app is not None:
                 released.append(sid)
         return {"released": released}
 
+    @_runner_app.post("/admin/sessions/{session_id}/interrupt")
+    async def admin_session_interrupt(session_id: str) -> dict[str, Any]:
+        fl = LIVE_FLOORS.get(session_id)
+        if fl is None:
+            return {"error": "no such session", "sessions": list(LIVE_FLOORS)}
+        await fl.broadcast_interruption()
+        return {"session_id": session_id, "interrupted": True}
+
     @_runner_app.post("/admin/sessions/{session_id}/mode")
     async def admin_session_mode(session_id: str, body: dict[str, Any]) -> dict[str, Any]:
         fl = LIVE_FLOORS.get(session_id)

@@ -50,7 +50,8 @@ class ClientMessages(FrameProcessor):
                 self._floor.events.append({"t": time.time(), "client": message})
                 if message.get("event") == "benchmark_client" and self._floor.held:
                     # A benchmark client connecting under an operator hold is the one session meant to talk.
+                    # Nothing has been announced to this client yet, so reset silently: no mode event.
                     self._floor.held = False
-                    await self._floor.set_mode("available", "benchmark_client")
+                    self._floor.mode = "available"
                 return
         await self.push_frame(frame, direction)

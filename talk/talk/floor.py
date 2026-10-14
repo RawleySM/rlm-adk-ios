@@ -205,13 +205,20 @@ class FloorProcessor(FrameProcessor):
                 logger.info(f"floor: backchannel transcript dropped: {text!r}")
                 self.events.append({"t": time.time(), "backchannel_dropped": text})
                 return
-            if final and (n in self._pause or any(n == p or n.startswith(p + " ") for p in self._pause) and len(n.split()) <= 4):
-                # "hold on", "wait", "stop": stop speaking and wait; never a question for the LLM.
-                logger.info(f"floor: pause phrase {text!r}; interrupting and waiting")
-                self.events.append({"t": time.time(), "pause_phrase": text})
+            lead = next((p for p in sorted(self._pause, key=len, reverse=True) if n == p or n.startswith(p + " ")), None) if final else None
+            if lead is not None:
+                # "hold on", "wait", "stop": stop speaking. Alone, it is never a question for the LLM;
+                # followed by more words ("Hold on. What are the green pastures about?") the rest is the turn.
+                remainder = n[len(lead):].strip()
+                logger.info(f"floor: pause phrase {lead!r} in {text!r}; interrupting" + ("; waiting" if not remainder else f"; forwarding {remainder!r}"))
+                self.events.append({"t": time.time(), "pause_phrase": lead, "remainder": remainder})
                 if self.bot_speaking:
                     await self.broadcast_interruption()
-                return
+                if not remainder or len(remainder.split()) < 2:
+                    return
+                frame.text = text[len(text) - len(remainder) :] if text.lower().endswith(remainder) else remainder
+                text = frame.text
+                n = _norm(text)
             if final and any(p in n for p in self._continue) and len(n.split()) <= 10:
                 verses = self.reading_state.get("verses") or []
                 through = int(self.reading_state.get("spoken_through") or 0)

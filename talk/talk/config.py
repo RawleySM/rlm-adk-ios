@@ -62,7 +62,7 @@ class TalkConfig:
     pause_phrases: list[str] = field(default_factory=lambda: ["hold on", "wait", "wait a moment", "one moment", "hang on", "stop", "stop there", "pause", "hold on a second", "wait wait"])
     duck_db: float = 3.0
     duck_hold_s: float = 0.4
-    bridge_after_s: float = 0.35
+    bridge_after_s: float = 0.2
     bridge_phrases: list[str] = field(default_factory=lambda: ["Let me look.", "One moment.", "Looking into that."])
     # Audio
     audio_in_sample_rate: int = 16000
