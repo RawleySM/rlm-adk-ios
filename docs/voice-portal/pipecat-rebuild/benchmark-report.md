@@ -15,7 +15,7 @@ are rendered by `rlm-voice-sim/scripts/benchmark_tables.py <run_dir>`.
 | Skill service | rlm-adk-ios `8dee970d6f47c1b3e36e89d2ae23437ab854b79c` on the desktop (`/healthz` reports it); projection with Edwards and BibleProject |
 | spark-inference | `7e98c9d58fb5d8997dd35b1feae3450546148aa9` on Spark-A (28080, Cohere `cohere-transcribe-03-2026`) and Spark-B (`qwen-coding-b` through 28111) |
 | voicesim | rlm-voice-sim `26540cb` (`voicesim talk`, modes text/file/room/phone, `scripts/phone-suite.sh`), fixtures voice `rawley-prayer` (S2-Pro, seed 7), 21 fixtures incl. `wake`/`quiet` controls |
-| iPhone app | build 12 (`0.2.0 (12)`, commit `6d60653`, PR #12 merged as `0e793ce`) on the iPhone 12 `00008101-000C35463A32001E`, iOS 26.6.2 (23G90), WebSocket transport, backend production except during wrapped runs |
+| iPhone app | build 12 for the campaigns; **build 13** (`0.2.0 (13)`, PR #17 `a863534`, installed 12:44 UTC) for the WebRTC proof; iPhone 12 `00008101-000C35463A32001E`, iOS 26.6.2 (23G90), WebSocket transport, backend production except during wrapped runs |
 
 ## Layer 1: text harness against the skill service
 
@@ -40,7 +40,8 @@ all passed; the rerun is reported separately, not folded into the first pass.
 | Digital injection (`file`) | **13 of 13** | 1.44 s / 2.59 s | 0.95 to 0.98 s |
 | Room loop (speakers → Spark-B mic → talk tier) | **13 of 13** | 1.70 s / 2.95 s | 1.26 to 1.47 s |
 | Phone loop, WebSocket transport (speakers → iPhone → talk tier → phone speaker → Spark-B mic) | **10 of 13** first pass; **4 of 4** on the rerun of 01, 01b, 07b, 08 | 1.78 s / 2.22 s | 1.13 to 1.44 s (bound 1.8 s, uplink) |
-| Phone loop, WebRTC transport (4 cases) | **0 of 5** | no reply audio | prayer entered and ended on the phone's own rules |
+| Phone loop, WebRTC transport (4 cases), build 12 | **0 of 5** | no reply audio | app stopped its audio unit (and microphone) in quiet |
+| Phone loop, WebRTC transport (4 cases), **build 13** (12:46 UTC) | **5 of 5** | 2.45 s (02a) | 1.18 to 1.25 s |
 
 Flows nodes observed in the receipts: `available` at start, `conversation` after the first reply,
 `prayer` and back on amen, `devotional` after a reading (07b, 08), `quiet` and back on wake (09);
@@ -56,7 +57,18 @@ Flows nodes observed in the receipts: `available` at start, `conversation` after
   plain answer first; rerun passed with judge 5 on both. On the phone path the soft "Hold on" did
   reach the server this time (it was lost once earlier in the night; see limits).
 
-**WebRTC transport (SmallWebRTC, Pipecat iOS SDK 1.3.0), evidence:** the server's RTVI mirroring and
+**WebRTC transport, build 13 (12:46 UTC, run `20261014T124621Z-phone-phone-webrtc-2`):** after
+`WebRTCVoiceOutput` stopped disabling libwebrtc's audio unit (PR #17, merged `a863534`), the same
+four cases passed 5 of 5 on the phone over SmallWebRTC: prayer entered by the **talk tier's** address
+rule (`address:lord`), ended by the phone's amen rule 1.25 s / 1.18 s after the amen, no bot audio in
+prayer, Psalm 23 verbatim (first audio 2.45 s), barge-in answered, quiet by phrase and wake by voice.
+Build 13 was installed over USB at 12:44 UTC (IPA sha256
+`1c0f72ddee4e540821a99d91ece6a182b7e470a6255b057db3ca904ace8a82fb`, signed from PR #17's branch);
+the capture manifest before and after the install held 894 of 894 segments identical (895 after,
+the open segment). The phone was left on WebSocket (first audio 1.78 s against 2.45 s on WebRTC in
+the same session); Diagnostics switches it.
+
+**WebRTC transport, build 12 (10:01 UTC), evidence of the failure:** the server's RTVI mirroring and
 client-message unwrapping work (the log shows `client:sync`, `client:address:lord`, `client:amen`
 arriving as RTVI client messages). The app connected in its persisted quiet state, entered prayer on
 its own address rule, and returned to quiet after amen; in quiet on WebRTC the app stops its audio
@@ -266,6 +278,7 @@ put on the VAD clock and stacked pause phrases were consumed).
 | 05:10, 05:45 | **The phone, on the production backend, captured fixture prayers from the room during a room run and a phone run and published four synthetic prayers to the production prayer store.** The ingest has no retraction path. | Removed by store surgery with a backup, `rows.json` and receipt under `~/.local/rlm-adk/stores/prayer_pipeline/removed-synthetic-20261014/` (desktop), plus the voice-portal capture ledger rows; ingest and skill service restarted. Rule and tooling since: `scripts/phone-suite.sh` wraps every acoustic run (isolated intake + backend, app relaunched with `RLMADK_BACKEND_URL`). |
 | 05:48 | Phone session answered "One moment." with no tool call: bridge phrases had accumulated in the assistant context and the model imitated them | `ContextScrubber` before the assistant aggregator; prompt rule |
 | 09:04 | First Flows build: the owner's Qwen chat template returned HTTP 400 `System message must be at the beginning` for the node task messages Flows appends mid-context, so no turn answered | node state folded into the system instruction (`LLMUpdateSettingsFrame`), no task messages; Flows initialized at pipeline start (frames queued before the task ran were lost) |
+| 12:05 | Live use after the campaign: both owners had idled out (~80 min); each turn's request started a 200 s Qwen load that the next interruption cancelled (`model_start_cancelled` ×8 on Spark-B); the bot only spoke bridge phrases for nine minutes, and the app's audio engine stopped at 12:12 with a failed watchdog restart | owners warmed; `voice-talk-warm.timer` every 10 min; bridge follow-up notice at 8 s; app relaunched (PR #18) |
 | 06:46 | Per-turn transcription (tried to stop "Psalm twenty \| three" splitting) deadlocked: Pipecat's stop strategy waits for a transcript before ending the turn | reverted to per-segment STT; VAD stop 0.8 s; prompt rule for pieces |
 
 ## Known limits and omissions
@@ -277,10 +290,8 @@ put on the VAD clock and stacked pause phrases were consumed).
 * **Word tool latency on a new prayer.** Themes are cached per prayer; the first call for a prayer
   not yet themed took 59 s on the phone session (01:49 UTC); subsequent calls 0.3 s. The bridge
   phrase covers the gap, but a spoken "this will take a moment" is better; not done.
-* **WebRTC on the phone**: server-side floor sync is in place and exercised (RTVI client messages
-  arrive), but the app stops its microphone in quiet on that transport, so a session that enters
-  quiet cannot be woken by voice and nothing is heard; 0 of 5 cases. WebSocket is the deployed
-  transport; the app change is the next build.
+* **WebRTC on the phone**: closed with build 13 (5 of 5, see above). WebSocket remains the
+  transport the phone is left on because it measured lower first-audio latency; both are proven.
 * **Repeats.** Each case ran once per layer in the final campaign (plus the development runs listed
   in the run directory); p95 values are therefore over cases, not repeats.
 * **Work request.** The allocator is inactive, so every work request is saved as an operation and
@@ -288,3 +299,26 @@ put on the VAD clock and stacked pause phrases were consumed).
   acknowledgement path with an operation id is proven, the dispatch is not.
 * `voice-talk.service` was enabled before the final campaign (the development runs earlier that night
   ran the same command under `setsid nohup`).
+
+#### Build 13 phone runs (12:42 to 12:50 UTC)
+
+### `20261014T124621Z-phone-phone-webrtc-2` (phone mode)
+
+| Case | Result | First audio (s) | Amen to end (s) | Judge | Failed checks / note |
+|---|---|---|---|---|---|
+| 01-prayer-address-amen | **pass** |  | 1.25 |  |  |
+| 01b-prayer-lets-pray | **pass** |  | 1.18 |  |  |
+| 02a-scripture-psalm23 | **pass** | 2.45 |  | 5 |  |
+| 07b-barge-in | **pass** |  |  | 3 |  |
+| 09-quiet-wake | **pass** |  |  |  |  |
+
+**5 of 5 passed.** First-audio latency over cases 2 to 5: p50 2.45 s, p95 2.45 s, max 2.45 s (n=1).
+
+### `20261014T124245Z-phone-phone-debug1` (phone mode)
+
+| Case | Result | First audio (s) | Amen to end (s) | Judge | Failed checks / note |
+|---|---|---|---|---|---|
+| 02a-scripture-psalm23 | **pass** | 1.78 |  | 5 |  |
+| 09-quiet-wake | **pass** |  |  |  |  |
+
+**2 of 2 passed.** First-audio latency over cases 2 to 5: p50 1.78 s, p95 1.78 s, max 1.78 s (n=1).
