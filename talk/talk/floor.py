@@ -24,6 +24,7 @@ import time
 
 from loguru import logger
 from pipecat.frames.frames import (
+    StartFrame,
     BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
     Frame,
@@ -63,6 +64,9 @@ class FloorProcessor(FrameProcessor):
         self.mode = "available"
         self._task = None
         self._rtvi = None
+        self._flow = None
+        self._flow_started = False
+        self._last_node: str | None = None
         self._vad_stopped_at: float | None = None
         self._user_speaking = False
         self._pending_amen: asyncio.Task | None = None
@@ -78,9 +82,36 @@ class FloorProcessor(FrameProcessor):
         self.pending_turn = False
         self.events: list[dict] = []
 
-    def bind(self, task, rtvi=None) -> None:
+    def bind(self, task, rtvi=None, flow=None) -> None:
         self._task = task
         self._rtvi = rtvi
+        self._flow = flow
+        self._last_node: str | None = None
+
+    @property
+    def node(self) -> str | None:
+        """Current Pipecat Flows node name (``talk.flows``), or None without a flow."""
+        return getattr(self._flow, "current_node", None) if self._flow is not None else None
+
+    async def set_node(self, name: str, reason: str) -> None:
+        """Switch the Flows node (prayer / quiet / available / conversation) and tell the client."""
+        if self._flow is None or self._flow.current_node == name:
+            return
+        from talk.flows import node as flow_node
+
+        try:
+            await self._flow.set_node_from_config(flow_node(name))
+        except Exception as exc:  # noqa: BLE001 - a failed node switch must not take the floor down
+            logger.warning(f"flows: set_node {name} failed: {exc}")
+            return
+        await self.announce_node(reason)
+
+    async def announce_node(self, reason: str) -> None:
+        current = self.node
+        if current != self._last_node:
+            self._last_node = current
+            self.events.append({"t": time.time(), "node": current, "reason": reason})
+            await self._tell_client({"type": "node", "node": current, "reason": reason, "t": time.time()})
 
     async def _tell_client(self, message: dict) -> None:
         """Our bare JSON for the WebSocket client plus an RTVI server-message for the Pipecat SDK client."""
@@ -121,7 +152,10 @@ class FloorProcessor(FrameProcessor):
         if mode in {"prayer", "quiet"}:
             # Silence whatever is playing or queued, now.
             await self.broadcast_interruption()
-        await self._tell_client({"type": "mode", "mode": mode, "from": previous, "reason": reason, "t": stamp})
+        await self._tell_client({"type": "mode", "mode": mode, "from": previous, "reason": reason, "t": stamp, "node": self.node})
+        # Flows node follows the floor: prayer and quiet have their own nodes; leaving them returns to
+        # available (the next request moves it on to conversation / devotional / project).
+        await self.set_node(mode if mode in {"prayer", "quiet"} else "available", reason)
 
     def _starts_with_address(self, text: str) -> str | None:
         n = _norm(text)
@@ -155,9 +189,18 @@ class FloorProcessor(FrameProcessor):
     # ----- frames -----
     async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
+        if isinstance(frame, StartFrame) and self._flow is not None and not self._flow_started:
+            # Flows queues its node frames at the pipeline source; before the task runs they are lost.
+            self._flow_started = True
+            from talk.flows import node as flow_node
+
+            await self._flow.initialize(flow_node("available"))
+            await self.announce_node("start")
 
         if isinstance(frame, BotStartedSpeakingFrame):
             self.bot_speaking = True
+            if self.node == "available":
+                await self.set_node("conversation", "first reply")
             self.pending_turn = False
         elif isinstance(frame, (BotStoppedSpeakingFrame, InterruptionFrame)):
             self.bot_speaking = False
@@ -277,6 +320,7 @@ class FloorProcessor(FrameProcessor):
             if final:
                 self.pending_turn = True
                 self.reading_state["last_user_text"] = text
+                await self.announce_node("turn")
 
         await self.push_frame(frame, direction)
 

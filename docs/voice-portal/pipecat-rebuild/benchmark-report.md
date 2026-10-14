@@ -11,7 +11,7 @@ are rendered by `rlm-voice-sim/scripts/benchmark_tables.py <run_dir>`.
 
 | Piece | Version |
 |---|---|
-| Talk tier | rlm-adk-ios branch `claude/talk-tier` (PR #13), `talk/` at `a790d3b` (Pipecat 1.12.0, Python 3.12.3, Spark-A `~/srv/voice-talk`), voice Kokoro `bm_george`; config: VAD stop 0.8 s, Smart Turn v3 fallback 1.2 s, bridge 0.2 s, amen silence 1.2 s, STT gate 120 RMS |
+| Talk tier | rlm-adk-ios `talk/` at `acd92f4` (branch `claude/talk-flows`, on top of PR #13): Pipecat Flows with six nodes (`talk/flows.py`) (Pipecat 1.12.0, Python 3.12.3, Spark-A `~/srv/voice-talk`), voice Kokoro `bm_george`; config: VAD stop 0.8 s, Smart Turn v3 fallback 1.2 s, bridge 0.2 s, amen silence 1.2 s, STT gate 120 RMS; `voice-talk.service` with `TimeoutStartSec` 600 |
 | Skill service | rlm-adk-ios `8dee970d6f47c1b3e36e89d2ae23437ab854b79c` on the desktop (`/healthz` reports it); projection with Edwards and BibleProject |
 | spark-inference | `7e98c9d58fb5d8997dd35b1feae3450546148aa9` on Spark-A (28080, Cohere `cohere-transcribe-03-2026`) and Spark-B (`qwen-coding-b` through 28111) |
 | voicesim | rlm-voice-sim `26540cb` (`voicesim talk`, modes text/file/room/phone, `scripts/phone-suite.sh`), fixtures voice `rawley-prayer` (S2-Pro, seed 7), 21 fixtures incl. `wake`/`quiet` controls |
@@ -25,7 +25,11 @@ top-1 5 of 5; Psalm 23 verbatim WEB; Romans 8:28-30; word tool 0.3 s warm with 3
 sentence, every passage cited; interpretations 3 teachers with traditions; policy version
 `1a77aaff19de1ba3`, 17 address phrases, `amen_silence_s` 1.2).
 
-## Layers 2 and 3: the conversation-core suite, final campaign
+## Layers 2 and 3: the conversation-core suite, final campaign (Flows build)
+
+FLOWS_RESULTS_PLACEHOLDER
+
+## Layers 2 and 3: the conversation-core suite, campaign before Flows (2026-10-14 07:54 to 08:33 UTC)
 
 Thirteen cases, one pass each per layer, against the systemd-managed talk tier (`voice-talk.service`
 active), owners warmed first. Phone and room runs went through `scripts/phone-suite.sh` (isolated
@@ -137,6 +141,7 @@ put on the VAD clock and stacked pause phrases were consumed).
 | 03:39 | voicesim judge pointed at Spark-A, cold-started Qwen there and evicted Cohere | judge moved to Spark-B (`judge_url`) |
 | 05:10, 05:45 | **The phone, on the production backend, captured fixture prayers from the room during a room run and a phone run and published four synthetic prayers to the production prayer store.** The ingest has no retraction path. | Removed by store surgery with a backup, `rows.json` and receipt under `~/.local/rlm-adk/stores/prayer_pipeline/removed-synthetic-20261014/` (desktop), plus the voice-portal capture ledger rows; ingest and skill service restarted. Rule and tooling since: `scripts/phone-suite.sh` wraps every acoustic run (isolated intake + backend, app relaunched with `RLMADK_BACKEND_URL`). |
 | 05:48 | Phone session answered "One moment." with no tool call: bridge phrases had accumulated in the assistant context and the model imitated them | `ContextScrubber` before the assistant aggregator; prompt rule |
+| 09:04 | First Flows build: the owner's Qwen chat template returned HTTP 400 `System message must be at the beginning` for the node task messages Flows appends mid-context, so no turn answered | node state folded into the system instruction (`LLMUpdateSettingsFrame`), no task messages; Flows initialized at pipeline start (frames queued before the task ran were lost) |
 | 06:46 | Per-turn transcription (tried to stop "Psalm twenty \| three" splitting) deadlocked: Pipecat's stop strategy waits for a transcript before ending the turn | reverted to per-segment STT; VAD stop 0.8 s; prompt rule for pieces |
 
 ## Known limits and omissions

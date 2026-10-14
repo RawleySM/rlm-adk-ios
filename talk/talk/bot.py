@@ -55,7 +55,8 @@ from talk.floor import FloorProcessor, OutputGate  # noqa: E402
 from talk.pcm_serializer import PCMFrameSerializer  # noqa: E402
 from talk.reading_tracker import ReadingTracker  # noqa: E402
 from talk.session_log import SessionLog  # noqa: E402
-from talk.tools import new_reading_state, register_tools, tools_schema  # noqa: E402
+from talk.flows import make_flow_manager, node as flow_node  # noqa: E402
+from talk.tools import configure as configure_tools, new_reading_state  # noqa: E402
 
 SYSTEM_PROMPT = """You are the voice of Rawley's personal Scripture and prayer portal. You speak out loud through
 a text-to-speech voice, so answer in short plain spoken sentences: no lists, no markdown, no asterisks,
@@ -109,8 +110,8 @@ async def run_bot(transport, cfg: TalkConfig, *, session_label: str) -> None:
         text_filters=[MarkdownTextFilter()],
     )
     reading_state = new_reading_state()
-    register_tools(llm, cfg, reading_state)
-    context = LLMContext(messages=[], tools=tools_schema())
+    configure_tools(cfg)
+    context = LLMContext(messages=[])
     aggregators = LLMContextAggregatorPair(
         context,
         user_params=LLMUserAggregatorParams(
@@ -160,7 +161,10 @@ async def run_bot(transport, cfg: TalkConfig, *, session_label: str) -> None:
         observers=[RTVIObserver(rtvi), session_log],
         idle_timeout_secs=None,
     )
-    floor.bind(task, rtvi)
+    # Pipecat Flows: six conversation states (talk.flows); the floor switches prayer/quiet/available,
+    # the tool handlers switch devotional/project/conversation.
+    flow = make_flow_manager(llm=llm, context_aggregator=aggregators, task=task, role_message=SYSTEM_PROMPT, reading_state=reading_state)
+    floor.bind(task, rtvi, flow)
     LIVE_FLOORS[session_id] = floor
     if HOLD["active"] and HOLD.get("hold_new"):
         floor.held = True
