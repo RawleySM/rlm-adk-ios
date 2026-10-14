@@ -287,6 +287,11 @@ put on the VAD clock and stacked pause phrases were consumed).
   while the phone's own speaker played never reached the talk tier (no VAD event, no transcript);
   in the later phone runs it did and case 8 passed. The app's voice processing can suppress a quiet
   overlap; treat it as intermittent until the app ducks instead of suppressing.
+  **Confirmed in live use 2026-10-14 13:01 local** (session `websocket-d33b013b89`): the user's own
+  voice produced no VAD event for the whole 3 min 18 s Romans 4 reading. See
+  `ios-client.md` § "Double talk during playback" for the evidence, the uplink probe, the build-14
+  audio knobs and the measurement plan; the talk tier's barge-in now cuts on uplink energy at the
+  window end (about 0.95 s after onset) once the voice does reach it.
 * **Word tool latency on a new prayer.** Themes are cached per prayer; the first call for a prayer
   not yet themed took 59 s on the phone session (01:49 UTC); subsequent calls 0.3 s. The bridge
   phrase covers the gap, but a spoken "this will take a moment" is better; not done.

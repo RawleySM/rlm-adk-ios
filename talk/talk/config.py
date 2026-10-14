@@ -56,6 +56,10 @@ class TalkConfig:
     # The dossier's 320 ms assumes energy and semantic cues too; with duration alone, a spoken "mm-hmm"
     # (0.70 s voiced in the suite's fixture) needs a wider window. Barge-in is measured from the window's end.
     backchannel_max_s: float = 0.75
+    # At the window end, voice in the last ``barge_in_voiced_window_s`` of uplink (RMS >= ``barge_in_min_rms``
+    # and >= 30 % of the utterance peak) cuts the bot at once instead of waiting for the VAD stop.
+    barge_in_voiced_window_s: float = 0.3
+    barge_in_min_rms: float = 60.0
     # Words that mean "stop and wait": they interrupt the bot and are never answered as a turn.
     # Words that resume an interrupted reading; handled by the floor without the LLM.
     continue_phrases: list[str] = field(default_factory=lambda: ["continue", "go on", "keep going", "keep reading", "carry on", "resume", "pick up where you stopped", "where you stopped", "where you left off", "finish the reading"])
@@ -77,6 +81,8 @@ class TalkConfig:
     # Utterances whose RMS (int16) is below this are not transcribed: Cohere invents "Thank you." on
     # near-silence. 0 disables; the STT log line prints each utterance's RMS for tuning.
     stt_min_rms: float = 120.0
+    # Seconds of uplink audio to record per session for double-talk analysis (0 = off); see uplink_probe.py.
+    uplink_record_s: float = 0.0
     vad_stop_secs: float = 0.8
     # Smart Turn's fallback when it keeps judging a pause as mid-sentence: end the turn after this
     # much silence anyway. Pipecat's default of 3.0 s put first audio past the 3.0 s acceptance bound.

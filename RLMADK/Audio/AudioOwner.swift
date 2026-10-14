@@ -41,6 +41,8 @@ final class AudioOwner: NSObject {
     /// Whether voice processing was on when the engine started (not read from the input node,
     /// which must not be touched before a microphone is wanted).
     private(set) var voiceProcessingOn = false
+    /// Whether voice processing's automatic gain control was on when the engine started.
+    private(set) var agcOn = false
     private(set) var state: State = .idle
     var onStateChange: ((State) -> Void)?
     var onBuffer: ((AVAudioPCMBuffer, AVAudioTime) -> Void)?
@@ -77,7 +79,7 @@ final class AudioOwner: NSObject {
         let session = AVAudioSession.sharedInstance()
         let inputs = session.currentRoute.inputs.map { $0.portType.rawValue }.joined(separator: ",")
         let outputs = session.currentRoute.outputs.map { $0.portType.rawValue }.joined(separator: ",")
-        return "category \(session.category.rawValue) mode \(session.mode.rawValue) options \(session.categoryOptions.rawValue) rate \(Int(session.sampleRate)) io \(String(format: "%.3f", session.ioBufferDuration)) in [\(inputs)] out [\(outputs)] vp \(voiceProcessingOn)"
+        return "category \(session.category.rawValue) mode \(session.mode.rawValue) options \(session.categoryOptions.rawValue) rate \(Int(session.sampleRate)) io \(String(format: "%.3f", session.ioBufferDuration)) in [\(inputs)] out [\(outputs)] vp \(voiceProcessingOn) agc \(agcOn) tuning[\(AudioTuning.current.description)]"
     }
     var lastBufferAge: TimeInterval? {
         factsLock.lock(); defer { factsLock.unlock() }
@@ -107,7 +109,7 @@ final class AudioOwner: NSObject {
 
     func configureSession() throws {
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .defaultToSpeaker])
+        try session.setCategory(.playAndRecord, mode: AudioTuning.current.mode.sessionMode, options: [.allowBluetooth, .defaultToSpeaker])
         try session.setActive(true, options: [])
     }
 
@@ -118,10 +120,20 @@ final class AudioOwner: NSObject {
         do {
             try configureSession()
             let input = engine.inputNode
-            if input.isVoiceProcessingEnabled == false {
-                try? input.setVoiceProcessingEnabled(true)
+            let tuning = AudioTuning.current
+            if input.isVoiceProcessingEnabled != tuning.voiceProcessing {
+                try? input.setVoiceProcessingEnabled(tuning.voiceProcessing)
             }
             voiceProcessingOn = input.isVoiceProcessingEnabled
+            if voiceProcessingOn {
+                // NOTE [Context]: voice processing's automatic gain control is one suspect for the
+                // near-end attenuation during bot playback (double talk); it is a launch knob.
+                input.isVoiceProcessingAGCEnabled = tuning.agc
+                agcOn = input.isVoiceProcessingAGCEnabled
+            } else {
+                agcOn = false
+            }
+            player.volume = tuning.botGain
             let format = input.outputFormat(forBus: 0)
             guard format.sampleRate > 0, format.channelCount > 0 else {
                 throw NSError(domain: "AudioOwner", code: 1, userInfo: [NSLocalizedDescriptionKey: "no input format (no microphone on this device/simulator)"])

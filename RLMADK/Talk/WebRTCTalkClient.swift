@@ -161,7 +161,7 @@ final class WebRTCTalkClient: NSObject, TalkClient {
         let session = AVAudioSession.sharedInstance()
         let config = RTCAudioSessionConfiguration.webRTC()
         config.category = AVAudioSession.Category.playAndRecord.rawValue
-        config.mode = AVAudioSession.Mode.voiceChat.rawValue
+        config.mode = AudioTuning.current.mode.sessionMode.rawValue
         config.categoryOptions = [.allowBluetooth, .defaultToSpeaker]
         if session.sampleRate > 0 { config.sampleRate = session.sampleRate }
         if session.ioBufferDuration > 0 { config.ioBufferDuration = session.ioBufferDuration }

@@ -52,6 +52,7 @@ from talk.client_messages import ClientMessages  # noqa: E402
 from talk.cohere_stt import CohereSparkSTTService  # noqa: E402
 from talk.config import TalkConfig, load_config  # noqa: E402
 from talk.floor import FloorProcessor, OutputGate  # noqa: E402
+from talk.uplink_probe import UplinkProbe  # noqa: E402
 from talk.pcm_serializer import PCMFrameSerializer  # noqa: E402
 from talk.reading_tracker import ReadingTracker  # noqa: E402
 from talk.session_log import SessionLog  # noqa: E402
@@ -135,6 +136,7 @@ async def run_bot(transport, cfg: TalkConfig, *, session_label: str) -> None:
     pipeline = Pipeline(
         [
             transport.input(),
+            UplinkProbe(cfg.root, session_id, record_s=cfg.uplink_record_s, sample_rate=cfg.audio_in_sample_rate),
             ClientMessages(floor),
             rtvi,
             stt,

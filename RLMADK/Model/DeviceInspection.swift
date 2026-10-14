@@ -43,6 +43,7 @@ struct DeviceSnapshot: Codable, Equatable {
     var voice_output: String? = nil
     var webrtc_spike: String? = nil
     var policy_source: String? = nil
+    var audio_tuning: String? = nil
 
     struct CaptureSummary: Codable, Equatable {
         var capture_id: String
