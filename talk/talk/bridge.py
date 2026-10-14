@@ -1,12 +1,12 @@
 """Bridge phrases: when the first spoken reply would be late, say a short phrase so the silence
 does not read as a dropped turn (the dossier's acoustic bridge filler).
 
-Placed between the floor and the user aggregator, so it only ever sees transcripts the floor let
-through (never prayer text). The timer starts when the utterance's final transcript arrives
-(``TranscriptionFrame``: the words are known, the LLM is about to run) and is cancelled by the first
-bot audio (``BotStartedSpeakingFrame``, a system frame that reaches every processor), an interruption,
-new user speech, or a mode that forbids speech. A bridge is spoken at most once per turn. The
-``TTSSpeakFrame`` it pushes travels through the aggregator and the LLM untouched to the TTS.
+Placed between the LLM and the TTS, so its ``TTSSpeakFrame`` is never queued behind a running
+completion (the LLM service handles frames in order; a bridge pushed upstream of it waited for the
+whole tool round-trip). The timer starts when the aggregator closes the user turn
+(``UserStoppedSpeakingFrame``) provided the floor forwarded a transcript for it (``floor.pending_turn``,
+never set for prayer text or backchannels) and is cancelled by the first bot audio
+(``BotStartedSpeakingFrame``), an interruption or new user speech.
 """
 
 from __future__ import annotations
@@ -20,9 +20,9 @@ from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
     Frame,
     InterruptionFrame,
-    TranscriptionFrame,
     TTSSpeakFrame,
     UserStartedSpeakingFrame,
+    UserStoppedSpeakingFrame,
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
@@ -55,10 +55,13 @@ class BridgeProcessor(FrameProcessor):
 
     async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
-        if isinstance(frame, TranscriptionFrame) and direction == FrameDirection.DOWNSTREAM:
+        if isinstance(frame, UserStoppedSpeakingFrame):
+            # The aggregator closed the user turn: the LLM runs now if the floor forwarded a transcript.
             self._cancel()
-            if self._floor.mode == "available":
+            if self._floor.pending_turn and self._floor.mode == "available":
                 self._timer = asyncio.create_task(self._fire(time.time()))
-        elif isinstance(frame, (BotStartedSpeakingFrame, InterruptionFrame, UserStartedSpeakingFrame)):
+        elif isinstance(frame, UserStartedSpeakingFrame):
+            self._cancel()
+        elif isinstance(frame, (BotStartedSpeakingFrame, InterruptionFrame)):
             self._cancel()
         await self.push_frame(frame, direction)

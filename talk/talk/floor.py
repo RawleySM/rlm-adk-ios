@@ -24,10 +24,13 @@ import time
 
 from loguru import logger
 from pipecat.frames.frames import (
+    BotStartedSpeakingFrame,
+    BotStoppedSpeakingFrame,
     Frame,
     InputTransportMessageFrame,
     InterimTranscriptionFrame,
     LLMTextFrame,
+    InterruptionFrame,
     OutputTransportMessageUrgentFrame,
     TranscriptionFrame,
     TTSAudioRawFrame,
@@ -63,6 +66,9 @@ class FloorProcessor(FrameProcessor):
         self._quiet = [_norm(p) for p in cfg.quiet_phrases]
         self._wake = [_norm(p) for p in cfg.wake_phrases]
         self._backchannel = {_norm(w) for w in cfg.backchannel_words}
+        self.bot_speaking = False
+        # True from the moment a transcript was forwarded to the LLM until the bot starts speaking.
+        self.pending_turn = False
         self.events: list[dict] = []
 
     def bind(self, task) -> None:
@@ -103,7 +109,8 @@ class FloorProcessor(FrameProcessor):
     async def _end_prayer_after_silence(self, heard_at: float) -> None:
         # The amen was heard in a final transcript that arrived after the VAD stop; the silence
         # window counts from that stop, not from the transcript's arrival.
-        anchor = self._vad_stopped_at or heard_at
+        # VAD reports the stop ``vad_stop_secs`` after the last voiced sample; count silence from that sample.
+        anchor = (self._vad_stopped_at - self._cfg.vad_stop_secs) if self._vad_stopped_at else heard_at
         remaining = self._cfg.amen_silence_s - (time.time() - anchor)
         if remaining > 0:
             await asyncio.sleep(remaining)
@@ -116,6 +123,11 @@ class FloorProcessor(FrameProcessor):
     async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
 
+        if isinstance(frame, BotStartedSpeakingFrame):
+            self.bot_speaking = True
+            self.pending_turn = False
+        elif isinstance(frame, (BotStoppedSpeakingFrame, InterruptionFrame)):
+            self.bot_speaking = False
         if isinstance(frame, VADUserStartedSpeakingFrame):
             self._user_speaking = True
             if self.mode == "prayer":
@@ -174,11 +186,19 @@ class FloorProcessor(FrameProcessor):
             if self.mode == "quiet" and final:
                 # Heard, journaled by the app, not answered.
                 return
-            if final and n and len(n.split()) <= 2 and all(w in self._backchannel for w in n.split()):
+            if final and n and (n in self._backchannel or (len(n.split()) <= 2 and all(w in self._backchannel for w in n.split()))):
                 # "mm-hmm", "yeah", "okay": an acknowledgement, never a turn.
                 logger.info(f"floor: backchannel transcript dropped: {text!r}")
                 self.events.append({"t": time.time(), "backchannel_dropped": text})
                 return
+            if final and self.bot_speaking:
+                # A short utterance that outlasted nothing but is not a backchannel ("hold on", "wait")
+                # is an interruption decided by its words rather than its length.
+                logger.info(f"floor: words interrupt the bot: {text!r}")
+                self.events.append({"t": time.time(), "word_interrupt": text})
+                await self.broadcast_interruption()
+            if final:
+                self.pending_turn = True
 
         await self.push_frame(frame, direction)
 

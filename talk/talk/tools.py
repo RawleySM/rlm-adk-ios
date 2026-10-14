@@ -1,9 +1,17 @@
 """Tool functions the LLM may call; each is an HTTP request to the skill service on the desktop.
 
-The skill service (``voice_portal`` and its successors) owns the data: prayers, Scripture, teaching,
-Theographic, enrichment products and the project work register. Pipecat executes function calls
-asynchronously, so a slow skill never stalls the audio loop; results re-enter the context when they
-arrive. Every tool returns plain spoken-ready text plus structured fields the app can show.
+Two kinds of tool:
+
+* **Exact-speech tools** (``read_scripture``, ``continue_reading``, ``word_from_prayer``,
+  ``request_work``): the skill service's text is spoken verbatim. The handler pushes one
+  ``TTSSpeakFrame`` per sentence straight to the TTS, records the words as the assistant's message
+  in the context, and returns the result with ``run_llm=False`` so the model does not paraphrase a
+  verse, a frame or an operation id. Verses are pushed one frame each so the reading tracker knows
+  exactly how far a reading got when it is interrupted.
+* **Composed tools** (``search_sources``, ``interpretations``, ``project_checkin``): the result goes
+  back to the model, which answers in its own words under the system prompt's rules.
+
+Pipecat executes function calls asynchronously, so a slow skill never stalls the audio loop.
 """
 
 from __future__ import annotations
@@ -16,14 +24,15 @@ import aiohttp
 from loguru import logger
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
+from pipecat.frames.frames import FunctionCallResultProperties, LLMMessagesAppendFrame, TTSSpeakFrame
 from pipecat.services.llm_service import FunctionCallParams
 
 from talk.config import TalkConfig
 
 _cfg: TalkConfig | None = None
-# The last read_scripture result (reference, chapter_reference, verses) for the reading tracker.
-LAST_READING: dict[str, Any] | None = None
 
+# Shared with talk.reading_tracker: the verses of the current reading and how far it was spoken.
+READING_STATE: dict[str, Any] = {"reference": None, "chapter_reference": None, "verses": [], "spoken_through": 0}
 
 UNAVAILABLE_NOTE = (
     "This source is unavailable right now. Tell Rawley plainly that you could not reach it, answer briefly "
@@ -59,6 +68,26 @@ async def _post(path: str, payload: dict[str, Any]) -> dict[str, Any]:
             return json.loads(text)
 
 
+async def _speak_exact(params: FunctionCallParams, sentences: list[str], *, history: str, result: dict[str, Any]) -> None:
+    """Speak ``sentences`` verbatim, record them as the assistant's words, and skip the LLM."""
+
+    for sentence in sentences:
+        sentence = (sentence or "").strip()
+        if sentence:
+            await params.llm.push_frame(TTSSpeakFrame(sentence))
+    if history.strip():
+        await params.llm.push_frame(LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": history.strip()}], run_llm=False))
+    await params.result_callback(result, properties=FunctionCallResultProperties(run_llm=False))
+
+
+def _chapter_reference(reference: str) -> str:
+    m = re.match(r"^(.*?\d+)", reference.strip())
+    return m.group(1) if m else reference
+
+
+# ----- composed tools -----
+
+
 async def search_sources(params: FunctionCallParams) -> None:
     """Retrieve excerpts from prayers, Scripture and teaching for a topic."""
     args = params.arguments or {}
@@ -71,33 +100,6 @@ async def search_sources(params: FunctionCallParams) -> None:
         await params.result_callback({"hits": hits, "note": "Say which excerpts you drew on by title; the app shows the citations."})
     except Exception as exc:  # the barrier: a failed tool is a spoken fact, not a stall
         logger.warning(f"search_sources failed: {exc}")
-        await params.result_callback(_unavailable(str(exc)))
-
-
-async def read_scripture(params: FunctionCallParams) -> None:
-    """Fetch the retained edition's verses for a reference, verbatim."""
-    args = params.arguments or {}
-    try:
-        result = await _get("/tools/scripture", {"reference": args.get("reference", "")})
-        if isinstance(result, dict) and result.get("available") and result.get("verses"):
-            global LAST_READING
-            first = result["verses"][0]
-            osis = str(first.get("osis") or "")
-            chapter_ref = args.get("reference", "")
-            m = re.match(r"^(.*?\d+)", chapter_ref.strip())
-            LAST_READING = {"reference": args.get("reference", ""), "chapter_reference": (m.group(1) if m else chapter_ref), "osis": osis, "verses": result["verses"]}
-        await params.result_callback(result)
-    except Exception as exc:
-        await params.result_callback(_unavailable(str(exc)))
-
-
-async def word_from_prayer(params: FunctionCallParams) -> None:
-    """Latest prayer → themes → passages from the pairings ledger and retrieval."""
-    args = params.arguments or {}
-    try:
-        result = await _get("/tools/word", {"which": args.get("which", "latest")})
-        await params.result_callback(result)
-    except Exception as exc:
         await params.result_callback(_unavailable(str(exc)))
 
 
@@ -121,19 +123,88 @@ async def project_checkin(params: FunctionCallParams) -> None:
         await params.result_callback(_unavailable(str(exc)))
 
 
+# ----- exact-speech tools -----
+
+
+async def read_scripture(params: FunctionCallParams) -> None:
+    """Read the retained edition's verses for a reference, verbatim, one verse per spoken unit."""
+    args = params.arguments or {}
+    reference = str(args.get("reference", "")).strip()
+    try:
+        result = await _get("/tools/scripture", {"reference": reference})
+    except Exception as exc:
+        await params.result_callback(_unavailable(str(exc)))
+        return
+    if not (isinstance(result, dict) and result.get("available") and result.get("verses")):
+        await params.result_callback(result if isinstance(result, dict) else _unavailable("bad scripture result"))
+        return
+    verses = [{"verse": int(v.get("verse") or 0), "text": str(v.get("text") or "").strip(), "osis": v.get("osis")} for v in result["verses"]]
+    READING_STATE.update({"reference": reference, "chapter_reference": _chapter_reference(reference), "verses": verses, "spoken_through": 0})
+    sentences = [f"{reference}."] + [v["text"] for v in verses]
+    summary = {"reference": reference, "verses_read": [v["verse"] for v in verses], "cite_ids": result.get("cite_ids"), "coverage": result.get("coverage"), "spoken": True}
+    await _speak_exact(params, sentences, history=" ".join(sentences), result=summary)
+
+
+async def continue_reading(params: FunctionCallParams) -> None:
+    """Resume the interrupted reading from the verse after the last one fully spoken."""
+    verses = READING_STATE.get("verses") or []
+    through = int(READING_STATE.get("spoken_through") or 0)
+    remaining = [v for v in verses if v["verse"] > through]
+    if not verses:
+        await params.result_callback({"error": "no reading in progress", "instruction": "Tell Rawley there is no reading to continue and ask what he would like read."})
+        return
+    if not remaining:
+        await _speak_exact(params, ["That was the end of the passage."], history="That was the end of the passage.", result={"done": True})
+        return
+    sentences = [v["text"] for v in remaining]
+    await _speak_exact(params, sentences, history=" ".join(sentences), result={"reference": READING_STATE.get("reference"), "resumed_from_verse": remaining[0]["verse"], "spoken": True})
+
+
+async def word_from_prayer(params: FunctionCallParams) -> None:
+    """Latest prayer → themes → passages, read with one-sentence frames."""
+    args = params.arguments or {}
+    try:
+        result = await _get("/tools/word", {"which": args.get("which", "latest")})
+    except Exception as exc:
+        await params.result_callback(_unavailable(str(exc)))
+        return
+    if not isinstance(result, dict) or result.get("error") or not result.get("passages"):
+        await params.result_callback(result if isinstance(result, dict) else _unavailable("bad word result"))
+        return
+    prayer = result.get("prayer") or {}
+    sentences: list[str] = [result.get("opening") or (f"A word for the prayer you recorded {str(prayer.get('recorded_at', ''))[:10]}." if prayer else "A word for your prayer.")]
+    for passage in result["passages"]:
+        if passage.get("frame"):
+            sentences.append(str(passage["frame"]).strip())
+        if passage.get("reference"):
+            sentences.append(f"{passage['reference']}.")
+        for v in passage.get("verses") or []:
+            text = str(v.get("text") or "").strip()
+            if text:
+                sentences.append(text)
+    summary = {"prayer": {k: prayer.get(k) for k in ("id", "recorded_at")}, "themes": result.get("themes"), "passages": [p.get("reference") for p in result["passages"]], "spoken": True}
+    await _speak_exact(params, sentences, history=" ".join(sentences), result=summary)
+
+
 async def request_work(params: FunctionCallParams) -> None:
-    """Post a durable work request to rlm-adk's instance mailbox; accepted, never done."""
+    """Post a durable work request to rlm-adk's instance mailbox; accepted or refused, never done."""
     args = params.arguments or {}
     try:
         result = await _post("/tools/work", {"request_text": args.get("request", ""), "kind": args.get("kind", "research")})
-        await params.result_callback(result)
     except Exception as exc:
         await params.result_callback(_unavailable(str(exc)))
+        return
+    spoken = str(result.get("spoken") or "").strip() if isinstance(result, dict) else ""
+    if not spoken:
+        await params.result_callback(result if isinstance(result, dict) else _unavailable("bad work result"))
+        return
+    await _speak_exact(params, [spoken], history=spoken, result={"operation_id": result.get("operation_id"), "status": result.get("status"), "spoken": True})
 
 
 FUNCTIONS = {
     "search_sources": search_sources,
     "read_scripture": read_scripture,
+    "continue_reading": continue_reading,
     "word_from_prayer": word_from_prayer,
     "interpretations": interpretations,
     "project_checkin": project_checkin,
@@ -155,31 +226,37 @@ def tools_schema() -> ToolsSchema:
             ),
             FunctionSchema(
                 name="read_scripture",
-                description="Return the exact retained text of a Scripture reference such as 'Psalm 23' or 'Romans 8:28-30' so it can be read aloud verbatim.",
+                description="Read a Scripture reference such as 'Psalm 23' or 'Romans 8:28-30' aloud, verbatim from the retained edition. The tool speaks it; you add nothing.",
                 properties={"reference": {"type": "string"}},
                 required=["reference"],
             ),
             FunctionSchema(
+                name="continue_reading",
+                description="Resume the last Scripture reading from where it was interrupted. Use when Rawley says continue, go on, or pick up where you stopped. The tool speaks it; you add nothing.",
+                properties={},
+                required=[],
+            ),
+            FunctionSchema(
                 name="word_from_prayer",
-                description="A word from God in response to Rawley's latest (or today's morning) prayer: its themes and two to four Scripture passages that answer them, each with a one-sentence frame.",
+                description="A word from God in response to Rawley's latest (or this morning's) prayer: the tool names the prayer's themes and reads two to four Scripture passages with one-sentence frames. The tool speaks it; you add nothing.",
                 properties={"which": {"type": "string", "enum": ["latest", "morning", "devotional"]}},
                 required=[],
             ),
             FunctionSchema(
                 name="interpretations",
-                description="Different interpretations of a passage or topic from the teaching library and enrichment products, each labelled by teacher and tradition.",
+                description="Different interpretations of a passage or topic from the teaching library and enrichment products, each labelled by teacher and tradition. Present them in your own words, naming each teacher and tradition, and keep Scripture, teacher and personal context distinct.",
                 properties={"reference": {"type": "string"}, "topic": {"type": "string"}},
                 required=[],
             ),
             FunctionSchema(
                 name="project_checkin",
-                description="Identify a project from a vague description and report its plan, branches, results, checkpoints and outputs from the project work register. Call again with confirmed_project_id after Rawley confirms an uncertain match.",
+                description="Identify a project from a vague description and report its plan, branches, results, checkpoints and outputs from the project work register. If the result is not confident, ask the confirmation question it gives; call again with confirmed_project_id after Rawley confirms.",
                 properties={"description": {"type": "string"}, "confirmed_project_id": {"type": "string"}},
                 required=["description"],
             ),
             FunctionSchema(
                 name="request_work",
-                description="Record a durable work request (research, project task) for the rlm-adk residents. It is only accepted, never completed, by this call.",
+                description="Record a durable work request (research, project task) for the rlm-adk residents. The tool speaks the recorded status (operation id; accepted, or refused with the reason); it is never done by this call. You add nothing.",
                 properties={"request": {"type": "string"}, "kind": {"type": "string", "enum": ["research", "project", "task"]}},
                 required=["request"],
             ),

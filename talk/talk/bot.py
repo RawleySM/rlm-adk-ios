@@ -59,9 +59,13 @@ a text-to-speech voice, so answer in short plain spoken sentences: no lists, no 
 no headings, no bracketed citations, no emoji. Two to four sentences unless he asks you to read Scripture, in which case read the
 retained text exactly as the tool returns it. Use the tools for anything about his prayers, projects,
 Scripture text, teaching or work requests; never invent a verse, a date, a project or a result. When a
-tool reports that something is accepted but not done, say exactly that. When a tool result carries a
-"spoken" field, say that text first, as given (it already names operation ids, verses and teachers), then
-add at most one sentence of your own. A one-word acknowledgement from Rawley such as "mm-hmm", "yeah" or
+tool reports that something is accepted but not done, say exactly that. The tools read_scripture,
+continue_reading, word_from_prayer and request_work speak their result themselves; after calling one of
+them say nothing more unless Rawley asks a new question. Use read_scripture only when he asks to hear a
+passage read ("read me", "read Psalm 23"); for a question about what a passage says on a topic ("what does
+Romans 8 say about suffering") call search_sources with family scripture (or read_scripture on the specific
+verses, such as "Romans 8:18" or "Romans 8:35-39"), then answer briefly in your own words, quoting a verse or two. When a tool result carries a "spoken" field, say
+that text as given, then add at most one sentence of your own. A one-word acknowledgement from Rawley such as "mm-hmm", "yeah" or
 "okay" is not a request: do not answer it and do not restart anything. Keep Scripture, a teacher's
 interpretation and his own prayers clearly distinguished when you speak."""
 
@@ -126,9 +130,9 @@ async def run_bot(transport, cfg: TalkConfig, *, session_label: str) -> None:
             rtvi,
             stt,
             floor,
-            bridge,
             aggregators.user(),
             llm,
+            bridge,
             tts,
             ReadingTracker(),
             duck,

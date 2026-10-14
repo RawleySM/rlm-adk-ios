@@ -63,7 +63,9 @@ class TalkConfig:
     # Audio
     audio_in_sample_rate: int = 16000
     audio_out_sample_rate: int = 24000
-    vad_stop_secs: float = 0.2  # Smart Turn decides the end of turn; VAD stop only gates it
+    # Clause pauses in natural (and synthetic) speech run 0.3 to 0.5 s; a 0.2 s VAD stop asked Smart Turn
+    # at every comma and it ended turns mid-sentence. 0.5 s keeps whole questions together.
+    vad_stop_secs: float = 0.5
     # Where runs and receipts go.
     state_root: str = str(Path.home() / ".local/state/voice-talk")
 
