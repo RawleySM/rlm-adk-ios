@@ -25,6 +25,8 @@ cp <checkout>/talk/voice-talk.service ~/.config/systemd/user/ && systemctl --use
 systemctl --user restart voice-talk.service && sleep 5 && curl -s http://127.0.0.1:7860/status
 ```
 
+Conversation states are Pipecat Flows nodes (`talk/flows.py`: available, conversation, prayer, devotional, project, quiet); each node's state text rides in the LLM system instruction because the Spark-B owner's chat template rejects a system message after the first (`System message must be at the beginning`). Flows is initialized when the pipeline starts (`StartFrame` at the floor), not on client connect.
+
 Configuration: `~/.config/voice-talk/config.json` (`TalkConfig`); the floor policy (address, amen,
 quiet and wake phrases, thresholds), the voice (`bm_george`), owners and the skill service URL live
 there. `VOICE_TALK_<FIELD>` overrides a field for an experiment.
