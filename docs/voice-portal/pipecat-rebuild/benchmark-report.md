@@ -7,11 +7,11 @@ wrapper evidence under `~/.local/state/voicesim/phone-suite/` (isolated intake p
 phone-trial run `~/.local/state/voicesim/phone-trial/runs/20261014T004931Z` (prayer capture). Tables
 are rendered by `rlm-voice-sim/scripts/benchmark_tables.py <run_dir>`.
 
-## Versions under test (final campaign, 2026-10-14 07:54 to 08:33 UTC)
+## Versions under test (Flows campaign, 2026-10-14 09:21 to 10:08 UTC)
 
 | Piece | Version |
 |---|---|
-| Talk tier | rlm-adk-ios `talk/` at `acd92f4` (branch `claude/talk-flows`, on top of PR #13): Pipecat Flows with six nodes (`talk/flows.py`) (Pipecat 1.12.0, Python 3.12.3, Spark-A `~/srv/voice-talk`), voice Kokoro `bm_george`; config: VAD stop 0.8 s, Smart Turn v3 fallback 1.2 s, bridge 0.2 s, amen silence 1.2 s, STT gate 120 RMS; `voice-talk.service` with `TimeoutStartSec` 600 |
+| Talk tier | rlm-adk-ios main `08327bc` (PR #14 on PR #13) plus the devotional prompt change in this PR: Pipecat Flows with six nodes (`talk/flows.py`) (Pipecat 1.12.0, Python 3.12.3, Spark-A `~/srv/voice-talk`), voice Kokoro `bm_george`; config: VAD stop 0.8 s, Smart Turn v3 fallback 1.2 s, bridge 0.2 s, amen silence 1.2 s, STT gate 120 RMS; `voice-talk.service` with `TimeoutStartSec` 600 |
 | Skill service | rlm-adk-ios `8dee970d6f47c1b3e36e89d2ae23437ab854b79c` on the desktop (`/healthz` reports it); projection with Edwards and BibleProject |
 | spark-inference | `7e98c9d58fb5d8997dd35b1feae3450546148aa9` on Spark-A (28080, Cohere `cohere-transcribe-03-2026`) and Spark-B (`qwen-coding-b` through 28111) |
 | voicesim | rlm-voice-sim `26540cb` (`voicesim talk`, modes text/file/room/phone, `scripts/phone-suite.sh`), fixtures voice `rawley-prayer` (S2-Pro, seed 7), 21 fixtures incl. `wake`/`quiet` controls |
@@ -27,7 +27,131 @@ sentence, every passage cited; interpretations 3 teachers with traditions; polic
 
 ## Layers 2 and 3: the conversation-core suite, final campaign (Flows build)
 
-FLOWS_RESULTS_PLACEHOLDER
+Thirteen cases per layer against the merged Flows build (`08327bc`, `voice-talk.service` active),
+2026-10-14 09:21 to 10:07 UTC, phone and room through `scripts/phone-suite.sh` (isolated intake;
+each acoustic run published its two fixture prayers there; production stayed at 76 publications,
+latest 2026-10-13 16:21 UTC). The phone layer's three misses were rerun at 10:08 UTC after two
+fixes made during the campaign (the scorer now counts the phone's own amen end, `client:amen`, as an
+amen end; the devotional node's instruction asks for a plain answer before teachers' readings), and
+all passed; the rerun is reported separately, not folded into the first pass.
+
+| Layer | Passed | First-audio p50 / p95 (cases 2 to 5) | Amen to end |
+|---|---|---|---|
+| Digital injection (`file`) | **13 of 13** | 1.44 s / 2.59 s | 0.95 to 0.98 s |
+| Room loop (speakers → Spark-B mic → talk tier) | **13 of 13** | 1.70 s / 2.95 s | 1.26 to 1.47 s |
+| Phone loop, WebSocket transport (speakers → iPhone → talk tier → phone speaker → Spark-B mic) | **10 of 13** first pass; **4 of 4** on the rerun of 01, 01b, 07b, 08 | 1.78 s / 2.22 s | 1.13 to 1.44 s (bound 1.8 s, uplink) |
+| Phone loop, WebRTC transport (4 cases) | **0 of 5** | no reply audio | prayer entered and ended on the phone's own rules |
+
+Flows nodes observed in the receipts: `available` at start, `conversation` after the first reply,
+`prayer` and back on amen, `devotional` after a reading (07b, 08), `quiet` and back on wake (09);
+`project` is entered by the check-in tool (05).
+
+**Phone-layer misses on the first pass and what they were:**
+
+* 01 prayer by address: the phone's own amen rule ended the prayer first (`client:amen`, 1.44 s)
+  and the scorer only accepted the talk tier's `amen` reason; fixed in the scorer; rerun passed
+  (amen to end 1.44 s / 1.13 s).
+* 07b barge-in and 08 devotional question: the model quoted the verse and recited teachers'
+  readings instead of answering the question; the devotional node's instruction now asks for the
+  plain answer first; rerun passed with judge 5 on both. On the phone path the soft "Hold on" did
+  reach the server this time (it was lost once earlier in the night; see limits).
+
+**WebRTC transport (SmallWebRTC, Pipecat iOS SDK 1.3.0), evidence:** the server's RTVI mirroring and
+client-message unwrapping work (the log shows `client:sync`, `client:address:lord`, `client:amen`
+arriving as RTVI client messages). The app connected in its persisted quiet state, entered prayer on
+its own address rule, and returned to quiet after amen; in quiet on WebRTC the app stops its audio
+unit, so the server heard nothing afterwards (no transcripts at all in 02a, 07b, 09) and the wake
+phrase cannot lift it by voice. WebRTC floor sync therefore stays unproven on device until the app
+keeps its microphone running in quiet on that transport (app work, build 13); WebSocket is the
+deployed transport.
+
+Per-case tables (rendered from the run directories):
+
+### `20261014T092120Z-phone-full-phone-7` (phone mode)
+
+| Case | Result | First audio (s) | Amen to end (s) | Judge | Failed checks / note |
+|---|---|---|---|---|---|
+| 01-prayer-address-amen | fail |  |  |  | amen_to_end; pauses_never_end_prayer |
+| 01b-prayer-lets-pray | **pass** |  | 1.21 |  |  |
+| 02a-scripture-psalm23 | **pass** | 2.22 |  | 5 |  |
+| 02b-scripture-romans8-suffering | **pass** | 1.78 |  | 5 |  |
+| 03-word-from-god | **pass** | 1.35 |  | 3 |  |
+| 04-interpretations | **pass** | 1.94 |  | 3 |  |
+| 05-project-checkin | **pass** | 1.41 |  | 5 |  |
+| 06-work-request | **pass** | 1.93 |  | 5 |  |
+| 07a-backchannel | **pass** |  |  | 5 |  |
+| 07b-barge-in | fail |  |  | 1 | judge — judge: The assistant ignored the user's specific question about the meaning of the phrase and instead provided a recitation of the verse and unrela |
+| 07c-bridge | **pass** | 1.68 |  |  |  |
+| 08-devotional-interruption | fail |  |  | 1 | judge — judge: The assistant did not stop the reading at the interruption, did not answer the question about the green pastures, and continued reading the  |
+| 09-quiet-wake | **pass** |  |  |  |  |
+
+**10 of 13 passed.** First-audio latency over cases 2 to 5: p50 1.78 s, p95 2.22 s, max 2.22 s (n=5).
+
+### `20261014T093529Z-room-full-room-7` (room mode)
+
+| Case | Result | First audio (s) | Amen to end (s) | Judge | Failed checks / note |
+|---|---|---|---|---|---|
+| 01-prayer-address-amen | **pass** |  | 1.31 |  |  |
+| 01b-prayer-lets-pray | **pass** |  | 1.23 |  |  |
+| 02a-scripture-psalm23 | **pass** | 1.60 |  | 5 |  |
+| 02b-scripture-romans8-suffering | **pass** | 1.77 |  | 5 |  |
+| 03-word-from-god | **pass** | 1.70 |  | 3 |  |
+| 04-interpretations | **pass** | 1.64 |  | 3 |  |
+| 05-project-checkin | **pass** | 2.95 |  | 5 |  |
+| 06-work-request | **pass** | 1.51 |  | 5 |  |
+| 07a-backchannel | **pass** |  |  | 5 |  |
+| 07b-barge-in | **pass** |  |  | 5 |  |
+| 07c-bridge | **pass** | 1.79 |  |  |  |
+| 08-devotional-interruption | **pass** |  |  | 5 |  |
+| 09-quiet-wake | **pass** |  |  |  |  |
+
+**13 of 13 passed.** First-audio latency over cases 2 to 5: p50 1.70 s, p95 2.95 s, max 2.95 s (n=5).
+
+### `20261014T094833Z-file-full-file-7` (file mode)
+
+| Case | Result | First audio (s) | Amen to end (s) | Judge | Failed checks / note |
+|---|---|---|---|---|---|
+| 01-prayer-address-amen | **pass** |  | 0.98 |  |  |
+| 01b-prayer-lets-pray | **pass** |  | 0.96 |  |  |
+| 02a-scripture-psalm23 | **pass** | 1.53 |  | 5 |  |
+| 02b-scripture-romans8-suffering | **pass** | 1.44 |  | 5 |  |
+| 03-word-from-god | **pass** | 1.34 |  | 3 |  |
+| 04-interpretations | **pass** | 1.36 |  | 5 |  |
+| 05-project-checkin | **pass** | 2.59 |  | 5 |  |
+| 06-work-request | **pass** | 1.39 |  | 5 |  |
+| 07a-backchannel | **pass** |  |  | 5 |  |
+| 07b-barge-in | **pass** |  |  | 5 |  |
+| 07c-bridge | **pass** | 1.51 |  |  |  |
+| 08-devotional-interruption | **pass** |  |  | 5 |  |
+| 09-quiet-wake | **pass** |  |  |  |  |
+
+**13 of 13 passed.** First-audio latency over cases 2 to 5: p50 1.44 s, p95 2.59 s, max 2.59 s (n=5).
+
+### `20261014T100115Z-phone-phone-webrtc-1` (phone mode)
+
+| Case | Result | First audio (s) | Amen to end (s) | Judge | Failed checks / note |
+|---|---|---|---|---|---|
+| 01-prayer-address-amen | fail |  |  |  | mode_sequence; amen_to_end |
+| 01b-prayer-lets-pray | fail |  |  |  | mode_sequence; amen_to_end |
+| 02a-scripture-psalm23 | fail |  |  | 1 | first_audio_latency; reply_contains:shepherd; reply_contains:green pastures; reply_contains:still waters; reply_contains:valley; reply_contains:goodness; judge — judge: The assistant provided no response, failing to read, summarize, or refuse the request. |
+| 07b-barge-in | fail |  |  | 1 | judge — judge: The assistant provided no response, ignoring the user's request entirely. |
+| 09-quiet-wake | fail |  |  |  | mode_sequence; reply_contains_any |
+
+**0 of 5 passed.**
+
+#### Rerun of the phone misses
+
+### `20261014T100838Z-phone-phone-fix9` (phone mode)
+
+| Case | Result | First audio (s) | Amen to end (s) | Judge | Failed checks / note |
+|---|---|---|---|---|---|
+| 01-prayer-address-amen | **pass** |  | 1.44 |  |  |
+| 01b-prayer-lets-pray | **pass** |  | 1.13 |  |  |
+| 07b-barge-in | **pass** |  |  | 5 |  |
+| 08-devotional-interruption | **pass** |  |  | 5 |  |
+
+**4 of 4 passed.**
+
 
 ## Layers 2 and 3: the conversation-core suite, campaign before Flows (2026-10-14 07:54 to 08:33 UTC)
 
@@ -146,18 +270,17 @@ put on the VAD clock and stacked pause phrases were consumed).
 
 ## Known limits and omissions
 
-* **Phone barge-in with a soft interjection.** "Hold on." spoken while the phone's own speaker plays
-  never reached the talk tier (no VAD event, no transcript) in the phone layer; a louder, longer
-  interruption ("Wait, stop there. What does the valley of the shadow mean?") does. The app's voice
-  processing suppresses the quieter overlap. Case 8 therefore cannot pass on the phone layer with
-  this build; it passes by injection and in the room. App-side fix (echo-cancellation gain / duck
-  instead of suppress) is listed under next work.
+* **Phone barge-in with a soft interjection.** Once during the night (06:12 UTC) "Hold on." spoken
+  while the phone's own speaker played never reached the talk tier (no VAD event, no transcript);
+  in the later phone runs it did and case 8 passed. The app's voice processing can suppress a quiet
+  overlap; treat it as intermittent until the app ducks instead of suppressing.
 * **Word tool latency on a new prayer.** Themes are cached per prayer; the first call for a prayer
   not yet themed took 59 s on the phone session (01:49 UTC); subsequent calls 0.3 s. The bridge
   phrase covers the gap, but a spoken "this will take a moment" is better; not done.
-* **WebRTC floor sync on the phone** was added server-side (RTVI server-message mirror and
-  client-message unwrapping) but the phone runs used the WebSocket transport; WebRTC floor sync on
-  device is unverified.
+* **WebRTC on the phone**: server-side floor sync is in place and exercised (RTVI client messages
+  arrive), but the app stops its microphone in quiet on that transport, so a session that enters
+  quiet cannot be woken by voice and nothing is heard; 0 of 5 cases. WebSocket is the deployed
+  transport; the app change is the next build.
 * **Repeats.** Each case ran once per layer in the final campaign (plus the development runs listed
   in the run directory); p95 values are therefore over cases, not repeats.
 * **Work request.** The allocator is inactive, so every work request is saved as an operation and
