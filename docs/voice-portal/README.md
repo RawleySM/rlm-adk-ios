@@ -30,6 +30,11 @@ the existing pipeline products and connect them to durable tasks, projects, and 
   and prayer boundaries, ASR authority, the app's own voice, routing, project identification, word-from-God,
   interpretations, the work tier), recommendations, the voicesim closed loop, and the decisions still open.
 
+- [Live voice stack alternatives](live-voice-stack-alternatives.md) (2026-10-13, for review): the dossier's
+  three open-source Talk-tier architectures (Pipecat, LiveKit server + Agents, the Kyutai Moshi/Unmute family)
+  weighed against this system's requirements and hardware, with a scored matrix, a recommendation and the
+  spikes to run before committing.
+
 - [Gemini research report archive](research/2026-10-12-gemini/README.md): seven completed reports,
   source lists, all twelve independent prompts, and links/status for the remaining studies.
 
