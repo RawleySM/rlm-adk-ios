@@ -80,6 +80,7 @@ struct DiagnosticsView: View {
             if let voice = model.talk?.voice.statusLine { Text(voice).font(.caption2) }
             Text("Floor sent: \(model.lastClientModeSent?.rawValue ?? "-") · bot speaking \(model.botSpeaking ? "yes" : "no")").font(.caption2)
             Text("WebRTC spike: \(model.webrtcSpike)").font(.caption2).foregroundStyle(.secondary)
+            Text("Audio: \(AudioTuning.current.description)").font(.caption2).foregroundStyle(.secondary)
             Button("Reconnect") { model.connectTalk() }.font(.caption)
         }
     }

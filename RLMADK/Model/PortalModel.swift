@@ -925,7 +925,8 @@ final class PortalModel: ObservableObject {
             bot_speaking: botSpeaking,
             voice_output: talk?.voice.statusLine,
             webrtc_spike: webrtcSpike,
-            policy_source: policySource
+            policy_source: policySource,
+            audio_tuning: AudioTuning.current.description
         )
     }
 
