@@ -1,0 +1,19 @@
+[Unit]
+Description=Voice talk tier (Pipecat): SmallWebRTC + tagged-PCM WebSocket on 0.0.0.0:7860
+After=network-online.target spark-inference.service
+Wants=spark-inference.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/rawleysm/srv/voice-talk
+Environment=PIPECAT_LOG_LEVEL=INFO
+Environment=VOICE_TALK_CONFIG=/home/rawleysm/.config/voice-talk/config.json
+ExecStartPre=-/home/rawleysm/srv/voice-talk/.venv/bin/python /home/rawleysm/srv/voice-talk/tools/warm.py
+ExecStart=/home/rawleysm/srv/voice-talk/.venv/bin/python -m talk.bot --host 0.0.0.0 --port 7860
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/home/rawleysm/.local/state/voice-talk/logs/voice-talk.log
+StandardError=append:/home/rawleysm/.local/state/voice-talk/logs/voice-talk.log
+
+[Install]
+WantedBy=default.target
