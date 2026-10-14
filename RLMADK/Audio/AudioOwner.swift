@@ -175,6 +175,20 @@ final class AudioOwner: NSObject {
     /// of pre-roll actually written.
     @discardableResult
     func beginCapture(captureId: String, directory: URL, startIndex: Int, prerollSeconds: Double = 0, settled: ((Int) -> Void)? = nil) -> Double {
+        if formatRestartPending {
+            // An input-format restart is closing the current writer; the switch is applied when it
+            // completes, with the new format, so the restart cannot overwrite it. The closed
+            // writer's settlement goes to the first switch away from it. A capture that was only
+            // ever a waiting target (begun and ended inside the restart) had no writer: it settles
+            // at once with its start index, i.e. nothing written.
+            if let waiting = deferredCapture {
+                settled?(waiting.startIndex)
+                deferredCapture = (captureId, directory, startIndex, waiting.settled)
+            } else {
+                deferredCapture = (captureId, directory, startIndex, settled)
+            }
+            return 0
+        }
         guard let format = inputFormat else { settled?(0); return 0 }
         let writer = makeWriter(captureId: captureId, directory: directory, format: format, startIndex: startIndex)
         factsLock.lock()
@@ -233,6 +247,9 @@ final class AudioOwner: NSObject {
     }
 
     private var formatRestartPending = false
+    /// A capture switch requested while a format restart was pending (applied when it completes);
+    /// `settled` is the settlement owed for the writer the restart is closing.
+    private var deferredCapture: (captureId: String, directory: URL, startIndex: Int, settled: ((Int) -> Void)?)?
 
     /// The hardware input format changed (Bluetooth HFP, another audio client's preferred sample
     /// rate). A tap and a WAV segment are bound to one format, so the current segment is closed,
@@ -250,9 +267,17 @@ final class AudioOwner: NSObject {
         let resume: (String, URL, Int) -> Void = { [weak self] captureId, directory, nextIndex in
             guard let self else { return }
             self.formatRestartPending = false
+            // A capture switch that arrived meanwhile wins: the closed writer settles to its caller
+            // and the new writer belongs to the capture it asked for.
+            var target = (captureId: captureId, directory: directory, startIndex: nextIndex)
+            if let deferred = self.deferredCapture {
+                self.deferredCapture = nil
+                deferred.settled?(nextIndex)
+                target = (deferred.captureId, deferred.directory, deferred.startIndex)
+            }
             guard self.state == .running else { return }
             self.inputFormat = format
-            let fresh = self.makeWriter(captureId: captureId, directory: directory, format: format, startIndex: nextIndex)
+            let fresh = self.makeWriter(captureId: target.captureId, directory: target.directory, format: format, startIndex: target.startIndex)
             self.factsLock.lock(); self.writer = fresh; self.factsLock.unlock()
             self.installCaptureTap(format: format)
             do {

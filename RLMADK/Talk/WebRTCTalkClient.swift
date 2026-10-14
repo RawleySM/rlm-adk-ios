@@ -72,8 +72,8 @@ final class WebRTCVoiceOutput: VoiceOutput {
 ///
 /// Start endpoint: `{base}/start` with `{"transport":"webrtc"}`; the SDK then posts the offer to
 /// `/sessions/{id}/api/offer`. RTVI events map to `TalkEvent`; our floor messages arrive as RTVI
-/// server messages. `client_mode`, `client_text` and `client_event` go up as RTVI client messages
-/// (`t` = the message type, `d` = its fields).
+/// server messages. Typed text goes up as RTVI `send-text`; `client_mode` and `client_event` go up
+/// as RTVI client messages (`t` = the message type, `d` = its fields).
 ///
 /// Coexistence with the audio owner (the spike in ios-client.md): before the first connection the
 /// app configures libwebrtc's audio session to the audio owner's own category, mode, options,
@@ -132,9 +132,17 @@ final class WebRTCTalkClient: NSObject, TalkClient {
             pending.append(message)
             return
         }
-        let data = Value.object(message.fields.mapValues { Value.string($0) })
         do {
-            try client.sendClientMessage(msgType: message.type, data: data)
+            if case .clientText(let text) = message {
+                // NOTE [Context]: RTVI send-text is handled by Pipecat's own RTVI processor (user
+                // message appended, LLM run), so typed input and devotional requests work over
+                // WebRTC with the server as deployed; the floor messages need the server to unwrap
+                // client-message (ios-client.md, server work item 2).
+                try client.sendText(content: text)
+            } else {
+                let data = Value.object(message.fields.mapValues { Value.string($0) })
+                try client.sendClientMessage(msgType: message.type, data: data)
+            }
         } catch {
             onLog?("talk webrtc send \(message.type) failed: \(error.localizedDescription)")
         }

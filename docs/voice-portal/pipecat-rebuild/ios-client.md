@@ -70,8 +70,10 @@ environment overrides for unattended runs: `RLMADK_TALK_URL`, `RLMADK_TALK_TRANS
   requestData: {"transport":"webrtc"})`; the SDK posts the offer to `/sessions/{id}/api/offer`.
 * Delegate mapping: transport state, bot ready, user transcript, `bot-transcription`,
   `bot-tts-text`, bot started/stopped speaking, server messages (our floor messages), errors.
-* Outgoing `client_mode` / `client_text` / `client_event` use `sendClientMessage(msgType:data:)`
-  (RTVI `client-message`, `data.t` = the type, `data.d` = the fields), queued until bot-ready.
+* Typed input and devotional requests go up as RTVI `send-text` (`sendText(content:)`), which
+  Pipecat's RTVI processor handles as deployed (from build 12). `client_mode` and `client_event`
+  use `sendClientMessage(msgType:data:)` (RTVI `client-message`, `data.t` = the type, `data.d` = the
+  fields). All are queued until bot-ready.
 
 **Server work needed for WebRTC floor sync (not done, not mine to do).** Read from the talk server
 on 2026-10-13 23:50 EDT (`~/srv/voice-talk/talk/client_messages.py`, `floor.py`):
@@ -181,6 +183,7 @@ fresh state under the session scratchpad), so no test prayer reached the product
 | 9 | 6090dfd | `4bc3f73e00accf60ef436dcd8aed859fdc44cbd90fb6f80c36f6ea77bc2f4a03` (5,674,826 B) | the rebuild |
 | 10 | cbed5d2 | `d94c55b2d88f92a6c31aeb3961e94c09f8d11ee4b99ccff8e0cadaa28b91d175` (5,676,788 B) | device findings: suppression after prayer, amen anchor allowance, journal on iOS 26 |
 | 11 | 3b476d3 | `fdb7e85e39829acb78bfcbbdcfba0a65e3ba011b0db87a337691b5c0f3323674` (5,677,228 B) | device findings: level tracker floor after digital silence, `bot-output` display |
+| 12 | see the final PR comment | see the final PR comment | review findings: typed text as RTVI `send-text` on WebRTC; a capture switch during an input-format restart is applied after it instead of being overwritten |
 
 All three were signed by `direct-install.yml` (Ad Hoc profile `rlm-adk-ios adhoc iPhone 12`,
 expires 2027-10-13) and installed with `pymobiledevice3 apps install` without uninstalling.
@@ -255,7 +258,9 @@ the phone pointed at the silent instance or ran while no room run was active.
 
 Build 11, production backend `http://100.90.105.30:8765`, talk server `http://100.121.221.42:7860`,
 transport **WebSocket** (persisted choice; the default for a fresh install is still `webrtc`), mode
-Available, recording. Choice: WebSocket is the path with floor sync in both directions today. On
+Available, recording. The fresh-install default stays `webrtc` as specified (a review suggested WebSocket
+until the server changes land; recorded here, not applied). Choice for this phone: WebSocket is
+the path with floor sync in both directions today. On
 WebRTC the phone's `client_mode` does not reach the server, so after a prayer the phone detected
 (WebRTC microphone off during it) the server can stay in prayer until it hears an amen. Select
 WebRTC in Diagnostics once the server changes above are in.
