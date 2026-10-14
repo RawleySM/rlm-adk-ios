@@ -53,11 +53,16 @@ def _norm(text: str) -> str:
 class FloorProcessor(FrameProcessor):
     """Mode owner placed after STT; see the module docstring."""
 
-    def __init__(self, cfg: TalkConfig):
+    def __init__(self, cfg: TalkConfig, reading_state: dict | None = None, *, session_id: str = ""):
         super().__init__(name="floor")
         self._cfg = cfg
+        self.session_id = session_id
+        self.reading_state = reading_state if reading_state is not None else {}
+        # Operator hold (``/admin/hold``): quiet until released; the wake phrase does not lift it.
+        self.held = False
         self.mode = "available"
         self._task = None
+        self._rtvi = None
         self._vad_stopped_at: float | None = None
         self._user_speaking = False
         self._pending_amen: asyncio.Task | None = None
@@ -73,8 +78,18 @@ class FloorProcessor(FrameProcessor):
         self.pending_turn = False
         self.events: list[dict] = []
 
-    def bind(self, task) -> None:
+    def bind(self, task, rtvi=None) -> None:
         self._task = task
+        self._rtvi = rtvi
+
+    async def _tell_client(self, message: dict) -> None:
+        """Our bare JSON for the WebSocket client plus an RTVI server-message for the Pipecat SDK client."""
+        await self.push_frame(OutputTransportMessageUrgentFrame(message=message))
+        if self._rtvi is not None:
+            try:
+                await self._rtvi.send_server_message(message)
+            except Exception as exc:  # noqa: BLE001 - the WebSocket path already has the message
+                logger.warning(f"rtvi server message failed: {exc}")
 
     # ----- mode transitions -----
     async def set_mode(self, mode: str, reason: str) -> None:
@@ -88,9 +103,7 @@ class FloorProcessor(FrameProcessor):
         if mode in {"prayer", "quiet"}:
             # Silence whatever is playing or queued, now.
             await self.broadcast_interruption()
-        await self.push_frame(
-            OutputTransportMessageUrgentFrame(message={"type": "mode", "mode": mode, "from": previous, "reason": reason, "t": stamp})
-        )
+        await self._tell_client({"type": "mode", "mode": mode, "from": previous, "reason": reason, "t": stamp})
 
     def _starts_with_address(self, text: str) -> str | None:
         n = _norm(text)
@@ -168,22 +181,21 @@ class FloorProcessor(FrameProcessor):
                     self._cancel_pending_amen()
                     self._pending_amen = asyncio.create_task(self._end_prayer_after_silence(time.time()))
                 # Prayer text never reaches the LLM: it is addressed to God, journaled by the app.
-                await self.push_frame(
-                    OutputTransportMessageUrgentFrame(message={"type": "prayer_text", "text": text, "final": final})
-                )
+                await self._tell_client({"type": "prayer_text", "text": text, "final": final})
                 return
             if final and any(n == p or n.endswith(" " + p) for p in self._quiet):
                 await self.set_mode("quiet", "phrase")
                 return
             if final and self.mode == "quiet" and any(n == p or n.startswith(p) for p in self._wake):
+                if self.held:
+                    logger.info("floor: wake phrase ignored while held")
+                    return
                 await self.set_mode("available", "wake")
                 return
             address = self._starts_with_address(text)
             if address and self.mode != "prayer":
                 await self.set_mode("prayer", f"address:{address}")
-                await self.push_frame(
-                    OutputTransportMessageUrgentFrame(message={"type": "prayer_text", "text": text, "final": final})
-                )
+                await self._tell_client({"type": "prayer_text", "text": text, "final": final})
                 return
             if self.mode == "quiet" and final:
                 # Heard, journaled by the app, not answered.
@@ -201,16 +213,14 @@ class FloorProcessor(FrameProcessor):
                     await self.broadcast_interruption()
                 return
             if final and any(p in n for p in self._continue) and len(n.split()) <= 10:
-                from talk import tools
-
-                verses = tools.READING_STATE.get("verses") or []
-                through = int(tools.READING_STATE.get("spoken_through") or 0)
+                verses = self.reading_state.get("verses") or []
+                through = int(self.reading_state.get("spoken_through") or 0)
                 remaining = [v for v in verses if v["verse"] > through]
                 if verses and remaining:
                     # Resume the interrupted reading deterministically, without a model turn.
                     from pipecat.frames.frames import LLMMessagesAppendFrame, TTSSpeakFrame
 
-                    logger.info(f"floor: continue phrase {text!r}; resuming {tools.READING_STATE.get('reference')} at verse {remaining[0]['verse']}")
+                    logger.info(f"floor: continue phrase {text!r}; resuming {self.reading_state.get('reference')} at verse {remaining[0]['verse']}")
                     self.events.append({"t": time.time(), "resume_reading": remaining[0]["verse"]})
                     if self.bot_speaking:
                         await self.broadcast_interruption()
@@ -226,9 +236,7 @@ class FloorProcessor(FrameProcessor):
                 await self.broadcast_interruption()
             if final:
                 self.pending_turn = True
-                from talk import tools
-
-                tools.LAST_USER_TEXT = text
+                self.reading_state["last_user_text"] = text
 
         await self.push_frame(frame, direction)
 

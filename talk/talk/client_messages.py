@@ -26,6 +26,11 @@ class ClientMessages(FrameProcessor):
         await super().process_frame(frame, direction)
         if isinstance(frame, InputTransportMessageFrame):
             message = frame.message or {}
+            if message.get("label") == "rtvi-ai" and message.get("type") == "client-message":
+                # The Pipecat SDK (SmallWebRTC) can only send this envelope: {"t": <our type>, "d": {...}}.
+                data = message.get("data") or {}
+                inner = data.get("d") if isinstance(data.get("d"), dict) else {}
+                message = {"type": data.get("t"), **inner}
             kind = message.get("type")
             if kind == "client_text":
                 text = str(message.get("text") or "").strip()
@@ -43,5 +48,9 @@ class ClientMessages(FrameProcessor):
                 return
             if kind == "client_event":
                 self._floor.events.append({"t": time.time(), "client": message})
+                if message.get("event") == "benchmark_client" and self._floor.held:
+                    # A benchmark client connecting under an operator hold is the one session meant to talk.
+                    self._floor.held = False
+                    await self._floor.set_mode("available", "benchmark_client")
                 return
         await self.push_frame(frame, direction)

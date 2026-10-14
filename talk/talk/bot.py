@@ -15,13 +15,16 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 import uuid
+from typing import Any
 from pathlib import Path
 
 from loguru import logger
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams  # noqa: E402
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3  # noqa: E402
 from pipecat.audio.vad.silero import SileroVADAnalyzer  # noqa: E402
 from pipecat.audio.vad.vad_analyzer import VADParams  # noqa: E402
@@ -52,7 +55,7 @@ from talk.floor import FloorProcessor, OutputGate  # noqa: E402
 from talk.pcm_serializer import PCMFrameSerializer  # noqa: E402
 from talk.reading_tracker import ReadingTracker  # noqa: E402
 from talk.session_log import SessionLog  # noqa: E402
-from talk.tools import register_tools, tools_schema  # noqa: E402
+from talk.tools import new_reading_state, register_tools, tools_schema  # noqa: E402
 
 SYSTEM_PROMPT = """You are the voice of Rawley's personal Scripture and prayer portal. You speak out loud through
 a text-to-speech voice, so answer in short plain spoken sentences: no lists, no markdown, no asterisks,
@@ -102,7 +105,8 @@ async def run_bot(transport, cfg: TalkConfig, *, session_label: str) -> None:
         sample_rate=cfg.audio_out_sample_rate,
         text_filters=[MarkdownTextFilter()],
     )
-    register_tools(llm, cfg)
+    reading_state = new_reading_state()
+    register_tools(llm, cfg, reading_state)
     context = LLMContext(messages=[], tools=tools_schema())
     aggregators = LLMContextAggregatorPair(
         context,
@@ -114,11 +118,12 @@ async def run_bot(transport, cfg: TalkConfig, *, session_label: str) -> None:
             empty_user_turn=None,
             user_turn_strategies=UserTurnStrategies(
                 start=[BackchannelAwareStartStrategy(cfg)],
-                stop=[TurnAnalyzerUserTurnStopStrategy(turn_analyzer=LocalSmartTurnAnalyzerV3())],
+                stop=[TurnAnalyzerUserTurnStopStrategy(turn_analyzer=LocalSmartTurnAnalyzerV3(params=SmartTurnParams(stop_secs=cfg.smart_turn_stop_secs)))],
             ),
         ),
     )
-    floor = FloorProcessor(cfg)
+    session_id = f"{session_label}-{uuid.uuid4().hex[:10]}"
+    floor = FloorProcessor(cfg, reading_state, session_id=session_id)
     gate = OutputGate(floor)
     bridge = BridgeProcessor(cfg, floor)
     duck = DuckProcessor(cfg)
@@ -139,11 +144,10 @@ async def run_bot(transport, cfg: TalkConfig, *, session_label: str) -> None:
             transport.output(),
             # After the output transport, TTSTextFrame arrives as the audio is played out, not as
             # it is synthesised, so the tracker counts verses the listener actually heard.
-            ReadingTracker(),
+            ReadingTracker(reading_state),
             aggregators.assistant(),
         ]
     )
-    session_id = f"{session_label}-{uuid.uuid4().hex[:10]}"
     session_log = SessionLog(cfg.root, session_id)
     logger.info(f"session {session_id}: log {session_log.path}")
     task = PipelineTask(
@@ -152,7 +156,11 @@ async def run_bot(transport, cfg: TalkConfig, *, session_label: str) -> None:
         observers=[RTVIObserver(rtvi), session_log],
         idle_timeout_secs=None,
     )
-    floor.bind(task)
+    floor.bind(task, rtvi)
+    LIVE_FLOORS[session_id] = floor
+    if HOLD["active"] and HOLD.get("hold_new"):
+        floor.held = True
+        floor.mode = "quiet"
 
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
@@ -167,7 +175,70 @@ async def run_bot(transport, cfg: TalkConfig, *, session_label: str) -> None:
     try:
         await runner.run(task)
     finally:
+        LIVE_FLOORS.pop(session_id, None)
         session_log.close()
+
+
+
+# ----- operator admin: hold every live session quiet (room benchmarks share the air with the phone) -----
+# NOTE [Context]: the Pipecat runner's FastAPI app is a module global; routes added here are served
+# alongside /start and /ws-client. ``LIVE_FLOORS`` maps session id -> FloorProcessor for the sessions
+# running in this process. A hold sets each to quiet with ``held`` so the wake phrase cannot lift it;
+# ``hold_new`` also holds sessions that connect later (a phone reconnecting mid-run), so a benchmark
+# client that must stay awake connects before calling hold, or passes ``hold_new=false``.
+LIVE_FLOORS: dict[str, FloorProcessor] = {}
+HOLD: dict[str, Any] = {"active": False, "reason": "", "hold_new": False, "since": None}
+
+try:
+    from pipecat.runner.run import app as _runner_app
+except Exception:  # noqa: BLE001 - admin routes are optional outside the runner
+    _runner_app = None
+
+if _runner_app is not None:
+
+    @_runner_app.get("/admin/sessions")
+    async def admin_sessions() -> dict[str, Any]:
+        return {
+            "hold": HOLD,
+            "sessions": [{"session_id": sid, "mode": fl.mode, "held": fl.held, "bot_speaking": fl.bot_speaking} for sid, fl in LIVE_FLOORS.items()],
+        }
+
+    @_runner_app.post("/admin/hold")
+    async def admin_hold(body: dict[str, Any] | None = None) -> dict[str, Any]:
+        body = body or {}
+        only = set(body.get("sessions") or [])
+        except_ids = set(body.get("except") or [])
+        HOLD.update({"active": True, "reason": str(body.get("reason") or "operator"), "hold_new": bool(body.get("hold_new", False)), "since": time.time()})
+        held = []
+        for sid, fl in list(LIVE_FLOORS.items()):
+            if (only and sid not in only) or sid in except_ids:
+                continue
+            fl.held = True
+            await fl.set_mode("quiet", f"hold:{HOLD['reason']}")
+            held.append(sid)
+        return {"held": held, "hold": HOLD}
+
+    @_runner_app.post("/admin/release")
+    async def admin_release(body: dict[str, Any] | None = None) -> dict[str, Any]:
+        HOLD.update({"active": False, "reason": "", "hold_new": False, "since": None})
+        released = []
+        for sid, fl in list(LIVE_FLOORS.items()):
+            if fl.held:
+                fl.held = False
+                if fl.mode == "quiet":
+                    await fl.set_mode("available", "release")
+                released.append(sid)
+        return {"released": released}
+
+    @_runner_app.post("/admin/sessions/{session_id}/mode")
+    async def admin_session_mode(session_id: str, body: dict[str, Any]) -> dict[str, Any]:
+        fl = LIVE_FLOORS.get(session_id)
+        if fl is None:
+            return {"error": "no such session", "sessions": list(LIVE_FLOORS)}
+        mode = str(body.get("mode") or "available")
+        fl.held = bool(body.get("held", fl.held)) if mode == "quiet" else False
+        await fl.set_mode(mode, f"admin:{body.get('reason') or 'operator'}")
+        return {"session_id": session_id, "mode": fl.mode, "held": fl.held}
 
 
 async def bot(runner_args: RunnerArguments) -> None:

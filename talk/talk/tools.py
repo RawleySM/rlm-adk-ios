@@ -31,11 +31,27 @@ from talk.config import TalkConfig
 
 _cfg: TalkConfig | None = None
 
-# Shared with talk.reading_tracker: the verses of the current reading and how far it was spoken.
-READING_STATE: dict[str, Any] = {"reference": None, "chapter_reference": None, "verses": [], "spoken_through": 0}
-# The last user utterance the floor forwarded (set by FloorProcessor); decides whether a long chapter is read or quoted.
-LAST_USER_TEXT: str = ""
 LONG_READING_VERSES = 10
+
+
+def new_reading_state() -> dict[str, Any]:
+    """One session's reading state, shared by the tools, the floor and the reading tracker.
+
+    Keys: ``reference``, ``chapter_reference``, ``verses`` (``verse``/``text``/``osis`` dicts),
+    ``spoken_through`` (last verse number the listener fully heard) and ``last_user_text`` (the
+    utterance the floor last forwarded to the LLM; decides whether a long chapter is read or quoted).
+    Each session gets its own: two phones, or a phone and a benchmark client, must never share one.
+    """
+    return {"reference": None, "chapter_reference": None, "verses": [], "spoken_through": 0, "last_user_text": ""}
+
+
+def _state(params: FunctionCallParams) -> dict[str, Any]:
+    state = getattr(params.llm, "reading_state", None)
+    if state is None:
+        # Warning: a service registered without ``register_tools`` has no per-session state; fall back to its own.
+        state = new_reading_state()
+        params.llm.reading_state = state
+    return state
 
 UNAVAILABLE_NOTE = (
     "This source is unavailable right now. Tell Rawley plainly that you could not reach it, answer briefly "
@@ -142,7 +158,8 @@ async def read_scripture(params: FunctionCallParams) -> None:
         await params.result_callback(result if isinstance(result, dict) else _unavailable("bad scripture result"))
         return
     verses = [{"verse": int(v.get("verse") or 0), "text": str(v.get("text") or "").strip(), "osis": v.get("osis")} for v in result["verses"]]
-    wants_reading = bool(re.search(r"\b(read|reads|reading|recite|hear|listen to|play)\b", LAST_USER_TEXT.lower()))
+    state = _state(params)
+    wants_reading = bool(re.search(r"\b(read|reads|reading|recite|hear|listen to|play)\b", str(state.get("last_user_text") or "").lower()))
     if len(verses) > LONG_READING_VERSES and not wants_reading:
         # A question about a long chapter: hand the text to the model to quote from, instead of reading it all.
         await params.result_callback({
@@ -151,7 +168,7 @@ async def read_scripture(params: FunctionCallParams) -> None:
             "instruction": "Rawley asked a question, not for a reading. Quote the two or three verses that answer it (with their verse numbers) and answer briefly in your own words; do not read the whole chapter.",
         })
         return
-    READING_STATE.update({"reference": reference, "chapter_reference": _chapter_reference(reference), "verses": verses, "spoken_through": 0})
+    state.update({"reference": reference, "chapter_reference": _chapter_reference(reference), "verses": verses, "spoken_through": 0})
     sentences = [f"{reference}."] + [v["text"] for v in verses]
     summary = {"reference": reference, "verses_read": [v["verse"] for v in verses], "cite_ids": result.get("cite_ids"), "coverage": result.get("coverage"), "spoken": True}
     await _speak_exact(params, sentences, history=" ".join(sentences), result=summary)
@@ -159,8 +176,9 @@ async def read_scripture(params: FunctionCallParams) -> None:
 
 async def continue_reading(params: FunctionCallParams) -> None:
     """Resume the interrupted reading from the verse after the last one fully spoken."""
-    verses = READING_STATE.get("verses") or []
-    through = int(READING_STATE.get("spoken_through") or 0)
+    state = _state(params)
+    verses = state.get("verses") or []
+    through = int(state.get("spoken_through") or 0)
     remaining = [v for v in verses if v["verse"] > through]
     if not verses:
         await params.result_callback({"error": "no reading in progress", "instruction": "Tell Rawley there is no reading to continue and ask what he would like read."})
@@ -169,7 +187,7 @@ async def continue_reading(params: FunctionCallParams) -> None:
         await _speak_exact(params, ["That was the end of the passage."], history="That was the end of the passage.", result={"done": True})
         return
     sentences = [v["text"] for v in remaining]
-    await _speak_exact(params, sentences, history=" ".join(sentences), result={"reference": READING_STATE.get("reference"), "resumed_from_verse": remaining[0]["verse"], "spoken": True})
+    await _speak_exact(params, sentences, history=" ".join(sentences), result={"reference": state.get("reference"), "resumed_from_verse": remaining[0]["verse"], "spoken": True})
 
 
 async def word_from_prayer(params: FunctionCallParams) -> None:
@@ -276,8 +294,10 @@ def tools_schema() -> ToolsSchema:
     )
 
 
-def register_tools(llm, cfg: TalkConfig) -> None:
+def register_tools(llm, cfg: TalkConfig, reading_state: dict[str, Any]) -> None:
+    """Register the function handlers on one session's LLM service and attach its reading state."""
     global _cfg
     _cfg = cfg
+    llm.reading_state = reading_state
     for name, fn in FUNCTIONS.items():
         llm.register_function(name, fn)

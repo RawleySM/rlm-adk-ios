@@ -71,6 +71,9 @@ class TalkConfig:
     # at every comma and it ended turns mid-sentence; 0.5 s still split two-sentence requests. 0.7 s
     # keeps them together at the cost of 0.5 s more end-of-turn latency.
     vad_stop_secs: float = 0.7
+    # Smart Turn's fallback when it keeps judging a pause as mid-sentence: end the turn after this
+    # much silence anyway. Pipecat's default of 3.0 s put first audio past the 3.0 s acceptance bound.
+    smart_turn_stop_secs: float = 1.5
     # Where runs and receipts go.
     state_root: str = str(Path.home() / ".local/state/voice-talk")
 
