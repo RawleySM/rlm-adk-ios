@@ -214,15 +214,15 @@ final class DeviceInspectionTests: XCTestCase {
         XCTAssertNil(model.mode.currentTurnId)
     }
 
-    func testDelayedPrayerFinalStaysWithItsCaptureAndNewConversationIsATurn() async {
+    func testDelayedPrayerFinalStaysWithItsCaptureAndNewConversationIsNotPrayer() async {
         let model = PortalModel()
         model.deliveryProbe = { false }
         model.beginPrayer()
         let captureId = model.mode.prayerCaptureId!
         model.endPrayer() // manual End: the open prayer request is ended, not dropped
-        // The new conversation request (owner nil) settles immediately: a turn, never prayer text.
+        // The new conversation request (owner nil) settles immediately: conversation, never prayer text.
         model.finalTranscriptReceived("what does the shepherd psalm say about rest", owner: nil)
-        XCTAssertNotNil(model.mode.currentTurnId, "conversation right after End prayer is a turn")
+        XCTAssertFalse(model.mode.isPraying, "conversation right after End prayer does not reopen a prayer")
         XCTAssertTrue(model.prayerASRJournal(captureId)?.lines.isEmpty ?? false, "and is not journaled as prayer")
         // The prayer request's own final settles well after the ordinary endpoint window (> 3 s):
         // it is identified by the request it came from, not by when it arrives.
@@ -230,7 +230,7 @@ final class DeviceInspectionTests: XCTestCase {
         model.finalTranscriptReceived("in your name amen", owner: captureId)
         XCTAssertEqual(model.prayerASRJournal(captureId)?.lines.map(\.text), ["in your name amen"])
         XCTAssertEqual(model.lastTranscript, "in your name amen")
-        XCTAssertNotNil(model.mode.currentTurnId, "the delayed prayer final did not start or replace a turn")
+        XCTAssertFalse(model.mode.isPraying, "the delayed prayer final (ending in amen) does not touch the current mode")
         model.stopOutput()
     }
 

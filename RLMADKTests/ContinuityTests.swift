@@ -5,35 +5,30 @@ import XCTest
 final class ContinuityTests: XCTestCase {
     // MARK: reducer additions (gap 4)
 
-    func testEnterPrayerAlwaysCancelsOutputEvenWhenIdle() {
+    func testEnterPrayerAlwaysStopsVoiceEvenWhenIdle() {
         let (state, effects) = PortalReducer.apply(.enterPrayer(captureId: "c1"), to: PortalMode())
         XCTAssertTrue(state.isPraying)
-        XCTAssertEqual(effects, [.cancelOutput(turnId: nil)])
+        XCTAssertEqual(effects, [.stopVoice, .sendClientMode(.prayer)])
     }
 
-    func testEnterPrayerDuringResponseCancelsAndSendsCancel() {
+    func testBotStoppedAfterStopKeepsAvailable() {
         var state = PortalMode()
-        state.activity = .responding(turnId: "t9")
-        let (next, effects) = PortalReducer.apply(.enterPrayer(captureId: "c2"), to: state)
-        XCTAssertTrue(next.isPraying)
-        XCTAssertEqual(effects, [.cancelOutput(turnId: "t9"), .sendCancel(turnId: "t9")])
+        state.activity = .responding(turnId: "bot-1")
+        let (stopped, effects) = PortalReducer.apply(.stopRequested, to: state)
+        XCTAssertEqual(stopped.activity, .idle)
+        XCTAssertEqual(effects, [.stopVoice])
+        let (after, none) = PortalReducer.apply(.botStoppedSpeaking, to: stopped)
+        XCTAssertEqual(after.activity, .idle)
+        XCTAssertTrue(none.isEmpty)
     }
 
-    func testUserSpeechAfterDoneStillInterruptsPlayingOutput() {
-        var state = PortalMode()
-        state.activity = .responding(turnId: "t1")
-        let (afterDone, _) = PortalReducer.apply(.assistantDone(turnId: "t1"), to: state)
-        XCTAssertEqual(afterDone.activity, .idle)
-        let (next, effects) = PortalReducer.apply(.userSpeechStarted, to: afterDone)
-        XCTAssertEqual(next.activity, .idle)
-        XCTAssertEqual(effects, [.cancelOutput(turnId: nil)]) // trailing TTS / devotional stops
-    }
-
-    func testPrayerSpeechIsNeverAnInterruption() {
+    func testBotSpeechNeverChangesAPrayer() {
         var state = PortalMode()
         state.activity = .prayer(captureId: "c3")
-        let (next, effects) = PortalReducer.apply(.userSpeechStarted, to: state)
+        let (next, _) = PortalReducer.apply(.botStartedSpeaking(turnId: "bot-2"), to: state)
         XCTAssertTrue(next.isPraying)
+        let (still, effects) = PortalReducer.apply(.botStoppedSpeaking, to: next)
+        XCTAssertTrue(still.isPraying)
         XCTAssertTrue(effects.isEmpty)
     }
 

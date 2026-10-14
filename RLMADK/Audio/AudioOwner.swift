@@ -1,10 +1,14 @@
+import Accelerate
 import AVFoundation
 import CryptoKit
 import Foundation
 
-/// The single native audio owner: one `AVAudioSession` configuration and one `AVAudioEngine` input tap.
-/// Captured buffers fan out to the local segment writer (always, including quiet and prayer) and to the
-/// on-device recognizer when a turn is open. File writes and hashing stay off the real-time callback.
+/// The single native audio owner: one `AVAudioSession` configuration and one `AVAudioEngine` with
+/// voice processing. Captured buffers fan out to the local segment writer (always, including quiet
+/// and prayer), to the on-device recognizer, and to the talk uplink when the WebSocket transport is
+/// active. The WebSocket transport's bot audio plays through `player` on this same engine, so voice
+/// processing cancels the app's own speech from the capture. File writes, hashing and resampling
+/// stay off the real-time callback.
 final class AudioOwner: NSObject {
     enum State: Equatable {
         case idle
@@ -23,6 +27,20 @@ final class AudioOwner: NSObject {
     private let engine = AVAudioEngine()
     private let writeQueue = DispatchQueue(label: "rlmadk.audio.write", qos: .utility)
     private var writer: SegmentWriter?
+    /// Bot speech for the WebSocket transport, mixed into this engine's (voice-processed) output.
+    private let player = AVAudioPlayerNode()
+    private var playerAttached = false
+    /// Format of buffers handed to `schedulePlayback` (the talk tier's 24 kHz mono, as float).
+    let playbackFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: PCMFraming.downlinkSampleRate, channels: 1, interleaved: false)!
+    /// The most recent captured audio, kept so an address-triggered prayer capture can begin with
+    /// the words spoken just before the phone recognized the address.
+    private let preroll = PrerollRing(capacitySeconds: 8)
+    private var levels = VoiceLevelTracker()
+    private var talkTap: ((AVAudioPCMBuffer) -> Void)?
+    private var configurationObserver: NSObjectProtocol?
+    /// Whether voice processing was on when the engine started (not read from the input node,
+    /// which must not be touched before a microphone is wanted).
+    private(set) var voiceProcessingOn = false
     private(set) var state: State = .idle
     var onStateChange: ((State) -> Void)?
     var onBuffer: ((AVAudioPCMBuffer, AVAudioTime) -> Void)?
@@ -39,6 +57,28 @@ final class AudioOwner: NSObject {
     var onWriteError: ((String) -> Void)?
 
     var isRunning: Bool { engine.isRunning }
+
+    /// Voice energy facts from the level tracker (anchor for the amen silence window).
+    var voiceFacts: VoiceFacts {
+        factsLock.lock(); defer { factsLock.unlock() }
+        let now = ProcessInfo.processInfo.systemUptime
+        let end = levels.lastVoiceEndUptime.map { Date().addingTimeInterval($0 - now) }
+        return VoiceFacts(active: levels.active, lastVoiceEnd: end)
+    }
+
+    /// Receives every captured buffer on the real-time thread (the talk uplink copies and returns).
+    /// The audio owner remains the only microphone owner; nil detaches.
+    func setTalkTap(_ tap: ((AVAudioPCMBuffer) -> Void)?) {
+        factsLock.lock(); talkTap = tap; factsLock.unlock()
+    }
+
+    /// Current AVAudioSession facts for coexistence evidence.
+    var sessionDescription: String {
+        let session = AVAudioSession.sharedInstance()
+        let inputs = session.currentRoute.inputs.map { $0.portType.rawValue }.joined(separator: ",")
+        let outputs = session.currentRoute.outputs.map { $0.portType.rawValue }.joined(separator: ",")
+        return "category \(session.category.rawValue) mode \(session.mode.rawValue) options \(session.categoryOptions.rawValue) rate \(Int(session.sampleRate)) io \(String(format: "%.3f", session.ioBufferDuration)) in [\(inputs)] out [\(outputs)] vp \(voiceProcessingOn)"
+    }
     var lastBufferAge: TimeInterval? {
         factsLock.lock(); defer { factsLock.unlock() }
         return lastBufferUptime.map { ProcessInfo.processInfo.systemUptime - $0 }
@@ -55,6 +95,14 @@ final class AudioOwner: NSObject {
         center.addObserver(self, selector: #selector(handleInterruption(_:)), name: AVAudioSession.interruptionNotification, object: nil)
         center.addObserver(self, selector: #selector(handleRouteChange(_:)), name: AVAudioSession.routeChangeNotification, object: nil)
         center.addObserver(self, selector: #selector(handleReset(_:)), name: AVAudioSession.mediaServicesWereResetNotification, object: nil)
+        // NOTE [Context]: another audio client in the process (libwebrtc's audio unit on the WebRTC
+        // transport) can change the session's category, mode or sample rate; the engine then stops
+        // with a configuration change and must be restarted, or capture silently ends.
+        configurationObserver = center.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            self.onGap?(GapRecord(startedAt: Date(), endedAt: Date(), reason: "engine_configuration_change", kind: "capture"))
+            self.restartIfNeeded(reason: "configuration_change")
+        }
     }
 
     func configureSession() throws {
@@ -73,6 +121,7 @@ final class AudioOwner: NSObject {
             if input.isVoiceProcessingEnabled == false {
                 try? input.setVoiceProcessingEnabled(true)
             }
+            voiceProcessingOn = input.isVoiceProcessingEnabled
             let format = input.outputFormat(forBus: 0)
             guard format.sampleRate > 0, format.channelCount > 0 else {
                 throw NSError(domain: "AudioOwner", code: 1, userInfo: [NSLocalizedDescriptionKey: "no input format (no microphone on this device/simulator)"])
@@ -80,15 +129,11 @@ final class AudioOwner: NSObject {
             inputFormat = format
             let writer = makeWriter(captureId: captureId, directory: directory, format: format, startIndex: startIndex)
             self.writer = writer
-            input.removeTap(onBus: 0)
-            input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, time in
-                guard let self else { return }
-                self.factsLock.lock(); self.lastBufferUptime = ProcessInfo.processInfo.systemUptime; self.factsLock.unlock()
-                self.writer?.append(buffer)
-                self.onBuffer?(buffer, time)
-            }
+            attachPlayerIfNeeded()
+            installCaptureTap(format: format)
             engine.prepare()
             try engine.start()
+            player.play()
             setState(.running)
         } catch {
             setState(.failed(error.localizedDescription))
@@ -96,19 +141,72 @@ final class AudioOwner: NSObject {
         }
     }
 
+    /// One tap on the input node for every consumer. The ring append and the writer read happen
+    /// under one lock, so a capture switch with pre-roll sees every buffer either in the ring (and
+    /// so in the pre-roll) or in the new writer, never in neither.
+    private func installCaptureTap(format: AVAudioFormat) {
+        let input = engine.inputNode
+        input.removeTap(onBus: 0)
+        input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, time in
+            guard let self else { return }
+            let level = VoiceLevelTracker.levelDb(buffer)
+            let duration = Double(buffer.frameLength) / buffer.format.sampleRate
+            let now = ProcessInfo.processInfo.systemUptime
+            self.factsLock.lock()
+            self.lastBufferUptime = now
+            self.levels.observe(levelDb: level, duration: duration, at: now)
+            self.preroll.append(buffer)
+            let target = self.writer
+            let tap = self.talkTap
+            self.factsLock.unlock()
+            target?.append(buffer)
+            self.onBuffer?(buffer, time)
+            tap?(buffer)
+        }
+    }
+
     /// Switches capture (for example when prayer starts or ends) without stopping the engine. The
     /// previous writer is closed; `settled` fires on the main queue AFTER its last segment-closed
     /// callback was delivered, with the total number of segments that writer produced.
-    func beginCapture(captureId: String, directory: URL, startIndex: Int, settled: ((Int) -> Void)? = nil) {
-        guard let format = inputFormat else { settled?(0); return }
-        let old = writer
+    ///
+    /// `prerollSeconds` > 0 starts the new capture with that much of the most recent audio (an
+    /// address-triggered prayer: the address words were spoken before the phone recognized them).
+    /// The previous capture keeps its own copy, so nothing is lost from either. Returns the seconds
+    /// of pre-roll actually written.
+    @discardableResult
+    func beginCapture(captureId: String, directory: URL, startIndex: Int, prerollSeconds: Double = 0, settled: ((Int) -> Void)? = nil) -> Double {
+        if formatRestartPending {
+            // An input-format restart is closing the current writer; the switch is applied when it
+            // completes, with the new format, so the restart cannot overwrite it. The closed
+            // writer's settlement goes to the first switch away from it. A capture that was only
+            // ever a waiting target (begun and ended inside the restart) had no writer: it settles
+            // at once with its start index, i.e. nothing written.
+            if let waiting = deferredCapture {
+                settled?(waiting.startIndex)
+                deferredCapture = (captureId, directory, startIndex, waiting.settled)
+            } else {
+                deferredCapture = (captureId, directory, startIndex, settled)
+            }
+            return 0
+        }
+        guard let format = inputFormat else { settled?(0); return 0 }
         let writer = makeWriter(captureId: captureId, directory: directory, format: format, startIndex: startIndex)
+        factsLock.lock()
+        let old = self.writer
+        var written = 0.0
+        if prerollSeconds > 0 {
+            let buffers = preroll.recent(seconds: prerollSeconds).filter { $0.format == format }
+            for buffer in buffers { writer.append(buffer) }
+            written = buffers.reduce(0) { $0 + Double($1.frameLength) / $1.format.sampleRate }
+        }
         self.writer = writer
+        factsLock.unlock()
         if let old {
             old.close(settled: settled)
         } else {
             settled?(0)
         }
+        return written
     }
 
     private func makeWriter(captureId: String, directory: URL, format: AVAudioFormat, startIndex: Int) -> SegmentWriter {
@@ -129,16 +227,100 @@ final class AudioOwner: NSObject {
     /// reset, return to foreground). A failed restart is reported as `.failed`, never hidden.
     @discardableResult
     func restartIfNeeded(reason: String) -> Bool {
-        guard state == .running, !engine.isRunning else { return engine.isRunning }
+        guard state == .running, !engine.isRunning, !formatRestartPending else { return engine.isRunning }
+        let current = engine.inputNode.outputFormat(forBus: 0)
+        if let previous = inputFormat, current.sampleRate > 0, current.channelCount > 0,
+           current.sampleRate != previous.sampleRate || current.channelCount != previous.channelCount {
+            restartWithNewInputFormat(current, reason: reason)
+            return false
+        }
         do {
             try AVAudioSession.sharedInstance().setActive(true)
             try engine.start()
+            player.play()
             return true
         } catch {
             setState(.failed("restart after \(reason) failed: \(error.localizedDescription)"))
             onGap?(GapRecord(startedAt: Date(), endedAt: nil, reason: "engine_restart_failed_\(reason)", kind: "capture"))
             return false
         }
+    }
+
+    private var formatRestartPending = false
+    /// A capture switch requested while a format restart was pending (applied when it completes);
+    /// `settled` is the settlement owed for the writer the restart is closing.
+    private var deferredCapture: (captureId: String, directory: URL, startIndex: Int, settled: ((Int) -> Void)?)?
+
+    /// The hardware input format changed (Bluetooth HFP, another audio client's preferred sample
+    /// rate). A tap and a WAV segment are bound to one format, so the current segment is closed,
+    /// the tap is reinstalled for the new format and the same capture continues at the next index.
+    /// The gap is recorded; nothing already written is touched.
+    private func restartWithNewInputFormat(_ format: AVAudioFormat, reason: String) {
+        formatRestartPending = true
+        onGap?(GapRecord(startedAt: Date(), endedAt: Date(), reason: "input_format_change_\(Int(inputFormat?.sampleRate ?? 0))_to_\(Int(format.sampleRate))_\(reason)", kind: "capture"))
+        engine.inputNode.removeTap(onBus: 0)
+        factsLock.lock()
+        let old = writer
+        writer = nil
+        preroll.reset()
+        factsLock.unlock()
+        let resume: (String, URL, Int) -> Void = { [weak self] captureId, directory, nextIndex in
+            guard let self else { return }
+            self.formatRestartPending = false
+            // A capture switch that arrived meanwhile wins: the closed writer settles to its caller
+            // and the new writer belongs to the capture it asked for.
+            var target = (captureId: captureId, directory: directory, startIndex: nextIndex)
+            if let deferred = self.deferredCapture {
+                self.deferredCapture = nil
+                deferred.settled?(nextIndex)
+                target = (deferred.captureId, deferred.directory, deferred.startIndex)
+            }
+            guard self.state == .running else { return }
+            self.inputFormat = format
+            let fresh = self.makeWriter(captureId: target.captureId, directory: target.directory, format: format, startIndex: target.startIndex)
+            self.factsLock.lock(); self.writer = fresh; self.factsLock.unlock()
+            self.installCaptureTap(format: format)
+            do {
+                try AVAudioSession.sharedInstance().setActive(true)
+                try self.engine.start()
+                self.player.play()
+            } catch {
+                self.setState(.failed("restart after format change (\(reason)) failed: \(error.localizedDescription)"))
+            }
+        }
+        if let old {
+            let captureId = old.captureId, directory = old.directory
+            old.close { nextIndex in resume(captureId, directory, nextIndex) }
+        } else {
+            formatRestartPending = false
+        }
+    }
+
+    // MARK: bot playback (WebSocket transport)
+
+    /// Attaches the player before the engine first starts: changing the graph of a running
+    /// voice-processing engine can itself force a configuration change.
+    private func attachPlayerIfNeeded() {
+        guard !playerAttached else { return }
+        engine.attach(player)
+        engine.connect(player, to: engine.mainMixerNode, format: playbackFormat)
+        playerAttached = true
+    }
+
+    /// Schedules bot audio (`playbackFormat`). Returns false when the engine is not running.
+    /// `completion` runs once the buffer was played or the player was stopped.
+    func schedulePlayback(_ buffer: AVAudioPCMBuffer, completion: @escaping () -> Void) -> Bool {
+        guard playerAttached, engine.isRunning else { return false }
+        player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { _ in completion() }
+        if !player.isPlaying { player.play() }
+        return true
+    }
+
+    /// Drops every scheduled bot buffer at once and leaves the player ready for the next turn.
+    func stopPlayback() {
+        guard playerAttached else { return }
+        player.stop()
+        if engine.isRunning { player.play() }
     }
 
     func stop(settled: ((Int) -> Void)? = nil) {
@@ -307,5 +489,77 @@ final class SegmentWriter {
         let record = SegmentRecord(index: index, filename: url.lastPathComponent, bytes: data.count, sha256: digest, startedAt: startedAt, endedAt: Date())
         index += 1
         DispatchQueue.main.async { [self] in onSegmentClosed?(record) }
+    }
+}
+
+/// Fixed-length history of captured buffers (copies), newest last. Appended on the real-time
+/// thread under the owner's facts lock.
+final class PrerollRing {
+    private var buffers: [AVAudioPCMBuffer] = []
+    private var seconds: Double = 0
+    let capacitySeconds: Double
+
+    init(capacitySeconds: Double) { self.capacitySeconds = capacitySeconds }
+
+    func append(_ buffer: AVAudioPCMBuffer) {
+        guard let copy = PCMUplink.copy(buffer) else { return }
+        buffers.append(copy)
+        seconds += Double(copy.frameLength) / copy.format.sampleRate
+        while seconds > capacitySeconds, let first = buffers.first {
+            seconds -= Double(first.frameLength) / first.format.sampleRate
+            buffers.removeFirst()
+        }
+    }
+
+    func reset() {
+        buffers.removeAll()
+        seconds = 0
+    }
+
+    /// The most recent buffers covering at least `seconds` (or all held), oldest first.
+    func recent(seconds wanted: Double) -> [AVAudioPCMBuffer] {
+        var out: [AVAudioPCMBuffer] = []
+        var total = 0.0
+        for buffer in buffers.reversed() where total < wanted {
+            out.append(buffer)
+            total += Double(buffer.frameLength) / buffer.format.sampleRate
+        }
+        return out.reversed()
+    }
+}
+
+/// Energy-based voice activity on the captured (voice-processed) signal: a noise floor that drops
+/// at once to quieter levels and rises slowly, with voice when a buffer is 9 dB above it. Used only
+/// to anchor the amen window; it never decides a mode change by itself.
+struct VoiceLevelTracker: Equatable {
+    private(set) var floorDb: Double = -50
+    private(set) var active = false
+    private(set) var lastVoiceEndUptime: TimeInterval?
+    static let marginDb: Double = 9
+    static let absoluteMinimumDb: Double = -62
+    /// The floor never follows the signal below this level.
+    static let floorMinimumDb: Double = -75
+    /// dB per second the floor rises toward a louder signal.
+    static let floorRiseDbPerSecond: Double = 2.0
+
+    mutating func observe(levelDb: Double, duration: Double, at uptime: TimeInterval) {
+        // NOTE [Context]: an audio unit starting or stopping in the process (libwebrtc's, on the
+        // WebRTC transport) hands the tap buffers of digital silence. Following them dragged the
+        // floor to -120 dB, after which ordinary room noise counted as voice for minutes (device
+        // run 2026-10-14: "voice active, ended never"). Silence like that says nothing about the room.
+        guard levelDb > -100 else { return }
+        let level = max(levelDb, VoiceLevelTracker.floorMinimumDb)
+        if level < floorDb { floorDb = level } else { floorDb = min(level, floorDb + VoiceLevelTracker.floorRiseDbPerSecond * duration) }
+        let voiced = level > max(floorDb + VoiceLevelTracker.marginDb, VoiceLevelTracker.absoluteMinimumDb)
+        if active, !voiced { lastVoiceEndUptime = uptime }
+        active = voiced
+    }
+
+    /// RMS level of channel 0 in dBFS.
+    static func levelDb(_ buffer: AVAudioPCMBuffer) -> Double {
+        guard let data = buffer.floatChannelData, buffer.frameLength > 0 else { return -120 }
+        var rms: Float = 0
+        vDSP_rmsqv(data[0], buffer.format.isInterleaved ? vDSP_Stride(buffer.format.channelCount) : 1, &rms, vDSP_Length(buffer.frameLength))
+        return rms > 0 ? Double(20 * log10(rms)) : -120
     }
 }

@@ -1,31 +1,13 @@
 import Foundation
 
-/// JSON events on the text/control WebSocket. No audio travels on this socket.
+/// JSON events on the backend's text/control WebSocket (session, remote commands, prayer journal
+/// acknowledgements, errors). No audio and no conversation turns travel on this socket; the talk
+/// tier carries the conversation.
 struct ServerEvent: Decodable {
     var type: String
-    var turn_id: String?
     var session_id: String?
-    var seq: Int?
-    var text: String?
     var message: String?
-    var partial: String?
-    var citations: [Citation]?
-    var first_delta_ms: Int?
-    var done_ms: Int?
-    var model: String?
-    var evidence_count: Int?
     var source_commit: String?
-}
-
-struct Citation: Codable, Equatable, Identifiable {
-    var id: String { cite_id }
-    var n: Int?
-    var cite_id: String
-    var source_family: String
-    var title: String?
-    var attribution: String?
-    var verse_refs: [String]?
-    var revision_hash: String?
 }
 
 struct CitationDetail: Decodable {

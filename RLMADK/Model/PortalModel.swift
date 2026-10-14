@@ -4,15 +4,18 @@ import Foundation
 import SwiftUI
 import UIKit
 
-/// Orchestrates the single audio owner, on-device recognition, the gated speaker, the text/control
-/// WebSocket, locally persisted captures and the durable work list. Mode is persisted independently
-/// of any connection or session id.
+/// Orchestrates the single audio owner, on-device recognition, the talk tier (Pipecat, the app's
+/// voice), the backend's text/control WebSocket (inspection, prayer journal sync), locally
+/// persisted captures and the durable work list. Mode is persisted independently of any
+/// connection or session id, and the phone's mode is the authority the talk server follows.
 @MainActor
 final class PortalModel: ObservableObject {
     // Persisted
     @Published private(set) var mode: PortalMode
     @Published private(set) var captures: [CaptureManifest]
     @AppStorage("backendURL") var backendURLString: String = PortalModel.defaultBackendURL
+    @AppStorage("talkURL") var talkURLString: String = PortalModel.defaultTalkURL
+    @AppStorage("talkTransport") var talkTransportRaw: String = PortalModel.defaultTalkTransport.rawValue
 
     // Live
     @Published var connection: PortalClient.Connection = .disconnected(nil)
@@ -20,9 +23,10 @@ final class PortalModel: ObservableObject {
     @Published var recognizerAvailability: Recognizer.Availability
     @Published var partialTranscript: String = ""
     @Published var lastTranscript: String = ""
+    /// The bot's reply text for the current exchange (talk tier `bot-transcription`).
     @Published var assistantText: String = ""
-    @Published var citations: [Citation] = []
-    @Published var turnInfo: String = ""
+    /// What the talk server heard (its own transcript of the last utterance).
+    @Published var serverHeard: String = ""
     @Published var devotional: Devotional?
     @Published var devotionalPlaying = false
     @Published var work: [WorkOperation] = []
@@ -30,9 +34,52 @@ final class PortalModel: ObservableObject {
     @Published private(set) var progress: DevotionalProgress?
     @Published var backendStatus: BackendStatus?
     @Published var log: [String] = []
-    @Published var speaking = false
+    /// The talk tier reports bot speech (between bot-started-speaking and bot-stopped-speaking).
+    @Published var botSpeaking = false
+    /// Bot audio is actually audible on the phone (the voice output's own view).
+    @Published var botAudible = false
     @Published var typedInput: String = ""
     @Published var lastError: String?
+
+    // Talk tier
+    @Published private(set) var talkState: TalkConnectionState = .disconnected(nil)
+    /// Transport in use now; differs from the selection after a coexistence fallback.
+    @Published private(set) var activeTalkTransport: TalkTransportKind?
+    @Published private(set) var policy: ConversationPolicy
+    @Published private(set) var policySource: String
+    /// WebRTC coexistence spike: the latest observation (see ios-client.md).
+    @Published private(set) var webrtcSpike: String = "not run"
+    /// Set when the WebRTC transport stopped the audio owner's capture on this build; the app then
+    /// runs the WebSocket transport until WebRTC is selected again in Diagnostics.
+    @Published private(set) var webrtcFallbackReason: String?
+    private(set) var talk: TalkClient?
+    /// Test seam: builds the talk client for a transport (fakes in controller tests).
+    var talkFactory: ((TalkTransportKind) -> TalkClient)?
+    /// Last floor mode told to the talk server (Diagnostics, tests).
+    private(set) var lastClientModeSent: ClientFloorMode?
+    private var modeReason: String?
+    private var floor: PrayerFloor
+    private var floorTimer: Timer?
+    /// Test seam: the clock the prayer floor reads.
+    var floorClock: () -> Date = { Date() }
+    /// Test seam: replaces the audio owner's voice-level facts (nil = none available).
+    var voiceProbe: (() -> VoiceFacts?)?
+    /// Prayer began from an address the recognizer could not adopt: the conversation final that
+    /// carries the address words still belongs to the prayer.
+    private var addressFinalPending = false
+    private var devotionalTracker: DevotionalTracker?
+    private var captureWatchdog: Timer?
+    private var watchdogRestarts = 0
+    private var spikeTimer: Timer?
+    private var spikeConnectedAt: Date?
+    private var spikeBaselineBytes: Int?
+    private var spikeBaselineFile: String?
+    private var spikeBaselineSegments = 0
+    private var spikeNotDeliveringSince: Date?
+    private var spikeRestartTried = false
+    private var spikeSuccessRecorded = false
+    private var talkLoggedState: String?
+    private var botTurnCounter = 0
 
     // Phone inspection (app-owned state the backend may see) and keyboard facts
     /// Stable per-install identity for inspection; not an account, not a user.
@@ -54,6 +101,8 @@ final class PortalModel: ObservableObject {
     private var heartbeat: Timer?
     private var deliveryWatch: Timer?
     private var asrJournals: [String: PrayerASRJournal] = [:]
+    /// Server-side prayer transcript lines (`prayer_text`) journaled per capture, by count.
+    private(set) var talkPrayerLines: [String: Int] = [:]
     /// Results already reported, by command id. A command pushed again (socket lost before the result
     /// reached the backend) is answered from here and never run twice. Persisted, bounded.
     private var completedCommands: [String: CommandResult] = [:]
@@ -67,9 +116,7 @@ final class PortalModel: ObservableObject {
 
     let audio = AudioOwner()
     let recognizer: Recognizer
-    let speaker = Speaker()
     private(set) var client: PortalClient
-    private var phrases = PhraseQueue()
     private var ambientCaptureId: String
     private let store: LocalStore
     private var ciDemoDone = false
@@ -81,12 +128,10 @@ final class PortalModel: ObservableObject {
     private var uploadingCaptures: Set<String> = []
     private var uploadRequested: Set<String> = []
 
-    /// Voice command phrases (configuration, recorded in the runbook). Buttons are the deterministic fallback.
-    static let quietPhrases = ["quiet please", "be quiet", "go quiet"]
-    static let wakePhrases = ["wake up", "portal wake"]
-    static let prayerStartPhrases = ["begin prayer", "let us pray", "let's pray"]
-    static let prayerEndPhrases = ["end prayer", "amen end prayer"]
     static let defaultBackendURL = ProcessInfo.processInfo.environment["RLMADK_BACKEND_URL"] ?? "http://100.90.105.30:8765"
+    /// The Pipecat talk tier on Spark-A (both transports on one port).
+    static let defaultTalkURL = ProcessInfo.processInfo.environment["RLMADK_TALK_URL"] ?? "http://100.121.221.42:7860"
+    static let defaultTalkTransport = TalkTransportKind(rawValue: ProcessInfo.processInfo.environment["RLMADK_TALK_TRANSPORT"] ?? "") ?? .webrtc
 
     init(store: LocalStore = LocalStore(), client suppliedClient: PortalClient? = nil) {
         let loadedMode = store.loadMode() ?? PortalMode()
@@ -104,6 +149,7 @@ final class PortalModel: ObservableObject {
         }
         let relabelled = CaptureManifest.relabelRetainedZeroAudio(&loadedCaptures)
         let rec = Recognizer()
+        let cachedPolicy = PolicyStore.load(root: store.root)
         self.store = store
         mode = loadedMode
         captures = loadedCaptures
@@ -114,7 +160,13 @@ final class PortalModel: ObservableObject {
         client = suppliedClient ?? PortalClient(baseURL: URL(string: urlString) ?? URL(string: PortalModel.defaultBackendURL)!)
         ambientCaptureId = ambient
         installId = PortalModel.loadOrCreateInstallId()
+        policy = cachedPolicy.policy
+        policySource = cachedPolicy.source
+        floor = PrayerFloor(policy: cachedPolicy.policy)
+        webrtcFallbackReason = UserDefaults.standard.string(forKey: "webrtcFallback-\(PortalModel.appBuild)")
         if envURL != nil { backendURLString = urlString }
+        if let envTalk = ProcessInfo.processInfo.environment["RLMADK_TALK_URL"] { talkURLString = envTalk }
+        if let envTransport = ProcessInfo.processInfo.environment["RLMADK_TALK_TRANSPORT"], TalkTransportKind(rawValue: envTransport) != nil { talkTransportRaw = envTransport }
         store.saveCaptures(captures)
         log = store.loadRecentLog()
         asrJournals = store.loadASRJournals()
@@ -128,8 +180,9 @@ final class PortalModel: ObservableObject {
         if let restoredPrayer = mode.prayerCaptureId {
             recognizer.rebindOwner(restoredPrayer)
             if asrJournals[restoredPrayer] == nil { asrJournals[restoredPrayer] = PrayerASRJournal(captureId: restoredPrayer) }
+            startFloorTimer()
         }
-        logLine("launched; mode=\(mode.label) quiet=\(mode.quiet) prayer=\(mode.prayerCaptureId ?? "-")")
+        logLine("launched; mode=\(mode.label) quiet=\(mode.quiet) prayer=\(mode.prayerCaptureId ?? "-") talk=\(talkTransportRaw) \(talkURLString) policy=\(policySource)")
     }
 
     // MARK: wiring
@@ -145,9 +198,6 @@ final class PortalModel: ObservableObject {
         recognizer.onFinal = { [weak self] text, owner in Task { @MainActor in self?.final(text, source: "voice", owner: owner) } }
         recognizer.onGap = { [weak self] gap in Task { @MainActor in self?.recordGap(gap) } }
         recognizer.onRestart = { [weak self] reason in Task { @MainActor in self?.recognitionRestarted(reason) } }
-        speaker.onStateChange = { [weak self] s in Task { @MainActor in self?.speaking = s } }
-        speaker.onUtteranceStarted = { [weak self] tag in Task { @MainActor in self?.devotionalSegmentStarted(tag) } }
-        speaker.onUtteranceFinished = { [weak self] tag in Task { @MainActor in self?.devotionalSegmentFinished(tag) } }
         client.onConnection = { [weak self] c in Task { @MainActor in self?.connectionChanged(c) } }
         client.onEvent = { [weak self] e, raw in Task { @MainActor in self?.handle(e, raw) } }
     }
@@ -166,30 +216,21 @@ final class PortalModel: ObservableObject {
             let modeChanged = next.quiet != mode.quiet || next.label != mode.label
             mode = next
             store.saveMode(mode)
+            // The gate is evaluated on every mode change, before any effect runs.
+            talk?.voice.gateOpen = SpeechGate.mayEnqueue(mode)
             if modeChanged { sendSnapshot(reason: "mode") }
         }
         for effect in effects { perform(effect) }
+        modeReason = nil
     }
 
     private func perform(_ effect: PortalEffect) {
         switch effect {
-        case .cancelOutput:
-            phrases.cancelAll()
-            speaker.stopAll()
-            devotionalPlaying = false
-        case .sendCancel(let turnId):
-            client.send(["type": "cancel", "turn_id": turnId])
-        case .startTurn(let turnId):
-            phrases.beginTurn(turnId)
-            assistantText = ""
-            citations = []
-            turnInfo = "turn \(turnId.prefix(8)) sent"
-            var context: [String: Any] = [:]
-            if let d = devotional, d.available {
-                context["passage_title"] = d.title ?? d.passage
-                context["passage_cite_ids"] = Array(Set((d.segments ?? []).map { $0.cite_id })).sorted()
-            }
-            client.send(["type": "final_transcript", "turn_id": turnId, "text": lastTranscript, "context": context])
+        case .stopVoice:
+            talk?.voice.stop()
+            devotionalInterrupted(reason: "output stopped")
+        case .sendClientMode(let floorMode):
+            sendClientMode(floorMode, reason: modeReason ?? "phone")
         case .savePrayer(let captureId):
             finishCapture(captureId)
         case .waitForUser:
@@ -197,12 +238,19 @@ final class PortalModel: ObservableObject {
         }
     }
 
+    private func sendClientMode(_ floorMode: ClientFloorMode, reason: String) {
+        lastClientModeSent = floorMode
+        talk?.send(.clientMode(floorMode, reason: reason))
+    }
+
     // MARK: lifecycle
 
     /// CI fixture/demo runs set `RLMADK_SKIP_PERMISSION_PROMPTS=1`: neither speech recognition nor the
     /// microphone is requested and the audio owner is not started (the simulator's microphone prompt
     /// cannot be answered unattended), so screenshots show the UI with the audio owner idle and the
-    /// exact "live voice unavailable" condition. Real devices always prompt and start the owner.
+    /// exact "live voice unavailable" condition. The talk tier then runs the WebSocket transport
+    /// (silence uplink), never WebRTC, which would open the microphone itself. Real devices always
+    /// prompt and start the owner.
     static let skipPermissionPrompts = ProcessInfo.processInfo.environment["RLMADK_SKIP_PERMISSION_PROMPTS"] == "1"
     static let underXCTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
@@ -218,6 +266,9 @@ final class PortalModel: ObservableObject {
         }
         client.connect()
         Task { await refreshStatus() }
+        Task { await refreshPolicy() }
+        startCaptureWatchdog()
+        connectTalk()
     }
 
     private func startAudio() {
@@ -227,11 +278,43 @@ final class PortalModel: ObservableObject {
         let startIndex = captures.first(where: { $0.captureId == captureId })?.nextSegmentIndex ?? 0
         do {
             try audio.start(captureId: captureId, directory: store.captureDirectory(captureId), startIndex: startIndex)
-            logLine("audio owner running; capture \(captureId) from segment \(startIndex)")
+            logLine("audio owner running; capture \(captureId) from segment \(startIndex); \(audio.sessionDescription)")
         } catch {
             logLine("audio owner failed: \(error.localizedDescription)")
         }
         reconcileRecognition()
+    }
+
+    /// Every two seconds: an owner that intends to run but whose engine stopped (another audio
+    /// client, a deactivation we were not told about) is restarted, and the restart is logged.
+    private func startCaptureWatchdog() {
+        captureWatchdog?.invalidate()
+        captureWatchdog = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.audio.state == .running, !self.audio.isRunning else { return }
+                self.watchdogRestarts += 1
+                let restarted = self.audio.restartIfNeeded(reason: "watchdog")
+                self.logLine("capture watchdog: engine was stopped while recording; restart \(restarted ? "ok" : "pending/failed") (#\(self.watchdogRestarts)); \(self.audio.sessionDescription)")
+                self.sendSnapshot(reason: "capture")
+            }
+        }
+    }
+
+    /// `GET /policy` from the skill service; the cached policy stays when it has none.
+    func refreshPolicy() async {
+        guard let fetched = await PolicyStore.fetch(client: client, root: store.root) else {
+            logLine("policy: none from \(backendURLString)/policy; using \(policySource)")
+            return
+        }
+        applyPolicy(fetched.policy, source: fetched.source)
+    }
+
+    /// Test seam and the fetch path: installs a policy for every floor rule.
+    func applyPolicy(_ newPolicy: ConversationPolicy, source: String) {
+        policy = newPolicy
+        policySource = source
+        floor.setPolicy(newPolicy)
+        logLine("policy \(source): \(newPolicy.addressPhrases.count) address, \(newPolicy.amenPhrases.count) amen phrases, amen window \(newPolicy.amenSilenceSeconds) s")
     }
 
     // MARK: recognition startup (VOICE-START-1)
@@ -304,12 +387,6 @@ final class PortalModel: ObservableObject {
                 await syncLocalWork()
                 await refreshWork()
                 await retryPendingUploads()
-                if ProcessInfo.processInfo.environment["RLMADK_CI_DEMO"] == "1", !ciDemoDone {
-                    // CI demo: a typed turn against the fixture backend so the screenshot shows streamed text.
-                    ciDemoDone = true
-                    typedInput = "What does the shepherd psalm say about rest?"
-                    submitTyped()
-                }
             }
         } else if was {
             apply(.connectionLost)
@@ -317,37 +394,58 @@ final class PortalModel: ObservableObject {
         }
     }
 
-    // MARK: transcripts and turns
+    // MARK: transcripts (on-device): prayer floor, control phrases, prayer journal
 
+    /// The Listen button: restarts on-device recognition now (the talk server hears the audio on
+    /// its own; this is the phone's recognizer for floor rules and control phrases).
     func beginListening() {
         guard !mode.isPraying else { return }
-        apply(.userSpeechStarted)
         partialTranscript = ""
         if recognizer.continuous { recognizer.start() } else { recognizer.startContinuous() }
         endpoint.requestStarted()
+        floor.newUtterance()
         startSilenceTimer()
         logLine(recognizerAvailability.usable ? "listening (on-device, manual restart)" : "listen requested but \(recognizerAvailability.label)")
     }
-
-    private var utteranceInterrupted = false
 
     /// Recognition request restarted (after a final, no-speech or error): the silence window restarts
     /// too, so the fresh request is not end-pointed immediately by the previous utterance's age.
     func recognitionRestarted(_ reason: String) {
         endpoint.requestStarted()
+        floor.newUtterance()
         logLine("recognition restarted (\(reason))")
     }
 
     private func partial(_ text: String) {
         partialTranscript = text
         endpoint.speech()
-        // Real speech interrupts whatever is playing or pending (response, trailing TTS, devotional),
-        // once per utterance: a pending answer must not start speaking over the user's next utterance.
-        if !utteranceInterrupted, !mode.isPraying, (speaker.isSpeaking || devotionalPlaying || mode.currentTurnId != nil) {
-            utteranceInterrupted = true
-            apply(.userSpeechStarted)
+        act(on: floor.observe(text: text, final: false, praying: mode.isPraying, at: floorClock()), text: text)
+        trackPrayerPartial(text)
+    }
+
+    /// The latest on-device partial of the open prayer. On iOS 26 the on-device recognizer starts
+    /// its partial text afresh after a pause inside one request and may never deliver a final for
+    /// it (device run 2026-10-14: a three-sentence prayer journaled nothing). A partial that does
+    /// not continue the previous one closes that utterance, which is journaled then; the last one
+    /// is journaled when the prayer ends. A later final is still journaled as it arrives, so a line
+    /// can repeat; the journal is provisional text, the intake transcribes the audio.
+    private var prayerPartial: (captureId: String, text: String)?
+
+    private func trackPrayerPartial(_ text: String) {
+        guard let captureId = mode.prayerCaptureId else { return }
+        if let previous = prayerPartial, previous.captureId == captureId, !PortalModel.continues(previous.text, with: text) {
+            journalPrayerASR(captureId: captureId, text: previous.text)
+            logLine("prayer partial closed by a pause; journaled (\(previous.text.prefix(40)))")
         }
-        if let turnId = mode.currentTurnId { client.send(["type": "partial_transcript", "turn_id": turnId, "text": text]) }
+        prayerPartial = (captureId, text)
+    }
+
+    /// True when `next` extends `previous` (its leading words, allowing the last two to be revised).
+    static func continues(_ previous: String, with next: String) -> Bool {
+        let a = FloorText.words(previous), b = FloorText.words(next)
+        guard !a.isEmpty else { return true }
+        let k = max(1, a.count - 2)
+        return b.count >= k && Array(b.prefix(k)) == Array(a.prefix(k))
     }
 
     /// Test seams for the recognizer paths (the recognizer is not available in the simulator).
@@ -356,44 +454,94 @@ final class PortalModel: ObservableObject {
     /// reports with every final); nil means a conversation request.
     func finalTranscriptReceived(_ text: String, owner: String? = nil) { final(text, source: "voice", owner: owner) }
     var endpointClock: EndpointClock { endpoint }
+    var prayerFloor: PrayerFloor { floor }
+
+    private func act(on decision: PrayerFloor.Decision, text: String) {
+        switch decision {
+        case .none:
+            break
+        case .enterPrayer(let address):
+            beginPrayer(trigger: .address(address))
+        case .amenPending:
+            let voice: VoiceFacts? = voiceProbe.map { $0() } ?? (audio.state == .running ? audio.voiceFacts : nil)
+            let voiceNote = voice.map { v in "voice \(v.active ? "active" : "quiet"), ended \(v.lastVoiceEnd.map { String(format: "%.2f s ago", floorClock().timeIntervalSince($0)) } ?? "never")" } ?? "no level facts"
+            logLine("amen heard (\"\(text.suffix(60))\"); prayer ends after \(policy.amenSilenceSeconds) s with no new words (\(voiceNote))")
+        case .amenCancelled:
+            logLine("more words after amen; prayer continues")
+        case .endPrayer:
+            endPrayer(reason: "amen")
+        }
+    }
 
     private func final(_ text: String, source: String, owner: String? = nil) {
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }
         partialTranscript = ""
-        utteranceInterrupted = false
         lastTranscript = cleaned
         logLine("final (\(source)\(owner.map { ", prayer \($0)" } ?? "")): \(cleaned)")
         if let owner {
-            // A request opened under a prayer capture: its text belongs to that capture, however
-            // late it settles and whatever the mode is now. Journaled raw BEFORE any control phrase
-            // acts (a line ending in "end prayer" is kept as recognized); never a turn. Control
-            // phrases act only when that capture is still the open prayer: words from an ended
-            // prayer never end or alter a newer one.
+            // A request opened under (or adopted by) a prayer capture: its text belongs to that
+            // capture, however late it settles and whatever the mode is now. Journaled raw BEFORE
+            // any control phrase acts (a line ending in "end prayer" is kept as recognized). Control
+            // phrases and the amen rule act only when that capture is still the open prayer: words
+            // from an ended prayer never end or alter a newer one.
             journalPrayerASR(captureId: owner, text: cleaned)
+            if prayerPartial?.captureId == owner { prayerPartial = nil } // the final covers that utterance
             if owner == mode.prayerCaptureId {
-                _ = handleVoiceCommand(cleaned)
+                if handleVoiceCommand(cleaned) { return }
+                act(on: floor.observe(text: cleaned, final: true, praying: true, at: floorClock()), text: cleaned)
             } else {
                 logLine("final from ended prayer \(owner) journaled; control phrases not applied to the current mode")
             }
             return
         }
         if mode.isPraying {
-            // A conversation request that settled after prayer began: not prayer text, not a turn,
-            // and its control phrases do not touch the prayer.
+            if addressFinalPending, let captureId = mode.prayerCaptureId, policy.address(startOf: cleaned) != nil {
+                // The utterance that opened this prayer by address ended before it could be adopted.
+                addressFinalPending = false
+                journalPrayerASR(captureId: captureId, text: cleaned)
+                act(on: floor.observe(text: cleaned, final: true, praying: true, at: floorClock()), text: cleaned)
+                return
+            }
+            // A conversation request that settled after prayer began: not prayer text, and its
+            // control phrases do not touch the prayer.
             logLine("conversation final during prayer ignored (request opened before the prayer); control phrases not applied")
             return
         }
-        if handleVoiceCommand(cleaned) { return }
-        let turnId = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-        apply(.finalTranscript(turnId: turnId))
+        if handleVoiceCommand(cleaned) {
+            floor.newUtterance()
+            return
+        }
+        if case .enterPrayer(let address) = floor.observe(text: cleaned, final: true, praying: false, at: floorClock()) {
+            // No partial showed the address: the utterance that just ended is the prayer's beginning.
+            beginPrayer(trigger: .address(address))
+            addressFinalPending = false
+            if let captureId = mode.prayerCaptureId { journalPrayerASR(captureId: captureId, text: cleaned) }
+            return
+        }
+        // Ordinary speech: the talk server answers it from its own audio and transcript; the phone
+        // sends nothing for it (a second copy would be a second turn).
     }
 
-    /// Typed input is labelled as typed; it exercises the same turn path but is not proof of live voice.
+    /// Typed input goes to the talk server as `client_text` (labelled typed; not proof of live voice).
     func submitTyped() {
-        let text = typedInput
+        let text = typedInput.trimmingCharacters(in: .whitespacesAndNewlines)
         typedInput = ""
-        final(text, source: "typed")
+        guard !text.isEmpty else { return }
+        lastTranscript = text
+        logLine("final (typed): \(text)")
+        if mode.isPraying {
+            logLine("typed input not sent during prayer")
+            return
+        }
+        if handleVoiceCommand(text) { return }
+        assistantText = ""
+        guard let talk else {
+            lastError = "talk server not connected; typed text not sent"
+            return
+        }
+        talk.send(.clientText(text))
+        if !talk.state.isUp { logLine("talk server not connected yet; typed text will be sent when it is") }
     }
 
     func journalPrayerASR(captureId: String, text: String) {
@@ -424,11 +572,10 @@ final class PortalModel: ObservableObject {
     func prayerASRJournal(_ captureId: String) -> PrayerASRJournal? { asrJournals[captureId] }
 
     private func handleVoiceCommand(_ text: String) -> Bool {
-        let lower = text.lowercased()
-        if PortalModel.quietPhrases.contains(where: { lower.hasSuffix($0) || lower == $0 }) { enterQuiet(); return true }
-        if PortalModel.wakePhrases.contains(where: { lower.hasPrefix($0) || lower == $0 }) { wake(); return true }
-        if !mode.isPraying, PortalModel.prayerStartPhrases.contains(where: { lower == $0 }) { beginPrayer(); return true }
-        if mode.isPraying, PortalModel.prayerEndPhrases.contains(where: { lower.hasSuffix($0) }) { endPrayer(); return true }
+        if policy.isQuietCommand(text) { enterQuiet(); return true }
+        if policy.isWakeCommand(text) { wake(); return true }
+        if !mode.isPraying, policy.isPrayerStartCommand(text) { beginPrayer(trigger: .command); return true }
+        if mode.isPraying, policy.isPrayerEndCommand(text) { endPrayer(reason: "end phrase"); return true }
         return false
     }
 
@@ -446,32 +593,17 @@ final class PortalModel: ObservableObject {
         }
     }
 
-    func stopOutput() { apply(.stopRequested) }
+    /// Stop: silences the bot now (and the rest of its current turn) and tells the server.
+    func stopOutput() {
+        apply(.stopRequested)
+        talk?.send(.clientEvent(name: "stop", detail: [:]))
+    }
 
     private func handle(_ e: ServerEvent, _ raw: [String: Any]) {
         switch e.type {
-        case "assistant_text_delta":
-            guard let turnId = e.turn_id, let text = e.text else { return }
-            guard turnId == mode.currentTurnId else { return } // old-turn deltas never re-enter playback
-            assistantText += text
-            for phrase in phrases.accept(delta: text, turnId: turnId) { speakIfAllowed(phrase) }
-            apply(.assistantDelta(turnId: turnId))
-        case "assistant_done":
-            guard let turnId = e.turn_id else { return }
-            if turnId == mode.currentTurnId {
-                for phrase in phrases.finish(turnId: turnId) { speakIfAllowed(phrase) }
-                citations = e.citations ?? []
-                turnInfo = "first delta \(e.first_delta_ms ?? -1) ms, done \(e.done_ms ?? -1) ms, model \(e.model ?? "?"), evidence \(e.evidence_count ?? 0)"
-            }
-            apply(.assistantDone(turnId: turnId))
-        case "assistant_cancelled":
-            if let turnId = e.turn_id { apply(.assistantCancelled(turnId: turnId)) }
         case "error":
             lastError = e.message
             logLine("backend error: \(e.message ?? "?")")
-            if let turnId = e.turn_id { apply(.assistantCancelled(turnId: turnId)) }
-        case "duplicate_turn":
-            logLine("duplicate turn refused by backend: \(e.turn_id ?? "?")")
         case "command":
             handleCommand(raw)
         case "prayer_asr_ack":
@@ -484,26 +616,62 @@ final class PortalModel: ObservableObject {
         }
     }
 
-    private func speakIfAllowed(_ phrase: String) {
-        guard SpeechGate.mayEnqueue(mode) else { return } // gate evaluated before enqueue
-        speaker.speak(phrase)
-    }
-
     // MARK: quiet / wake / prayer
 
-    func enterQuiet() { apply(.enterQuiet); logLine("quiet entered (explicit)") }
-    func wake() { apply(.wake); logLine("woken (explicit)") }
+    func enterQuiet() { enterQuiet(reason: "explicit") }
+    func wake() { wake(reason: "explicit") }
 
-    func beginPrayer() {
+    func enterQuiet(reason: String) {
+        modeReason = reason
+        apply(.enterQuiet)
+        logLine("quiet entered (\(reason))")
+    }
+
+    func wake(reason: String) {
+        modeReason = reason
+        apply(.wake)
+        logLine("woken (\(reason))")
+    }
+
+    /// How a prayer began; decides pre-roll and whether the utterance in progress is adopted.
+    enum PrayerTrigger: Equatable {
+        case button
+        case command
+        case address(String)
+        case server(String)
+
+        var label: String {
+            switch self {
+            case .button: return "button"
+            case .command: return "begin prayer phrase"
+            case .address(let phrase): return "address:\(phrase)"
+            case .server(let reason): return "server \(reason)"
+            }
+        }
+    }
+
+    func beginPrayer() { beginPrayer(trigger: .button) }
+
+    func beginPrayer(trigger: PrayerTrigger) {
         guard !mode.isPraying else { return }
         let captureId = CaptureManifest.newCaptureId(kind: "prayer")
-        captures.insert(CaptureManifest(captureId: captureId, kind: "prayer", createdAt: Date()), at: 0)
+        var manifest = CaptureManifest(captureId: captureId, kind: "prayer", createdAt: Date())
+        manifest.trigger = trigger.label
+        captures.insert(manifest, at: 0)
         persistCaptures()
         asrJournals[captureId] = PrayerASRJournal(captureId: captureId)
+        modeReason = trigger.label
         apply(.enterPrayer(captureId: captureId))
-        // From here every recognition request belongs to this capture; an open conversation request
-        // is ended and keeps its own identity.
-        recognizer.rebindOwner(captureId)
+        floor.reset()
+        // From here every recognition request belongs to this capture. An address-triggered prayer
+        // keeps the request in progress (its words are the prayer's first words); otherwise an open
+        // conversation request is ended and keeps its own identity.
+        if case .address = trigger {
+            addressFinalPending = !recognizer.adoptCurrent(owner: captureId)
+        } else {
+            addressFinalPending = false
+            recognizer.rebindOwner(captureId)
+        }
         // The owner's intent (.running) is not evidence that audio arrives. Check the engine facts,
         // try one restart, and keep observing: the warning tracks delivery for the whole prayer.
         captureWarning = nil
@@ -513,14 +681,43 @@ final class PortalModel: ObservableObject {
             // One start attempt on a real device; never under the XCTest host (permission alert) or fixture mode.
             if !PortalModel.skipPermissionPrompts, !PortalModel.underXCTest { startAudio() }
         }
-        if audio.state == .running { audio.beginCapture(captureId: captureId, directory: store.captureDirectory(captureId), startIndex: 0) }
-        logLine("prayer begun; capture \(captureId); recognition continues for end-of-prayer commands only")
+        let preroll: Double
+        switch trigger {
+        case .address: preroll = policy.prayerPrerollSeconds
+        case .server: preroll = policy.serverPrayerPrerollSeconds
+        case .button, .command: preroll = 0
+        }
+        if audio.state == .running {
+            let written = audio.beginCapture(captureId: captureId, directory: store.captureDirectory(captureId), startIndex: 0, prerollSeconds: preroll)
+            if written > 0, let i = captures.firstIndex(where: { $0.captureId == captureId }) {
+                captures[i].prerollSeconds = (written * 10).rounded() / 10
+                persistCaptures()
+            }
+        }
+        logLine("prayer begun (\(trigger.label)); capture \(captureId); pre-roll \(preroll) s requested; recognition continues for the amen rule and end commands")
         refreshDeliveryWarning()
         deliveryWatch?.invalidate()
         deliveryWatch = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshDeliveryWarning() }
         }
+        startFloorTimer()
         sendSnapshot(reason: "capture")
+    }
+
+    /// Ten times a second while praying: the amen window, never silence alone.
+    private func startFloorTimer() {
+        floorTimer?.invalidate()
+        floorTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.floorTick() }
+        }
+    }
+
+    /// Test seam and the timer body.
+    func floorTick() {
+        let voice: VoiceFacts?
+        if let probe = voiceProbe { voice = probe() } else { voice = audio.state == .running ? audio.voiceFacts : nil }
+        let decision = floor.tick(praying: mode.isPraying, at: floorClock(), voice: voice)
+        if decision == .endPrayer { act(on: .endPrayer, text: "") }
     }
 
     /// Observed every second while praying: states what was seen and when, and clears itself when
@@ -547,16 +744,27 @@ final class PortalModel: ObservableObject {
         captureWarning = text
     }
 
-    func endPrayer() {
+    func endPrayer() { endPrayer(reason: "button") }
+
+    func endPrayer(reason: String) {
         guard mode.isPraying else { return }
+        if let tail = prayerPartial, tail.captureId == mode.prayerCaptureId {
+            journalPrayerASR(captureId: tail.captureId, text: tail.text)
+        }
+        prayerPartial = nil
         // Ends the prayer's open recognition request without dropping its final (it is still
         // delivered under this capture's identity); later requests are conversation again.
         recognizer.rebindOwner(nil)
+        modeReason = reason
         apply(.endPrayer)
+        floor.reset()
+        floorTimer?.invalidate()
+        floorTimer = nil
         deliveryWatch?.invalidate()
         deliveryWatch = nil
         captureWarning = nil
-        logLine("prayer ended explicitly")
+        addressFinalPending = false
+        logLine("prayer ended (\(reason))")
     }
 
     private func finishCapture(_ captureId: String) {
@@ -674,6 +882,7 @@ final class PortalModel: ObservableObject {
         }
     }
 
+
     func makeSnapshot() -> DeviceSnapshot {
         DeviceSnapshot(
             install_id: installId,
@@ -707,7 +916,16 @@ final class PortalModel: ObservableObject {
                 DeviceSnapshot.CaptureSummary(capture_id: c.captureId, kind: c.kind, status: c.status.label, segments: c.segments.count, bytes: c.segments.reduce(0) { $0 + $1.bytes }, pending_uploads: c.pendingUploads.count, gaps: c.gaps.count, closed: c.isClosed, expected_segments: c.expectedSegmentCount, created_at: c.createdAt.timeIntervalSince1970, last_segment_end: c.segments.compactMap(\.endedAt).max()?.timeIntervalSince1970)
             },
             recent_log: Array(log.prefix(40)),
-            last_error: lastError
+            last_error: lastError,
+            talk_transport: talkTransportRaw,
+            talk_transport_active: activeTalkTransport?.rawValue,
+            talk_url: talkURLString,
+            talk_state: talkState.label,
+            talk_detail: talk?.detail,
+            bot_speaking: botSpeaking,
+            voice_output: talk?.voice.statusLine,
+            webrtc_spike: webrtcSpike,
+            policy_source: policySource
         )
     }
 
@@ -864,6 +1082,7 @@ final class PortalModel: ObservableObject {
         }.value
         let list: [[String: Any]] = captures.map { c in
             ["capture_id": c.captureId, "kind": c.kind, "status": c.status.label, "created_at": c.createdAt.timeIntervalSince1970, "closed_at": c.closedAt?.timeIntervalSince1970 as Any, "expected_segments": c.expectedSegmentCount as Any, "finalize_requested_at": c.finalizeRequestedAt?.timeIntervalSince1970 as Any,
+             "trigger": c.trigger as Any, "preroll_s": c.prerollSeconds as Any, "talk_prayer_text_lines": talkPrayerLines[c.captureId] as Any,
              "segments": c.segments.map { s in ["index": s.index, "filename": s.filename, "bytes": s.bytes, "sha256": s.sha256, "started_at": s.startedAt.timeIntervalSince1970, "ended_at": s.endedAt?.timeIntervalSince1970 as Any, "verified_uploaded": s.verifiedUploaded, "last_error": s.lastError as Any] },
              "gaps": c.gaps.map { g in ["started_at": g.startedAt.timeIntervalSince1970, "ended_at": g.endedAt?.timeIntervalSince1970 as Any, "reason": g.reason, "kind": g.kind] }]
         }
@@ -1012,6 +1231,251 @@ final class PortalModel: ObservableObject {
         } catch { logLine("capture status error: \(error.localizedDescription)") }
     }
 
+    // MARK: talk tier (the app's voice)
+
+    var selectedTalkTransport: TalkTransportKind { TalkTransportKind(rawValue: talkTransportRaw) ?? .webrtc }
+
+    /// The transport actually run: fixture mode never opens WebRTC (it would open the microphone
+    /// itself), and a WebRTC coexistence failure recorded on this build falls back to WebSocket.
+    var effectiveTalkTransport: TalkTransportKind {
+        if PortalModel.skipPermissionPrompts { return .websocket }
+        if selectedTalkTransport == .webrtc, webrtcFallbackReason != nil { return .websocket }
+        return selectedTalkTransport
+    }
+
+    /// (Re)creates the talk client for the effective transport and connects it.
+    func connectTalk() {
+        talk?.disconnect()
+        stopSpikeMonitor()
+        let kind = effectiveTalkTransport
+        let made: TalkClient
+        if let factory = talkFactory {
+            made = factory(kind)
+        } else {
+            switch kind {
+            case .webrtc: made = WebRTCTalkClient()
+            case .websocket: made = WebSocketTalkClient(audio: audio)
+            }
+        }
+        made.onEvent = { [weak self] event in self?.handleTalk(event) }
+        made.onState = { [weak self] state in self?.talkStateChanged(state) }
+        made.onLog = { [weak self] line in self?.logLine(line) }
+        made.voice.onPlayingChange = { [weak self] playing in Task { @MainActor in self?.botAudible = playing } }
+        made.voice.gateOpen = SpeechGate.mayEnqueue(mode)
+        talk = made
+        activeTalkTransport = kind
+        talkState = made.state
+        botSpeaking = false
+        guard let url = URL(string: talkURLString), url.host != nil else {
+            logLine("talk URL invalid: \(talkURLString)")
+            return
+        }
+        logLine("talk connecting: \(kind.label) \(url.absoluteString)\(kind != selectedTalkTransport ? " (selected \(selectedTalkTransport.label); \(webrtcFallbackReason ?? "fixture mode"))" : "")")
+        made.connect(baseURL: url)
+    }
+
+    func setTalkURL(_ s: String) {
+        let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed), url.host != nil else { return }
+        talkURLString = trimmed
+        connectTalk()
+    }
+
+    /// Diagnostics picker. Selecting WebRTC again clears a recorded coexistence fallback.
+    func setTalkTransport(_ kind: TalkTransportKind) {
+        talkTransportRaw = kind.rawValue
+        if kind == .webrtc, webrtcFallbackReason != nil {
+            webrtcFallbackReason = nil
+            UserDefaults.standard.removeObject(forKey: "webrtcFallback-\(PortalModel.appBuild)")
+            logLine("WebRTC selected again; coexistence fallback cleared")
+        }
+        connectTalk()
+    }
+
+    private func talkStateChanged(_ state: TalkConnectionState) {
+        talkState = state
+        if talkLoggedState != state.label {
+            talkLoggedState = state.label
+            logLine("talk \(activeTalkTransport?.label ?? "?") \(state.label)")
+        }
+        if state.isUp {
+            // The phone's persisted mode is the authority: the server is told on every (re)connect.
+            sendClientMode(ClientFloorMode.of(mode), reason: "sync")
+            if activeTalkTransport == .webrtc { startSpikeMonitor() }
+            if ProcessInfo.processInfo.environment["RLMADK_CI_DEMO"] == "1", !ciDemoDone {
+                // CI demo: a typed turn against the fixture talk server so the screenshot shows a reply.
+                ciDemoDone = true
+                typedInput = "What does the shepherd psalm say about rest?"
+                submitTyped()
+            }
+        } else {
+            botSpeaking = false
+            if activeTalkTransport == .webrtc { spikeNotDeliveringSince = nil }
+        }
+        sendSnapshot(reason: "talk")
+    }
+
+    /// Test seam: delivers a talk event as if the active client had.
+    func talkEventReceived(_ event: TalkEvent) { handleTalk(event) }
+
+    private func handleTalk(_ event: TalkEvent) {
+        switch event {
+        case .botReady:
+            logLine("talk bot ready")
+        case .userTranscript(let text, let final):
+            serverHeard = text
+            if final {
+                assistantText = ""
+                // A new user turn ends any reading in progress.
+                devotionalInterrupted(reason: "user spoke")
+            }
+        case .userStartedSpeaking, .userStoppedSpeaking:
+            break
+        case .botTranscript(let text):
+            let piece = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !piece.isEmpty else { return }
+            assistantText = assistantText.isEmpty ? piece : assistantText + " " + piece
+        case .botSpokenText(let text):
+            devotionalSpoken(text)
+        case .botStartedSpeaking:
+            botTurnCounter += 1
+            botSpeaking = true
+            talk?.voice.botTurnStarted()
+            apply(.botStartedSpeaking(turnId: "bot-\(botTurnCounter)"))
+        case .botStoppedSpeaking:
+            botSpeaking = false
+            talk?.voice.botTurnEnded()
+            apply(.botStoppedSpeaking)
+        case .interruption:
+            // The WebSocket client already flushed its player on the socket queue.
+            talk?.voice.flush()
+            devotionalInterrupted(reason: "interruption")
+        case .floorMode(let serverMode, _, let reason):
+            applyServerFloor(serverMode, reason: reason ?? "server")
+        case .prayerText(let text, let final):
+            journalTalkPrayerText(text, final: final)
+        case .error(let message):
+            lastError = "talk: \(message)"
+            logLine("talk error: \(message.prefix(200))")
+        }
+    }
+
+    /// The server's floor follows the phone, but the server can also detect an address or an amen
+    /// the phone missed (its own utterance segmentation); the phone then follows it so both agree.
+    private func applyServerFloor(_ serverMode: String, reason: String) {
+        logLine("talk floor: server \(serverMode) (\(reason))")
+        if reason.hasPrefix("client:") { return } // the echo of our own client_mode
+        switch serverMode {
+        case "prayer":
+            if !mode.isPraying { beginPrayer(trigger: .server(reason)) }
+        case "available":
+            if mode.isPraying {
+                endPrayer(reason: "server \(reason)")
+            } else if mode.quiet, reason == "wake" {
+                wake(reason: "server wake")
+            }
+        case "quiet":
+            if !mode.quiet { enterQuiet(reason: "server \(reason)") }
+        default:
+            break
+        }
+    }
+
+    /// Server-side prayer transcript (Cohere, per utterance), kept with the open prayer capture
+    /// beside the on-device journal. Never sent anywhere from here.
+    private func journalTalkPrayerText(_ text: String, final: Bool) {
+        guard final, let captureId = mode.prayerCaptureId ?? captures.first(where: { $0.kind == "prayer" })?.captureId else { return }
+        do {
+            try store.appendTalkPrayerText(captureId: captureId, text: text)
+            talkPrayerLines[captureId, default: 0] += 1
+        } catch {
+            logLine("prayer_text journal write FAILED for \(captureId): \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: WebRTC coexistence spike
+
+    /// Observes the audio owner every second while WebRTC is up: whether tap buffers still arrive,
+    /// the engine's running flag, the age of the last buffer and the growth of the open segment
+    /// file. A capture that stops for more than 3 s gets one restart; if it stays stopped, the
+    /// failure is recorded with its evidence and the app falls back to the WebSocket transport.
+    private func startSpikeMonitor() {
+        guard spikeTimer == nil else { return }
+        spikeConnectedAt = Date()
+        spikeBaselineBytes = openSegmentBytes()
+        spikeBaselineFile = audio.openSegmentURL?.lastPathComponent
+        spikeBaselineSegments = captures.reduce(0) { $0 + $1.segments.count }
+        spikeNotDeliveringSince = nil
+        spikeRestartTried = false
+        spikeSuccessRecorded = false
+        recordSpike("connected", detail: "baseline")
+        spikeTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.spikeTick() }
+        }
+    }
+
+    private func stopSpikeMonitor() {
+        spikeTimer?.invalidate()
+        spikeTimer = nil
+    }
+
+    private func openSegmentBytes() -> Int? {
+        guard let url = audio.openSegmentURL else { return nil }
+        return (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? nil
+    }
+
+    private func spikeFacts() -> String {
+        let age = audio.lastBufferAge.map { String(format: "%.1f", $0) } ?? "never"
+        let bytes = openSegmentBytes()
+        let file = audio.openSegmentURL?.lastPathComponent
+        let closedSince = captures.reduce(0) { $0 + $1.segments.count } - spikeBaselineSegments
+        let growth: String
+        if let bytes, let base = spikeBaselineBytes, file == spikeBaselineFile {
+            growth = "\(bytes - base) bytes in \(file ?? "-")"
+        } else {
+            growth = "segment rotated (\(spikeBaselineFile ?? "-") -> \(file ?? "-"))"
+        }
+        return "audio_owner_state=\(audio.state.label) engine_running=\(audio.isRunning) last_buffer_age_s=\(age) open_segment=\(file ?? "-") open_segment_bytes=\(bytes.map(String.init) ?? "-") growth_since_connect=\(growth) segments_closed_since_connect=\(closedSince) watchdog_restarts=\(watchdogRestarts) \(talk?.voice.statusLine ?? "") session[\(audio.sessionDescription)]"
+    }
+
+    private func recordSpike(_ status: String, detail: String) {
+        let line = "webrtc coexistence \(status) (\(detail)) at \(ISO8601DateFormatter().string(from: Date())) build \(PortalModel.appBuild): \(spikeFacts())"
+        webrtcSpike = line
+        logLine(line)
+        store.appendSpike(line)
+        sendSnapshot(reason: "talk")
+    }
+
+    private func spikeTick() {
+        guard activeTalkTransport == .webrtc, talkState.isUp, let connectedAt = spikeConnectedAt else { return }
+        let now = Date()
+        if PortalModel.underXCTest || audio.state != .running { return }
+        if isDelivering {
+            spikeNotDeliveringSince = nil
+            if !spikeSuccessRecorded, now.timeIntervalSince(connectedAt) >= 30 {
+                spikeSuccessRecorded = true
+                recordSpike("holding", detail: "capture delivered for 30 s with WebRTC up")
+            }
+            return
+        }
+        let since = spikeNotDeliveringSince ?? now
+        spikeNotDeliveringSince = since
+        guard now.timeIntervalSince(since) > 3 else { return }
+        if !spikeRestartTried {
+            spikeRestartTried = true
+            spikeNotDeliveringSince = now
+            recordSpike("capture stalled", detail: "no tap buffer for 3 s; restarting the engine once")
+            audio.restartIfNeeded(reason: "webrtc_coexistence")
+            return
+        }
+        recordSpike("FAILED", detail: "capture still stalled after a restart; falling back to WebSocket")
+        let reason = "capture stopped with WebRTC up (build \(PortalModel.appBuild), \(ISO8601DateFormatter().string(from: now)))"
+        webrtcFallbackReason = reason
+        UserDefaults.standard.set(reason, forKey: "webrtcFallback-\(PortalModel.appBuild)")
+        connectTalk()
+        audio.restartIfNeeded(reason: "webrtc_fallback")
+    }
+
     // MARK: devotional
 
     func loadDevotional(passage: String? = nil) async {
@@ -1027,40 +1491,57 @@ final class PortalModel: ObservableObject {
         } catch { logLine("devotional error: \(error.localizedDescription)") }
     }
 
+    /// Asks the talk tier to read the passage from the saved position. Position then follows what
+    /// the bot actually speaks (`bot-tts-text`), aligned to the segments by `DevotionalTracker`.
     func playDevotional() {
         guard let d = devotional, let segments = d.segments, !segments.isEmpty else { return }
         guard SpeechGate.mayEnqueue(mode) else { logLine("devotional playback suppressed by gate (\(mode.label))"); return }
+        guard let talk else { lastError = "talk server not connected; devotional not requested"; return }
         let revision = d.revision_hash ?? ""
         if progress == nil || !(progress!.matches(passage: d.passage, revision: revision)) || progress!.total != segments.count {
             progress = DevotionalProgress(passage: d.passage, revision: revision, total: segments.count)
         }
         var start = progress!.resumeIndex
         if progress!.finished { start = 0; progress!.finished = false }
+        devotionalTracker = DevotionalTracker(segments: segments.map(\.text), startIndex: start)
         devotionalPlaying = true
-        for (offset, seg) in segments[start...].enumerated() {
-            let prefix = seg.kind == "scripture" ? "" : "From \(seg.attribution ?? "teaching"): "
-            speaker.speak(prefix + seg.text, tag: start + offset)
-        }
-        logLine("devotional playing from segment \(start + 1)/\(segments.count) (\(d.passage) @ \(revision.prefix(12)))")
+        let from = segments[start].osis.map { "from \($0)" } ?? "from its segment \(start + 1)"
+        talk.send(.clientText("Please read \(d.title ?? d.passage) aloud \(from) to the end of the passage, exactly as the retained text reads, with no commentary."))
+        logLine("devotional requested from segment \(start + 1)/\(segments.count) (\(d.passage) @ \(revision.prefix(12)))")
     }
 
     func pauseDevotional() {
-        speaker.stopAll()
-        devotionalPlaying = false
-        progress?.interrupted()
-        persistProgress()
+        stopOutput()
+        devotionalInterrupted(reason: "paused")
         logLine("devotional paused at segment \((progress?.resumeIndex ?? 0) + 1)")
     }
 
-    private func devotionalSegmentStarted(_ index: Int) {
-        progress?.started(index)
-        persistProgress()
+    private func devotionalSpoken(_ text: String) {
+        guard devotionalPlaying, var tracker = devotionalTracker else { return }
+        let updates = tracker.spoken(text)
+        devotionalTracker = tracker
+        for update in updates {
+            switch update {
+            case .started(let i): progress?.started(i)
+            case .finished(let i): progress?.finished(i)
+            }
+        }
+        if !updates.isEmpty { persistProgress() }
+        if tracker.isComplete {
+            devotionalPlaying = false
+            devotionalTracker = nil
+            logLine("devotional reading complete")
+        }
     }
 
-    private func devotionalSegmentFinished(_ index: Int) {
-        progress?.finished(index)
-        if progress?.finished == true { devotionalPlaying = false }
+    /// Interruption keeps the segment that was being read, so continue repeats it in full.
+    private func devotionalInterrupted(reason: String) {
+        guard devotionalPlaying else { return }
+        devotionalPlaying = false
+        devotionalTracker = nil
+        progress?.interrupted()
         persistProgress()
+        logLine("devotional interrupted (\(reason)) at segment \((progress?.resumeIndex ?? 0) + 1)")
     }
 
     private func persistProgress() {
@@ -1320,6 +1801,37 @@ final class LocalStore {
             out[captureId] = PrayerASRJournal(captureId: captureId, lines: lines, syncedThrough: synced[captureId] ?? 0)
         }
         return out
+    }
+
+    /// Server-side prayer transcript (`prayer_text` from the talk tier), one JSON line each, in
+    /// `Documents/prayer-talk/<captureId>.jsonl`. Kept beside the on-device journal, not merged.
+    func appendTalkPrayerText(captureId: String, text: String) throws {
+        let dir = root.appendingPathComponent("prayer-talk")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        var data = try JSONSerialization.data(withJSONObject: ["client_time": Date().timeIntervalSince1970, "text": text, "source": "talk_server"])
+        data.append(0x0A)
+        let url = dir.appendingPathComponent("\(captureId).jsonl")
+        if FileManager.default.fileExists(atPath: url.path) {
+            let handle = try FileHandle(forWritingTo: url)
+            defer { try? handle.close() }
+            try handle.seekToEnd()
+            try handle.write(contentsOf: data)
+        } else {
+            try data.write(to: url, options: .atomic)
+        }
+    }
+
+    /// WebRTC coexistence observations, one line each, in `Documents/webrtc-spike.log`.
+    func appendSpike(_ line: String) {
+        let url = root.appendingPathComponent("webrtc-spike.log")
+        let data = Data((line + "\n").utf8)
+        if let handle = try? FileHandle(forWritingTo: url) {
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: data)
+            try? handle.close()
+        } else {
+            try? data.write(to: url, options: .atomic)
+        }
     }
 
     func saveASRSync(_ journals: [String: PrayerASRJournal]) {
