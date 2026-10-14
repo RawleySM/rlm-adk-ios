@@ -213,9 +213,20 @@ to end 0.95 to 0.98 s in every run. PhoneLLM's post-tool first text is slower (2
 tokens) and this model's prefill on GB10 is not faster than Qwen's per token.
 
 First-audio latency over cases 2 to 5 (benchmark_tables.py): Qwen p50 1.38 to 1.50 s, p95 2.50 to
-2.64 s; PhoneLLM p50 1.46 to 1.61 s, p95 2.63 to 2.70 s. The room runs were not performed: the
-file layer already separates the arms on routing reliability, and a room run per arm adds acoustic
-variance to a decision that does not depend on it.
+2.64 s; PhoneLLM p50 1.46 to 1.61 s, p95 2.63 to 2.70 s.
+
+Room layer (one run per arm through `scripts/phone-suite.sh`, isolated intake and backend, phone
+on the desk, Spark-B microphone): Qwen 11/13 (`llm-qwen-room`, 15:01 UTC) and PhoneLLM 11/13
+(`llm-phonellm-room`, 15:19 UTC). Both arms missed the same two cases for acoustic reasons that do
+not involve the model: in 02b the room playback reached Cohere as "What is Roman Greek or about
+Scott?" (PhoneLLM asked for clarification; in the Qwen run no speech reached the server at all), and
+in 05 the long project description split at its mid-sentence pause into two transcripts, so the
+bridge phrase came 3.0 to 3.1 s after the end of the whole utterance (threshold 2.0 s). Every other
+case passed in both arms, including 02a for PhoneLLM in that run (the coin landed on the tool).
+PhoneLLM's room-run LLM timings match its file runs (first text p50 0.25 s, tool call 1.00 s,
+full response 0.81 s); Qwen's too (2.81 / 1.61 / 1.66 s). The room layer therefore confirms the
+latency picture and does not change the routing picture; two isolated intake publications per run,
+none in production.
 
 ### Decision
 
@@ -223,7 +234,7 @@ variance to a decision that does not depend on it.
 faster on the LLM leg (first text 0.24 s against 2.7 to 3.5 s; full response 0.7 to 0.9 s against
 1.9 to 3.9 s) but drops 10 of 39 case runs on tool routing that Qwen gets right 39 of 39 times, and
 the misses are the ones that matter most here: exact Scripture and the two agentic requests. The
-talk tier was switched back to `qwen-coding-b` at 14:58 UTC; the `phonellm` owner profile stays in
+talk tier was switched back to `qwen-coding-b` at 14:58 UTC and again after the PhoneLLM room run at 15:36 UTC; the `phonellm` owner profile stays in
 spark-inference for the next alpha and for the mitigations below.
 
 What would make a fast MoE model viable on this suite, in order of expected value:
