@@ -100,7 +100,7 @@ any effect runs, and set as `voice.gateOpen`.
 
 | | WebSocket (`EngineVoiceOutput`) | WebRTC (`WebRTCVoiceOutput`) |
 | --- | --- | --- |
-| Gate closes (prayer, quiet) | player flushed at once; every later frame dropped before scheduling | libwebrtc's audio unit stopped (`RTCAudioSession.isAudioEnabled = false`, manual audio) |
+| Gate closes (prayer, quiet) | player flushed at once; every later frame dropped before scheduling | build 12: libwebrtc's audio unit stopped (`RTCAudioSession.isAudioEnabled = false`), which also stopped the microphone, so a quiet session was deaf to the wake phrase (voicesim WebRTC subset 2026-10-14, 0 of 5). **Build 13:** the unit stays enabled for the whole connection; the talk tier's floor gates speech in prayer and quiet and interrupts on barge-in. Unproven on device until build 13 is installed and the WebRTC subset rerun. |
 | Stop button | flush and drop the rest of the bot turn until `bot-stopped-speaking` or an interruption; `client_event` `stop` sent | unit stopped until the bot turn ends |
 | Server interruption | flush | (libwebrtc plays what arrives; the server stops sending) |
 | Bot speaks while gated | reducer stops the voice again and re-sends `client_mode` | same |
