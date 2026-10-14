@@ -57,6 +57,8 @@ class TalkConfig:
     # (0.70 s voiced in the suite's fixture) needs a wider window. Barge-in is measured from the window's end.
     backchannel_max_s: float = 0.75
     # Words that mean "stop and wait": they interrupt the bot and are never answered as a turn.
+    # Words that resume an interrupted reading; handled by the floor without the LLM.
+    continue_phrases: list[str] = field(default_factory=lambda: ["continue", "go on", "keep going", "keep reading", "carry on", "resume", "pick up where you stopped", "where you stopped", "where you left off", "finish the reading"])
     pause_phrases: list[str] = field(default_factory=lambda: ["hold on", "wait", "wait a moment", "one moment", "hang on", "stop", "stop there", "pause", "hold on a second", "wait wait"])
     duck_db: float = 3.0
     duck_hold_s: float = 0.4
@@ -66,8 +68,9 @@ class TalkConfig:
     audio_in_sample_rate: int = 16000
     audio_out_sample_rate: int = 24000
     # Clause pauses in natural (and synthetic) speech run 0.3 to 0.5 s; a 0.2 s VAD stop asked Smart Turn
-    # at every comma and it ended turns mid-sentence. 0.5 s keeps whole questions together.
-    vad_stop_secs: float = 0.5
+    # at every comma and it ended turns mid-sentence; 0.5 s still split two-sentence requests. 0.7 s
+    # keeps them together at the cost of 0.5 s more end-of-turn latency.
+    vad_stop_secs: float = 0.7
     # Where runs and receipts go.
     state_root: str = str(Path.home() / ".local/state/voice-talk")
 

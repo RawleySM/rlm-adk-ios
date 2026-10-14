@@ -67,6 +67,7 @@ class FloorProcessor(FrameProcessor):
         self._wake = [_norm(p) for p in cfg.wake_phrases]
         self._backchannel = {_norm(w) for w in cfg.backchannel_words}
         self._pause = {_norm(w) for w in cfg.pause_phrases}
+        self._continue = [_norm(w) for w in cfg.continue_phrases]
         self.bot_speaking = False
         # True from the moment a transcript was forwarded to the LLM until the bot starts speaking.
         self.pending_turn = False
@@ -199,6 +200,24 @@ class FloorProcessor(FrameProcessor):
                 if self.bot_speaking:
                     await self.broadcast_interruption()
                 return
+            if final and any(p in n for p in self._continue) and len(n.split()) <= 10:
+                from talk import tools
+
+                verses = tools.READING_STATE.get("verses") or []
+                through = int(tools.READING_STATE.get("spoken_through") or 0)
+                remaining = [v for v in verses if v["verse"] > through]
+                if verses and remaining:
+                    # Resume the interrupted reading deterministically, without a model turn.
+                    from pipecat.frames.frames import LLMMessagesAppendFrame, TTSSpeakFrame
+
+                    logger.info(f"floor: continue phrase {text!r}; resuming {tools.READING_STATE.get('reference')} at verse {remaining[0]['verse']}")
+                    self.events.append({"t": time.time(), "resume_reading": remaining[0]["verse"]})
+                    if self.bot_speaking:
+                        await self.broadcast_interruption()
+                    for v in remaining:
+                        await self.push_frame(TTSSpeakFrame(v["text"]))
+                    await self.push_frame(LLMMessagesAppendFrame(messages=[{"role": "user", "content": text}, {"role": "assistant", "content": " ".join(v["text"] for v in remaining)}], run_llm=False))
+                    return
             if final and self.bot_speaking:
                 # A short utterance that outlasted nothing but is not a backchannel is an interruption
                 # decided by its words rather than its length.
