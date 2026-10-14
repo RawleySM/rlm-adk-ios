@@ -12,8 +12,11 @@ pipeline:
   base URL as its start endpoint (it replaces `/start` in the path with `/sessions/{id}/api/offer`).
 * Audio: Opus over WebRTC both ways; the server pipeline runs at 16 kHz in and 24 kHz out.
 * Messages: RTVI over the data channel (`label: "rtvi-ai"`): `user-transcription`,
-  `bot-transcription`, `bot-llm-text`, `bot-started-speaking`, `bot-stopped-speaking`, metrics,
-  plus our own server messages below delivered through the same channel as transport messages.
+  `bot-transcription`, `bot-llm-text`, `bot-started-speaking`, `bot-stopped-speaking`, metrics.
+  The floor messages below are mirrored as RTVI `server-message` (`data` = the message), because the
+  Pipecat iOS SDK drops anything not labelled `rtvi-ai`. Client → server: RTVI `client-message`
+  with `data.t` = our message type and `data.d` = its fields is unwrapped by `client_messages.py`,
+  so `client_mode` / `client_event` work on this path too; typed text arrives as RTVI `send-text`.
 
 ## 2. Tagged-PCM WebSocket (the app's fallback path and the benchmark probe)
 
@@ -39,6 +42,20 @@ pipeline:
 
 ## Turn and floor rules implemented server-side (talk/floor.py)
 
+* Each session has its own floor, reading state and tool bindings; two phones, or a phone and a
+  benchmark client, never share one.
+* **Pause phrases** (`hold on`, `wait`, `stop`, `one moment`, ...) interrupt the bot and are never
+  answered. **Continue phrases** (`continue`, `go on`, `keep reading`, `where you stopped`, ...)
+  resume an interrupted reading from the verse after the last one the listener fully heard, without
+  a model turn (the reading tracker sits after the output transport, so it counts played verses).
+* Long chapters: a *question* about a chapter longer than ten verses (no `read`/`recite`/`hear` in
+  the request) hands the verses to the model to quote from; a *reading* request reads verbatim.
+* Turn end: Silero VAD `stop_secs` 0.7; Smart Turn v3 decides end of turn, with a 1.5 s silence
+  fallback when it keeps judging a pause as mid-sentence.
+* STT energy gate: an utterance whose int16 RMS is under `stt_min_rms` (120) is not transcribed;
+  Cohere invents "Thank you." on near-silence. The log prints each utterance's RMS.
+* The bridge phrase fires 0.35 s after the user stopped if no reply audio has started.
+
 * Address phrases, amen phrases, quiet and wake phrases and the thresholds come from
   `~/.config/voice-talk/config.json` (`TalkConfig`), mirrored by the skill service's `GET /policy`.
 * Prayer entry on the server happens on the first transcript of an utterance that starts with an
@@ -56,3 +73,16 @@ Function calls the LLM may make, each an HTTP call to the skill service on the d
 `word_from_prayer` (`/tools/word`), `interpretations` (`/tools/interpretations`),
 `project_checkin` (`/tools/project`), `request_work` (`POST /tools/work`). Pipecat runs them
 asynchronously; the audio loop never waits on them.
+
+## Operator admin (same port)
+
+| Route | Effect |
+|---|---|
+| `GET /admin/sessions` | live sessions in this process: `session_id`, `mode`, `held`, `bot_speaking`, and the hold state |
+| `POST /admin/hold {"reason": "...", "hold_new": true}` | every live session (optionally `sessions: [...]` / `except: [...]`) goes quiet with `held` set, so the wake phrase cannot lift it; with `hold_new` sessions that connect later start held. A client that sends `{"type":"client_event","event":"benchmark_client"}` right after connecting lifts its own hold: that is the one session meant to talk during a benchmark. |
+| `POST /admin/release` | clears every hold; held sessions return to `available` (reason `release`) |
+| `POST /admin/sessions/{id}/mode {"mode": "available" \| "quiet" \| "prayer", "reason": "..."}` | set one session's floor mode (used to wake a phone whose own quiet was asserted on reconnect) |
+
+`voicesim talk run --mode file|room` holds and releases around the run so the phone, which shares
+the room's air, stays silent; `--mode phone` never holds (the phone is the subject) and plays the
+`wake` control fixture first.

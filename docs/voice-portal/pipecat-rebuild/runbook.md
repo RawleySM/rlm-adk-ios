@@ -69,14 +69,23 @@ cd ~/rlm-voice-sim
 voicesim talk build suites/conversation-core                      # fixtures in the cloned voice (once per script change)
 voicesim talk run suites/conversation-core --mode file             # digital injection, every case
 voicesim talk run suites/conversation-core --mode room --case 01 --case 02a   # speakers → Spark-B mic → talk tier
+voicesim talk run suites/conversation-core --mode phone            # speakers → iPhone → talk tier → phone speaker → Spark-B mic
 voicesim talk report conversation-core                             # markdown over every run
 voicesim talk probe --text "Read me Psalm twenty three." --out /tmp/p   # one turn
 ```
 
 Run directories: `~/.local/state/voicesim/runs/talk-suites/conversation-core/runs/<stamp>-<mode>-<label>/<case>/`
 with `talk-receipt.json` (every message and the bot audio's onset and spans), `bot.wav`, `result.json`.
-The phone loop is `rlm-voice-sim/scripts/phone-trial.sh` for prayer capture; the conversational phone
-loop reads the talk tier's session JSONL for timings (see `benchmark-report.md`).
+Phone mode (`voicesim/talkphone.py`) opens no socket: it follows the phone's session in the talk
+tier's session JSONL (modes, transcriptions, bot speech) and records Spark-B's microphone; fixture
+windows are blanked and `bot.wav` holds only the phone's reply spans (a transcriber given the whole
+recording invents text for the silence). It plays the `wake` control fixture first because the phone
+re-asserts its own quiet on every reconnect. `scripts/phone-trial.sh` remains the prayer-capture
+proof (capture hash, isolated intake WER).
+
+File and room runs hold every other live session quiet through `POST /admin/hold` (and release at
+the end); the room shares its air with the phone, which otherwise answers every fixture through its
+speaker. `GET /admin/sessions` shows who is connected and in which mode.
 
 ## Recovery checklist (in this order, before blaming the pipeline)
 
@@ -87,6 +96,10 @@ loop reads the talk tier's session JSONL for timings (see `benchmark-report.md`)
 3. `curl http://100.90.105.30:8765/healthz` and `/tools/scripture?reference=Psalm%2023`.
 4. `curl 127.0.0.1:7860/status` → `ready`; restart the unit if not.
 5. Phone: `audio_owner_state` and `engine_running` from `GET /devices/<install>/snapshot` on the skill
-   service; a dead engine is relaunched with `pymobiledevice3 developer dvt launch com.rawleystanhope.rlmadk --kill-existing`.
-6. Then rerun the case; record the infrastructure failure in the benchmark report rather than counting
+   service; a dead engine is relaunched with `pymobiledevice3 developer dvt launch com.rawleystanhope.rlmadk --kill-existing`
+   (device tools: `~/.local/state/rlm-adk-ios-prototype-supervision/device-tools-py313/bin`). The
+   phone's talk session: `curl 127.0.0.1:7860/admin/sessions`; if it is `quiet` outside a test, say
+   "wake up" or `POST /admin/sessions/<id>/mode {"mode":"available"}`.
+6. A stale hold (`hold.active: true` with no run going): `curl -X POST 127.0.0.1:7860/admin/release`.
+7. Then rerun the case; record the infrastructure failure in the benchmark report rather than counting
    it against the case.
