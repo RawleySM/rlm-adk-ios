@@ -85,7 +85,7 @@ def _transport_params(cfg: TalkConfig) -> TransportParams:
 async def run_bot(transport, cfg: TalkConfig, *, session_label: str) -> None:
     """Assemble and run one session's pipeline on the given transport."""
 
-    stt = CohereSparkSTTService(base_url=cfg.stt_base_url, model=cfg.stt_model, sample_rate=cfg.audio_in_sample_rate)
+    stt = CohereSparkSTTService(base_url=cfg.stt_base_url, model=cfg.stt_model, sample_rate=cfg.audio_in_sample_rate, min_rms=cfg.stt_min_rms)
     llm = OpenAILLMService(
         api_key=cfg.llm_api_key,
         base_url=cfg.llm_base_url,

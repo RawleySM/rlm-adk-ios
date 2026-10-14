@@ -13,6 +13,7 @@ import time
 from collections.abc import AsyncGenerator
 
 import aiohttp
+import numpy as np
 from loguru import logger
 from pipecat.frames.frames import ErrorFrame, Frame, TranscriptionFrame
 from pipecat.services.settings import STTSettings
@@ -30,18 +31,29 @@ class CohereSparkSTTService(SegmentedSTTService):
         base_url: str = "http://127.0.0.1:28080/upstream/cohere-transcribe",
         model: str = "cohere-transcribe",
         request_timeout_s: float = 180.0,
+        min_rms: float = 0.0,
         **kwargs,
     ):
         kwargs.setdefault("settings", STTSettings(model=model, language=Language.EN))
         super().__init__(**kwargs)
         self._url = base_url.rstrip("/") + "/v1/audio/transcriptions"
         self._model = model
+        self._min_rms = float(min_rms)
         self._timeout = aiohttp.ClientTimeout(total=request_timeout_s)
 
     def can_generate_metrics(self) -> bool:
         return True
 
     async def run_stt(self, audio: bytes) -> AsyncGenerator[Frame | None, None]:
+        # Energy gate: Cohere invents text ("Thank you.") on near-silent utterances that the VAD let
+        # through (phone ducking artefacts, breaths). Below ``min_rms`` the utterance is not sent.
+        pcm = np.frombuffer(audio[44:] if audio[:4] == b"RIFF" else audio, dtype=np.int16)
+        rms = float(np.sqrt(np.mean(pcm.astype(np.float32) ** 2))) if len(pcm) else 0.0
+        seconds = len(pcm) / max(1, self.sample_rate or 16000)
+        if rms < self._min_rms:
+            logger.info(f"cohere stt: utterance {seconds:.2f}s rms {rms:.0f} below gate {self._min_rms:.0f}; not sent")
+            yield None
+            return
         await self.start_processing_metrics()
         await self.start_ttfb_metrics()
         started = time.monotonic()
@@ -68,6 +80,6 @@ class CohereSparkSTTService(SegmentedSTTService):
             await self.stop_ttfb_metrics()
             await self.stop_processing_metrics()
         elapsed = time.monotonic() - started
-        logger.info(f"cohere stt {elapsed:.2f}s: {text!r}")
+        logger.info(f"cohere stt {elapsed:.2f}s ({seconds:.2f}s rms {rms:.0f}): {text!r}")
         if text:
             yield TranscriptionFrame(text, self._user_id, time_now_iso8601(), result={"model": self._model, "elapsed_s": elapsed})
