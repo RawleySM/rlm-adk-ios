@@ -90,16 +90,20 @@ enum TalkClientMessage: Equatable {
 /// Plays the bot audio of whichever talk transport is active, behind the phone's speech gate.
 ///
 /// `SpeechGate` semantics: when `gateOpen` turns false (prayer or quiet) playback stops at once
-/// and nothing plays until it opens again. `stop()` also silences the rest of the bot turn that is
-/// already on its way (until the bot reports it stopped speaking or an interruption arrives).
+/// and nothing plays until it opens again; reopening the gate clears any suppression. `stop()`
+/// also silences the rest of a bot turn already in progress (until the bot reports it stopped
+/// speaking or an interruption arrives).
 protocol VoiceOutput: AnyObject {
     var gateOpen: Bool { get set }
     /// Bot audio is audible right now (scheduled and not yet played, or the transport says so).
     var isPlaying: Bool { get }
-    /// Stop playback now and drop the rest of the current bot turn.
+    /// Stop playback now and, when a bot turn is in progress, drop the rest of that turn. With no
+    /// turn in progress nothing is suppressed, so the next reply plays normally.
     func stop()
     /// Flush what is queued (server interruption); later audio of a new turn plays normally.
     func flush()
+    /// The bot turn started (bot-started-speaking).
+    func botTurnStarted()
     /// The bot turn ended (bot-stopped-speaking): audio after this belongs to a new turn.
     func botTurnEnded()
     var onPlayingChange: ((Bool) -> Void)? { get set }

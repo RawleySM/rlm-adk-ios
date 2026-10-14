@@ -196,8 +196,10 @@ struct PrayerFloor: Equatable {
         case endPrayer
     }
 
-    /// Longest plausible delay between speaking a word and its partial arriving.
-    static let maxPartialLatency: TimeInterval = 1.0
+    /// Longest plausible delay between speaking a word and its partial arriving. On the iPhone 12
+    /// (iOS 26.6.2) the amen partial arrived about 1 s after the word ended (device run,
+    /// 2026-10-14), so 1.0 s was too tight and the word rule ended the prayer 2.2 s after the amen.
+    static let maxPartialLatency: TimeInterval = 1.6
 
     private(set) var policy: ConversationPolicy
     /// Words of the current utterance as last seen (empty after a final or an utterance boundary).

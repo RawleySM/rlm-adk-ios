@@ -420,6 +420,32 @@ final class PortalModel: ObservableObject {
         partialTranscript = text
         endpoint.speech()
         act(on: floor.observe(text: text, final: false, praying: mode.isPraying, at: floorClock()), text: text)
+        trackPrayerPartial(text)
+    }
+
+    /// The latest on-device partial of the open prayer. On iOS 26 the on-device recognizer starts
+    /// its partial text afresh after a pause inside one request and may never deliver a final for
+    /// it (device run 2026-10-14: a three-sentence prayer journaled nothing). A partial that does
+    /// not continue the previous one closes that utterance, which is journaled then; the last one
+    /// is journaled when the prayer ends. A later final is still journaled as it arrives, so a line
+    /// can repeat; the journal is provisional text, the intake transcribes the audio.
+    private var prayerPartial: (captureId: String, text: String)?
+
+    private func trackPrayerPartial(_ text: String) {
+        guard let captureId = mode.prayerCaptureId else { return }
+        if let previous = prayerPartial, previous.captureId == captureId, !PortalModel.continues(previous.text, with: text) {
+            journalPrayerASR(captureId: captureId, text: previous.text)
+            logLine("prayer partial closed by a pause; journaled (\(previous.text.prefix(40)))")
+        }
+        prayerPartial = (captureId, text)
+    }
+
+    /// True when `next` extends `previous` (its leading words, allowing the last two to be revised).
+    static func continues(_ previous: String, with next: String) -> Bool {
+        let a = FloorText.words(previous), b = FloorText.words(next)
+        guard !a.isEmpty else { return true }
+        let k = max(1, a.count - 2)
+        return b.count >= k && Array(b.prefix(k)) == Array(a.prefix(k))
     }
 
     /// Test seams for the recognizer paths (the recognizer is not available in the simulator).
@@ -437,7 +463,9 @@ final class PortalModel: ObservableObject {
         case .enterPrayer(let address):
             beginPrayer(trigger: .address(address))
         case .amenPending:
-            logLine("amen heard (\"\(text.suffix(60))\"); prayer ends after \(policy.amenSilenceSeconds) s with no new words")
+            let voice: VoiceFacts? = voiceProbe.map { $0() } ?? (audio.state == .running ? audio.voiceFacts : nil)
+            let voiceNote = voice.map { v in "voice \(v.active ? "active" : "quiet"), ended \(v.lastVoiceEnd.map { String(format: "%.2f s ago", floorClock().timeIntervalSince($0)) } ?? "never")" } ?? "no level facts"
+            logLine("amen heard (\"\(text.suffix(60))\"); prayer ends after \(policy.amenSilenceSeconds) s with no new words (\(voiceNote))")
         case .amenCancelled:
             logLine("more words after amen; prayer continues")
         case .endPrayer:
@@ -458,6 +486,7 @@ final class PortalModel: ObservableObject {
             // phrases and the amen rule act only when that capture is still the open prayer: words
             // from an ended prayer never end or alter a newer one.
             journalPrayerASR(captureId: owner, text: cleaned)
+            if prayerPartial?.captureId == owner { prayerPartial = nil } // the final covers that utterance
             if owner == mode.prayerCaptureId {
                 if handleVoiceCommand(cleaned) { return }
                 act(on: floor.observe(text: cleaned, final: true, praying: true, at: floorClock()), text: cleaned)
@@ -719,6 +748,10 @@ final class PortalModel: ObservableObject {
 
     func endPrayer(reason: String) {
         guard mode.isPraying else { return }
+        if let tail = prayerPartial, tail.captureId == mode.prayerCaptureId {
+            journalPrayerASR(captureId: tail.captureId, text: tail.text)
+        }
+        prayerPartial = nil
         // Ends the prayer's open recognition request without dropping its final (it is still
         // delivered under this capture's identity); later requests are conversation again.
         recognizer.rebindOwner(nil)
@@ -1307,6 +1340,7 @@ final class PortalModel: ObservableObject {
         case .botStartedSpeaking:
             botTurnCounter += 1
             botSpeaking = true
+            talk?.voice.botTurnStarted()
             apply(.botStartedSpeaking(turnId: "bot-\(botTurnCounter)"))
         case .botStoppedSpeaking:
             botSpeaking = false

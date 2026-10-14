@@ -145,6 +145,7 @@ final class FloorControllerTests: XCTestCase {
         voice.enqueue(pcm24k: frame)
         XCTAssertEqual(voice.counters.droppedByGate, 1)
         XCTAssertEqual(voice.counters.droppedNoEngine, 1, "gate open: it goes to the engine (not running under XCTest)")
+        voice.botTurnStarted()
         voice.stop()
         voice.enqueue(pcm24k: frame)
         XCTAssertEqual(voice.counters.droppedByGate, 2, "Stop silences the rest of the bot turn")
@@ -152,6 +153,20 @@ final class FloorControllerTests: XCTestCase {
         voice.enqueue(pcm24k: frame)
         XCTAssertEqual(voice.counters.droppedByGate, 2, "the next turn plays again")
         XCTAssertEqual(voice.received.frames, 4)
+        // Regression (device, 2026-10-14): entering prayer with no bot turn in progress (gate closes,
+        // then stop) must not suppress the first reply after the prayer.
+        voice.gateOpen = false
+        voice.stop()
+        voice.gateOpen = true
+        voice.enqueue(pcm24k: frame)
+        XCTAssertEqual(voice.counters.droppedByGate, 2, "the first reply after a prayer plays")
+        // A turn cut by the gate is over once the gate reopens.
+        voice.botTurnStarted()
+        voice.gateOpen = false
+        voice.stop()
+        voice.gateOpen = true
+        voice.enqueue(pcm24k: frame)
+        XCTAssertEqual(voice.counters.droppedByGate, 2)
     }
 
     func testServerFloorMessagesAreFollowedAndEchoesIgnored() {
@@ -224,5 +239,25 @@ final class FloorControllerTests: XCTestCase {
         XCTAssertEqual(model.mode.devotionalPosition, 1)
         model.playDevotional()
         XCTAssertTrue(talk.texts.last?.contains("from Ps.23.2") ?? false)
+    }
+
+    func testPrayerPartialsThatRestartAfterPausesAreJournaled() throws {
+        let (model, _) = makeModel()
+        model.partialTranscriptReceived("Lord")
+        let captureId = try XCTUnwrap(model.mode.prayerCaptureId)
+        model.partialTranscriptReceived("Lord thank you for this quiet evening")
+        // iOS 26 restarts the partial text after a pause, inside the same request.
+        model.partialTranscriptReceived("I am still here")
+        model.partialTranscriptReceived("I am still here and I am listening")
+        model.partialTranscriptReceived("Thank you for your patience with me amen")
+        advance(1.25, tick: model)
+        XCTAssertFalse(model.mode.isPraying)
+        XCTAssertEqual(model.prayerASRJournal(captureId)?.lines.map(\.text), [
+            "Lord thank you for this quiet evening",
+            "I am still here and I am listening",
+            "Thank you for your patience with me amen",
+        ])
+        XCTAssertTrue(PortalModel.continues("Lord thank you for this", with: "Lord, thank you for this quiet"))
+        XCTAssertFalse(PortalModel.continues("Lord thank you for this quiet evening", with: "I am still here"))
     }
 }

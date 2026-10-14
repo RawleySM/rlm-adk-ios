@@ -13,6 +13,7 @@ final class FakeVoiceOutput: VoiceOutput {
     var statusLine: String { "fake voice: gate \(gateOpen ? "open" : "closed") stops \(stops)" }
     func stop() { stops += 1 }
     func flush() { flushes += 1 }
+    func botTurnStarted() {}
     func botTurnEnded() { turnEnds += 1 }
 }
 

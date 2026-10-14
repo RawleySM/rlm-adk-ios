@@ -195,6 +195,7 @@ final class EngineVoiceOutput: VoiceOutput, @unchecked Sendable {
     private let lock = NSLock()
     private var _gateOpen = true
     private var suppressed = false
+    private var turnActive = false
     private var scheduled = 0
     private var droppedWhileClosed = 0
     private var droppedNoEngine = 0
@@ -217,7 +218,11 @@ final class EngineVoiceOutput: VoiceOutput, @unchecked Sendable {
     var gateOpen: Bool {
         get { lock.lock(); defer { lock.unlock() }; return _gateOpen }
         set {
-            lock.lock(); let was = _gateOpen; _gateOpen = newValue; lock.unlock()
+            lock.lock()
+            let was = _gateOpen
+            _gateOpen = newValue
+            if newValue, !was { suppressed = false } // a turn cut by the gate is over when it reopens
+            lock.unlock()
             // Closing the gate drops what is queued at once; while closed, nothing is scheduled.
             if was, !newValue { flushPlayer() }
         }
@@ -270,7 +275,7 @@ final class EngineVoiceOutput: VoiceOutput, @unchecked Sendable {
     }
 
     func stop() {
-        lock.lock(); suppressed = true; lock.unlock()
+        lock.lock(); if turnActive || scheduled > 0 { suppressed = true }; lock.unlock()
         flushPlayer()
     }
 
@@ -279,8 +284,12 @@ final class EngineVoiceOutput: VoiceOutput, @unchecked Sendable {
         flushPlayer()
     }
 
+    func botTurnStarted() {
+        lock.lock(); turnActive = true; lock.unlock()
+    }
+
     func botTurnEnded() {
-        lock.lock(); suppressed = false; lock.unlock()
+        lock.lock(); turnActive = false; suppressed = false; lock.unlock()
     }
 
     private func flushPlayer() {

@@ -21,7 +21,11 @@ final class WebRTCVoiceOutput: VoiceOutput {
 
     var gateOpen: Bool {
         get { _gateOpen }
-        set { _gateOpen = newValue; apply() }
+        set {
+            if newValue, !_gateOpen { suppressed = false } // a turn cut by the gate is over
+            _gateOpen = newValue
+            apply()
+        }
     }
 
     var isPlaying: Bool { botSpeaking && RTCAudioSession.sharedInstance().isAudioEnabled }
@@ -31,12 +35,18 @@ final class WebRTCVoiceOutput: VoiceOutput {
         return "webrtc unit: \(rtc.isAudioEnabled ? "enabled" : "disabled") (manual \(rtc.useManualAudio ? "yes" : "no"), active \(rtc.isActive ? "yes" : "no"), toggles \(unitToggles)) · gate \(_gateOpen ? "open" : "closed")\(suppressed ? ", turn suppressed" : "")"
     }
 
+    /// Only a bot turn in progress is suppressed: with nothing speaking, stopping the unit would
+    /// also stop the WebRTC microphone with nothing to bring it back.
     func stop() {
-        suppressed = true
-        apply()
+        if botSpeaking {
+            suppressed = true
+            apply()
+        }
     }
 
     func flush() {}
+
+    func botTurnStarted() {}
 
     func botTurnEnded() {
         suppressed = false

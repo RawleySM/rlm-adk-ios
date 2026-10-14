@@ -58,7 +58,7 @@ targets:
         PRODUCT_NAME: RLMADK
         PRODUCT_BUNDLE_IDENTIFIER: com.rawleystanhope.rlmadk
         MARKETING_VERSION: "0.2.0"
-        CURRENT_PROJECT_VERSION: "9"
+        CURRENT_PROJECT_VERSION: "10"
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1"
         # Signing: Team 4PJBKY2WQR (Individual membership verified 2026-10-13). Simulator CI passes
