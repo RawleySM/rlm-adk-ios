@@ -5,7 +5,7 @@
 #   run-backend stop       stop it
 #   run-backend status     pid, listen address, /healthz
 #   run-backend logs [n]   tail the log
-#   run-backend import ... run the source import (families: prayer teaching scripture theographic)
+#   run-backend import ... run the source import (families: prayer teaching reference_teaching scripture theographic)
 #   run-backend cli ...    any `python3 -m voice_portal` subcommand
 #
 # State root: $VOICE_PORTAL_STATE (default ~/.local/rlm-adk/voice_portal). Config: $STATE/config.json.

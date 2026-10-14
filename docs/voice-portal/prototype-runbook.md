@@ -52,7 +52,7 @@ ssh desktop "echo $(git rev-parse HEAD) > ~/srv/voice-portal/backend/SOURCE_COMM
 
 # on the desktop
 cd ~/srv/voice-portal/backend
-./run-backend import prayer teaching scripture theographic   # idempotent; ~10 s for everything
+./run-backend import prayer teaching reference_teaching scripture theographic   # idempotent; ~25 s for everything (reference_teaching: Edwards ThML + BibleProject transcripts, ~13 s)
 ./run-backend start        # nohup, pidfile ~/.local/rlm-adk/voice_portal/run/backend.pid
 ./run-backend status       # pid + /healthz (shows source_commit from SOURCE_COMMIT)
 ./run-backend logs 50

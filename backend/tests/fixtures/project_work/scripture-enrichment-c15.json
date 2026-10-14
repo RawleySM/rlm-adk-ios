@@ -1,0 +1,263 @@
+{
+  "accepted_results": [],
+  "active_branches": [
+    {
+      "dirty": false,
+      "evidence": [
+        {
+          "claim": "Observed main at cleanup; working tree clean and pushed.",
+          "kind": "git",
+          "observed_at": "2026-10-11T12:58:16Z",
+          "reference": null
+        }
+      ],
+      "git_ref": "main",
+      "observed_at": "2026-10-11T12:58:16Z",
+      "observed_commit": "29a6053b46305b9d54ae3df9f0a38957cd132c76",
+      "repository": {
+        "git_commit": "29a6053b46305b9d54ae3df9f0a38957cd132c76",
+        "host": "desktop",
+        "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-15/scripture-enrichment-c15"
+      },
+      "work_id": "enrichment-e1-organize-prayer"
+    }
+  ],
+  "baseline": {
+    "described_at": "2026-10-11T12:58:16.987945+00:00",
+    "described_by": "Rawley Stanhope (Claude Fable cleanup session 2026-10-11)",
+    "history": {
+      "references": [],
+      "state": "unknown"
+    },
+    "locations": [
+      {
+        "git_commit": null,
+        "host": "github",
+        "locator": "https://github.com/RawleySM/scripture-enrichment-c15",
+        "observed_at": "2026-10-11T12:58:16Z",
+        "role": "canonical_remote",
+        "runnable_on_allocator_host": null
+      },
+      {
+        "git_commit": "29a6053b46305b9d54ae3df9f0a38957cd132c76",
+        "host": "desktop",
+        "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-15/scripture-enrichment-c15",
+        "note": "Granted to pryc12 at launch; data root ~/.local/share/scripture-enrichment/data (created on first freeze).",
+        "observed_at": "2026-10-11T12:58:16Z",
+        "role": "working_checkout",
+        "runnable_on_allocator_host": true
+      }
+    ],
+    "summary": "Built 2026-10-09/10 by Claude Fable: resumable work ledger, prayer reconciliation, teaching census, typed child schemas with exact-span validation, delegate briefs and return packets, Scripture foundation (six editions, resolver, dossiers, concordance, FTS5), runbooks, CLI and OpenAI-compatible driver; 143 tests. The isolated five-prayer trial (2026-10-09/10) was retired and its repair branch reverted (PR #4); its data were removed on 2026-10-11 and only the trial's reports remain under ~/.local/rlm-adk/archive/retired-five-prayer-trial-20261009.",
+    "unknowns": []
+  },
+  "current_plan": {
+    "artifact": null,
+    "evidence": [],
+    "objective": null,
+    "state": "unknown"
+  },
+  "enrollment": {
+    "note": "Selected existing work; no historical replay.",
+    "origin": "manual_baseline"
+  },
+  "host_identity": {
+    "evidence": [],
+    "observed_at": null,
+    "pointer_sha256": null,
+    "registry": null,
+    "state": "unknown"
+  },
+  "identity_evidence": [],
+  "outputs": [],
+  "owner": {
+    "kind": "resident",
+    "name": "Prayer and Life Context",
+    "resident_id": "pryc12"
+  },
+  "package_checkpoints": [],
+  "project_id": "scripture-enrichment-c15",
+  "record_revision": 1,
+  "runtime_applicability": {
+    "note": "Applicability entered by Rawley Stanhope (Claude Fable cleanup session 2026-10-11).",
+    "package": "not_applicable",
+    "session": "not_applicable"
+  },
+  "schema": "rlm-adk.project-work-record.v1",
+  "title": "Scripture, teaching and prayer enrichment foundation (silver/gold over data-pipelines bronze)",
+  "unresolved": [
+    "No enrichment run has been executed from this checkout yet; the understand gate must pass before scaling any stage."
+  ],
+  "updated_at": "2026-10-11T12:58:17.670112+00:00",
+  "updated_by": "Rawley Stanhope (Claude Fable cleanup session 2026-10-11)",
+  "work_items": [
+    {
+      "evidence": [],
+      "next_action": "freeze, plan_organize_prayers, iterate_stage; review three accepted organizations.",
+      "plan": {
+        "artifact": {
+          "git_commit": null,
+          "host": "desktop",
+          "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/ENRICHMENT-STANDING-WORK.md"
+        },
+        "evidence": [
+          {
+            "claim": "Plan document inspected during the 2026-10-11 cleanup.",
+            "kind": "file",
+            "observed_at": "2026-10-11T12:58:16Z",
+            "reference": {
+              "git_commit": null,
+              "host": "desktop",
+              "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/ENRICHMENT-STANDING-WORK.md"
+            }
+          }
+        ],
+        "objective": "One task per current prayer revision on the local pool; publish prayer_organization.",
+        "state": "recorded"
+      },
+      "status": "queued",
+      "title": "E1 whole-prayer organization over the corpus",
+      "work_id": "enrichment-e1-organize-prayer"
+    },
+    {
+      "evidence": [],
+      "next_action": "concordance.extract_references over prayers and teaching revisions.",
+      "plan": {
+        "artifact": {
+          "git_commit": null,
+          "host": "desktop",
+          "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/ENRICHMENT-STANDING-WORK.md"
+        },
+        "evidence": [
+          {
+            "claim": "Plan document inspected during the 2026-10-11 cleanup.",
+            "kind": "file",
+            "observed_at": "2026-10-11T12:58:16Z",
+            "reference": {
+              "git_commit": null,
+              "host": "desktop",
+              "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/ENRICHMENT-STANDING-WORK.md"
+            }
+          }
+        ],
+        "objective": "Deterministic reference extraction and resolution in WEB and BSB; compare with inherited pairings.",
+        "state": "recorded"
+      },
+      "status": "queued",
+      "title": "E2 explicit concordance and passage dossiers",
+      "work_id": "enrichment-e2-concordance"
+    },
+    {
+      "evidence": [],
+      "next_action": "plan_extract_claims(per_work=True).",
+      "plan": {
+        "artifact": {
+          "git_commit": null,
+          "host": "desktop",
+          "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/ENRICHMENT-STANDING-WORK.md"
+        },
+        "evidence": [
+          {
+            "claim": "Plan document inspected during the 2026-10-11 cleanup.",
+            "kind": "file",
+            "observed_at": "2026-10-11T12:58:16Z",
+            "reference": {
+              "git_commit": null,
+              "host": "desktop",
+              "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/ENRICHMENT-STANDING-WORK.md"
+            }
+          }
+        ],
+        "objective": "One preferred representation per work; start with works cited by prayers.",
+        "state": "recorded"
+      },
+      "status": "queued",
+      "title": "E3 attributed teaching claims",
+      "work_id": "enrichment-e3-teaching-claims"
+    },
+    {
+      "evidence": [],
+      "next_action": "After E1-E3.",
+      "plan": {
+        "artifact": {
+          "git_commit": null,
+          "host": "desktop",
+          "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/ENRICHMENT-STANDING-WORK.md"
+        },
+        "evidence": [
+          {
+            "claim": "Plan document inspected during the 2026-10-11 cleanup.",
+            "kind": "file",
+            "observed_at": "2026-10-11T12:58:16Z",
+            "reference": {
+              "git_commit": null,
+              "host": "desktop",
+              "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/ENRICHMENT-STANDING-WORK.md"
+            }
+          }
+        ],
+        "objective": "Only for prayers with accepted organization; twelve-prayer pilot first.",
+        "state": "recorded"
+      },
+      "status": "queued",
+      "title": "E4 evidence-grounded prayer reading",
+      "work_id": "enrichment-e4-read-prayer"
+    },
+    {
+      "evidence": [],
+      "next_action": "Delegates with return packets.",
+      "plan": {
+        "artifact": {
+          "git_commit": null,
+          "host": "desktop",
+          "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/ENRICHMENT-STANDING-WORK.md"
+        },
+        "evidence": [
+          {
+            "claim": "Plan document inspected during the 2026-10-11 cleanup.",
+            "kind": "file",
+            "observed_at": "2026-10-11T12:58:16Z",
+            "reference": {
+              "git_commit": null,
+              "host": "desktop",
+              "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/ENRICHMENT-STANDING-WORK.md"
+            }
+          }
+        ],
+        "objective": "Sermon segmentation, Text-Fabric/MACULA reader, calendar occasion reader.",
+        "state": "recorded"
+      },
+      "status": "queued",
+      "title": "E5 engineering commissions",
+      "work_id": "enrichment-e5-engineering"
+    },
+    {
+      "evidence": [],
+      "next_action": "After E1.",
+      "plan": {
+        "artifact": {
+          "git_commit": null,
+          "host": "desktop",
+          "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/ENRICHMENT-STANDING-WORK.md"
+        },
+        "evidence": [
+          {
+            "claim": "Plan document inspected during the 2026-10-11 cleanup.",
+            "kind": "file",
+            "observed_at": "2026-10-11T12:58:16Z",
+            "reference": {
+              "git_commit": null,
+              "host": "desktop",
+              "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/ENRICHMENT-STANDING-WORK.md"
+            }
+          }
+        ],
+        "objective": "Occasion identities against calendar occurrences.",
+        "state": "recorded"
+      },
+      "status": "queued",
+      "title": "E6 life-occasion links",
+      "work_id": "enrichment-e6-life-occasions"
+    }
+  ]
+}

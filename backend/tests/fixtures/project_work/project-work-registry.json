@@ -1,0 +1,130 @@
+{
+  "accepted_results": [],
+  "active_branches": [
+    {
+      "dirty": false,
+      "evidence": [
+        {
+          "claim": "Observed main at cleanup; working tree clean and pushed.",
+          "kind": "git",
+          "observed_at": "2026-10-11T12:58:16Z",
+          "reference": null
+        }
+      ],
+      "git_ref": "main",
+      "observed_at": "2026-10-11T12:58:16Z",
+      "observed_commit": "23d3de0ca897e2f3f76b02708be5f184e37ad1f1",
+      "repository": {
+        "git_commit": "23d3de0ca897e2f3f76b02708be5f184e37ad1f1",
+        "host": "desktop",
+        "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/project-work-registry"
+      },
+      "work_id": "maintain-register"
+    }
+  ],
+  "baseline": {
+    "described_at": "2026-10-11T12:58:16.993419+00:00",
+    "described_by": "Rawley Stanhope (Claude Fable cleanup session 2026-10-11)",
+    "history": {
+      "references": [],
+      "state": "unknown"
+    },
+    "locations": [
+      {
+        "git_commit": null,
+        "host": "github",
+        "locator": "https://github.com/RawleySM/project-work-registry",
+        "observed_at": "2026-10-11T12:58:16Z",
+        "role": "canonical_remote",
+        "runnable_on_allocator_host": null
+      },
+      {
+        "git_commit": "23d3de0ca897e2f3f76b02708be5f184e37ad1f1",
+        "host": "desktop",
+        "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/project-work-registry",
+        "note": "Clean desktop checkout bound by the launch.",
+        "observed_at": "2026-10-11T12:58:16Z",
+        "role": "working_checkout",
+        "runnable_on_allocator_host": true
+      }
+    ],
+    "summary": "Neutral authored register: schema, revision-checked writer, progressive native inspection reader (commit joins and producer ancestry, PR #2), launch authoring notes. Selected through resident.project_work_register for the stwref capacity controller in the Cycle 15 launch.",
+    "unknowns": []
+  },
+  "current_plan": {
+    "artifact": null,
+    "evidence": [],
+    "objective": null,
+    "state": "unknown"
+  },
+  "enrollment": {
+    "note": "Selected existing work; no historical replay.",
+    "origin": "manual_baseline"
+  },
+  "host_identity": {
+    "evidence": [],
+    "observed_at": null,
+    "pointer_sha256": null,
+    "registry": null,
+    "state": "unknown"
+  },
+  "identity_evidence": [],
+  "outputs": [],
+  "owner": {
+    "kind": "resident",
+    "name": "Steward",
+    "resident_id": "stwref"
+  },
+  "package_checkpoints": [],
+  "project_id": "project-work-registry",
+  "record_revision": 1,
+  "runtime_applicability": {
+    "note": "Applicability entered by Rawley Stanhope (Claude Fable cleanup session 2026-10-11).",
+    "package": "not_applicable",
+    "session": "not_applicable"
+  },
+  "schema": "rlm-adk.project-work-record.v1",
+  "title": "Project work register (this register)",
+  "unresolved": [
+    "Only the entered baseline is known; empty arrays are not proven absence."
+  ],
+  "updated_at": "2026-10-11T12:58:17.833226+00:00",
+  "updated_by": "Rawley Stanhope (Claude Fable cleanup session 2026-10-11)",
+  "work_items": [
+    {
+      "evidence": [
+        {
+          "claim": "Nine records enrolled on 2026-10-11 as manual baselines by the cleanup session.",
+          "kind": "operator_statement",
+          "observed_at": "2026-10-11T12:58:16Z",
+          "reference": null
+        }
+      ],
+      "next_action": "Each Steward turn: inspect, then write changed records with the revision-checked writer.",
+      "plan": {
+        "artifact": {
+          "git_commit": null,
+          "host": "desktop",
+          "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/project-work-registry/project/registry/project-work/README.md"
+        },
+        "evidence": [
+          {
+            "claim": "Plan document inspected during the 2026-10-11 cleanup.",
+            "kind": "file",
+            "observed_at": "2026-10-11T12:58:16Z",
+            "reference": {
+              "git_commit": null,
+              "host": "desktop",
+              "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/project-work-registry/project/registry/project-work/README.md"
+            }
+          }
+        ],
+        "objective": "Refresh plans, branches, results, checkpoints, outputs and unknowns as facts change.",
+        "state": "recorded"
+      },
+      "status": "running",
+      "title": "Maintain records for every registered and outside project",
+      "work_id": "maintain-register"
+    }
+  ]
+}

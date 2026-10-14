@@ -1,4 +1,4 @@
-"""CLI: serve, import, search, cite, devotional, turn, readiness, work, prayer."""
+"""CLI: serve, import, search, cite, devotional, turn, readiness, work, prayer, tool, policy."""
 
 from __future__ import annotations
 
@@ -14,8 +14,10 @@ from .db import connect
 from .importer import family_counts, import_family, latest_receipts
 from .reasoning import probe_once, readiness
 from .sources import SourceUnavailable
+from .sources import reference_teaching
 from .sources.prayers import read_prayers
 from .sources.scripture import read_scripture, theographic_csv_bodies
+from .sources.teaching import DOC_PREFIX as TEACHING_DOC_PREFIX
 from .sources.teaching import read_teaching
 from .sources.theographic import FILES as THEO_FILES
 from .sources.theographic import load_theographic
@@ -36,7 +38,12 @@ def cmd_import(cfg, families: list[str]) -> int:
                 counts = import_family(conn, "prayer", records, selection=selection, source_path=cfg.prayer_store)
             elif family == "teaching":
                 records, selection = read_teaching(cfg.youtube_store, limit_per_provider=cfg.teaching_limit_per_publisher, min_chars=cfg.teaching_min_chars)
-                counts = import_family(conn, "teaching", records, selection=selection, source_path=cfg.youtube_store)
+                counts = import_family(conn, "teaching", records, selection=selection, source_path=cfg.youtube_store, membership_prefix=TEACHING_DOC_PREFIX)
+            elif family == "reference_teaching":
+                # Edwards ThML and BibleProject transcripts from the scripture_reference store, into the
+                # teaching family under their own membership prefix and receipt name.
+                records, selection = reference_teaching.read_reference_teaching(cfg.scripture_store, cfg.reference_teaching_sources, cfg.reader_path or None)
+                counts = import_family(conn, reference_teaching.FAMILY, records, selection=selection, source_path=cfg.scripture_store, membership_prefix=reference_teaching.DOC_PREFIX, receipt_family="teaching:scripture_reference")
             elif family == "scripture":
                 records, selection = read_scripture(cfg.scripture_store, cfg.scripture_source_id, cfg.scripture_representation, cfg.reader_path or None)
                 counts = import_family(conn, "scripture", records, selection=selection, source_path=cfg.scripture_store)
@@ -62,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("serve")
     sub.add_parser("config")
     p = sub.add_parser("import")
-    p.add_argument("families", nargs="*", default=["prayer", "teaching", "scripture", "theographic"])
+    p.add_argument("families", nargs="*", default=["prayer", "teaching", "reference_teaching", "scripture", "theographic"])
     sub.add_parser("sources")
     sub.add_parser("fixture")
     p = sub.add_parser("search")
@@ -85,12 +92,26 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("prayer")
     p.add_argument("action", choices=["status", "list", "health", "test-run"])
     p.add_argument("arg", nargs="?")
+    p = sub.add_parser("tool", help="run one skill-service tool locally and print its JSON")
+    p.add_argument("name", choices=["scripture", "word", "interpretations", "project"])
+    p.add_argument("text", nargs="?", default="", help="reference (scripture), description (project) or topic (interpretations)")
+    p.add_argument("--reference", default=None)
+    p.add_argument("--topic", default=None)
+    p.add_argument("--which", default="latest")
+    p.add_argument("--confirm", default=None)
+    p.add_argument("--refresh", action="store_true")
+    sub.add_parser("policy")
     args = parser.parse_args(argv)
     cfg = load_config(args.config)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     if args.cmd == "config":
         print(cfg.to_json())
+        return 0
+    if args.cmd == "policy":
+        from .tools.policy import load_policy
+
+        _print(load_policy(cfg))
         return 0
     if args.cmd == "serve":
         from .server import make_server
@@ -149,6 +170,20 @@ def main(argv: list[str] | None = None) -> int:
             _print(outbox.build_source_packet(conn, cfg, args.arg))
         else:
             _print({"operations": outbox.list_operations(conn), "allocator": outbox.allocator_status(cfg)})
+    elif args.cmd == "tool":
+        from .tools.interpretations import interpretations_tool
+        from .tools.project import project_tool
+        from .tools.scripture import scripture_tool
+        from .tools.word import word_tool
+
+        if args.name == "scripture":
+            _print(scripture_tool(conn, args.text))
+        elif args.name == "word":
+            _print(word_tool(conn, cfg, args.which, refresh=args.refresh))
+        elif args.name == "interpretations":
+            _print(interpretations_tool(conn, args.reference, args.topic or args.text or None))
+        else:
+            _print(project_tool(cfg, args.text, args.confirm))
     elif args.cmd == "prayer":
         if args.action == "health":
             _print(prayer_intake.intake_health(cfg.prayer_intake_url))

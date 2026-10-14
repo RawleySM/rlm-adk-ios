@@ -42,8 +42,8 @@ def write_prayer_store(path: Path, prayers: list[tuple[str, str, float]]) -> Non
     conn.close()
 
 
-def write_youtube_store(path: Path, docs: list[tuple[str, str, str, str, str]]) -> None:
-    """docs: (url, provider, date, title, body)."""
+def write_youtube_store(path: Path, docs: list[tuple]) -> None:
+    """docs: (url, provider, date, title, body[, authors]); `authors` lands in metadata like the catalog's."""
     if path.exists():
         path.unlink()
     conn = sqlite3.connect(str(path))
@@ -51,10 +51,14 @@ def write_youtube_store(path: Path, docs: list[tuple[str, str, str, str, str]]) 
         "CREATE TABLE source_document_current_v1 (url TEXT, provider TEXT, observation_id INTEGER, observed_at TEXT, body_sha256 TEXT, body_chars INTEGER, body_text TEXT, metadata_json TEXT, has_transcript INTEGER, legacy_body_sha256 TEXT, selection_rule TEXT)"
     )
     conn.execute("CREATE TABLE transcripts (id INTEGER PRIMARY KEY, video_id TEXT, text TEXT, text_hash TEXT)")
-    for i, (url, provider, date, title, body) in enumerate(docs):
+    for i, doc in enumerate(docs):
+        url, provider, date, title, body = doc[:5]
+        meta = {"date": date, "title": title, "description": "d", "youtube_id": f"vid{i}"}
+        if len(doc) > 5 and doc[5] is not None:
+            meta["authors"] = list(doc[5])
         conn.execute(
             "INSERT INTO source_document_current_v1 VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (url, provider, 1000 + i, f"2026-10-0{1 + i % 9}T00:00:00+00:00", sha(body), len(body), body, json.dumps({"date": date, "title": title, "description": "d", "youtube_id": f"vid{i}"}), 1, None, "latest_ok_nonempty_v1"),
+            (url, provider, 1000 + i, f"2026-10-0{1 + i % 9}T00:00:00+00:00", sha(body), len(body), body, json.dumps(meta), 1, None, "latest_ok_nonempty_v1"),
         )
         conn.execute("INSERT INTO transcripts(video_id, text, text_hash) VALUES (?,?,?)", (f"vid{i}", body, sha(body)))
     conn.commit()
@@ -77,3 +81,17 @@ THEO_BODIES = {
     "Places.csv": "placeLookup,status,displayTitle,placeID\nBethlehem,accepted,Bethlehem,pl1\n",
     "Verses.csv": "osisRef,status,verseID,book,chapter,verseNum,verseText,people,places,event,yearNum\nPs.23.1,accepted,v1,Psalms,23,1,The LORD is my shepherd,David,,,\nPs.23.2,accepted,v2,Psalms,23,2,He makes me lie down,\"David, Unknown Person\",Bethlehem,,\n",
 }
+
+
+def import_chapters(conn, chapters: dict[tuple[str, int], list[str]]) -> None:
+    """Project fake WEB chapters (verse lists) into the scripture family."""
+    from voice_portal.importer import import_family
+    from voice_portal.sources.scripture import chapter_records
+
+    import_family(conn, "scripture", chapter_records(fake_verses(chapters), EDITION_META), selection={"edition": EDITION_META}, source_path="fake")
+
+
+def numbered(prefix: str, count: int, overrides: dict[int, str] | None = None) -> list[str]:
+    """`count` filler verses ("<prefix> verse n.") with real text substituted at the given numbers."""
+    overrides = overrides or {}
+    return [overrides.get(n, f"{prefix} filler verse {n} about ordinary matters.") for n in range(1, count + 1)]

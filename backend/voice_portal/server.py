@@ -13,6 +13,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from . import __version__, conversation, devices, outbox, prayer_intake, retrieval
+from .tools.interpretations import interpretations_tool
+from .tools.policy import load_policy
+from .tools.project import project_tool
+from .tools.scripture import scripture_tool
+from .tools.word import word_tool
+from .tools.work import work_tool
 from .config import Config
 from .db import connect, now
 from .importer import family_counts, latest_receipts
@@ -202,6 +208,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, retrieval.document_revisions(conn, parts[1], parts[2]))
             if method == "GET" and parts == ["devotional"]:
                 return self._json(200, conversation.build_devotional(conn, cfg, passage=query.get("passage"), date=query.get("date")))
+            # ----- skill-service tools (Pipecat RPC barrier) -----
+            if method == "GET" and parts == ["policy"]:
+                return self._json(200, load_policy(cfg))
+            if parts[:1] == ["tools"] and len(parts) == 2:
+                return self._tool(method, parts[1], query, conn, cfg)
             if method == "GET" and parts == ["theographic", "passage"]:
                 refs = [r for r in (query.get("osis") or "").split(",") if r]
                 return self._json(200, passage_entities(conn, refs))
@@ -349,6 +360,28 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:  # report, don't hide
             log.error("unhandled: %s\n%s", exc, traceback.format_exc())
             return self._json(500, {"error": "internal", "detail": str(exc)})
+
+    def _tool(self, method: str, name: str, query: dict, conn: sqlite3.Connection, cfg: Config) -> None:
+        """Dispatch one /tools/<name> call. A missing required input is a 400 that still carries `spoken`."""
+        if method == "GET" and name == "scripture":
+            if not (query.get("reference") or "").strip():
+                return self._json(400, {"error": "reference is required", "spoken": "Which passage should I read?"})
+            return self._json(200, scripture_tool(conn, query["reference"]))
+        if method == "GET" and name == "word":
+            return self._json(200, word_tool(conn, cfg, query.get("which") or "latest", refresh=query.get("refresh") in ("1", "true", "yes")))
+        if method == "GET" and name == "interpretations":
+            if not (query.get("reference") or query.get("topic") or "").strip():
+                return self._json(400, {"error": "reference or topic is required", "spoken": "Which passage or topic should I find readings on?"})
+            return self._json(200, interpretations_tool(conn, query.get("reference"), query.get("topic"), limit=int(query.get("limit") or 3)))
+        if method == "GET" and name == "project":
+            if not (query.get("description") or query.get("confirm") or "").strip():
+                return self._json(400, {"error": "description or confirm is required", "spoken": "Which project do you mean?"})
+            return self._json(200, project_tool(cfg, query.get("description") or "", query.get("confirm")))
+        if method == "POST" and name == "work":
+            payload = self._read_json()
+            result = work_tool(conn, cfg, payload.get("request_text") or "", payload.get("kind") or "research", operation_id=payload.get("operation_id"))
+            return self._json(400 if result["status"] == "rejected" else 201, result)
+        return self._json(404, {"error": "not_found", "tool": name, "method": method})
 
     def do_GET(self):
         self._route("GET")
