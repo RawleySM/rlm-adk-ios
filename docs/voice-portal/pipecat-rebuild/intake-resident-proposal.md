@@ -92,6 +92,9 @@ from `answered | accepted | failed | needs_steward`, then prose).
 
 ### 3.3 Requests and grants
 
+The complete node, with the mission and steering text filled in, is `intake-resident.node.json` beside
+this file (also copied to the desktop at `~/.config/rlm-adk/launch/intake-resident/`). Abbreviated:
+
 ```json
 {
   "id": "intk01",
