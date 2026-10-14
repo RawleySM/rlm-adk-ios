@@ -1,6 +1,6 @@
 # iOS client for the Pipecat talk tier
 
-Branch `claude/ios-pipecat-client`, build 9 (`0.2.0 (9)`). The app's voice is no longer Apple's
+Branch `claude/ios-pipecat-client`, builds 9 to 11 (`0.2.0 (11)` installed last; see "Builds"). The app's voice is no longer Apple's
 synthesizer: spoken output comes from the Pipecat talk tier on Spark-A as audio, over one of two
 transports behind one `TalkClient` protocol. The native capture, segment writer, prayer journal,
 uploads, device inspection and work list are unchanged in what they do.
@@ -166,3 +166,108 @@ tests are kept. CI also runs the app in the simulator against `scripts/ci_fake_t
 WebSocket protocol with a scripted bot turn) and fails unless the fixture server saw the
 `client_mode` sync, the typed `client_text`, 641-byte tagged uplink frames at about 50 per second
 and the bot turn delivered.
+
+## Device evidence (iPhone 12, iOS 26.6.2, 2026-10-14)
+
+All times UTC. The phone is on Spark-A USB. Acoustic runs used `scripts/device_eval.py audio
+play-record`: the desktop speakers play a fixture and the Spark-B microphone records the room.
+Prayer tests pointed the app at an **isolated** backend and intake on Spark-A (ports 18765/18091,
+fresh state under the session scratchpad), so no test prayer reached the production intake.
+
+### Builds
+
+| Build | Commit | IPA sha256 | Why |
+| --- | --- | --- | --- |
+| 9 | 6090dfd | `4bc3f73e00accf60ef436dcd8aed859fdc44cbd90fb6f80c36f6ea77bc2f4a03` (5,674,826 B) | the rebuild |
+| 10 | cbed5d2 | `d94c55b2d88f92a6c31aeb3961e94c09f8d11ee4b99ccff8e0cadaa28b91d175` (5,676,788 B) | device findings: suppression after prayer, amen anchor allowance, journal on iOS 26 |
+| 11 | 3b476d3 | `fdb7e85e39829acb78bfcbbdcfba0a65e3ba011b0db87a337691b5c0f3323674` (5,677,228 B) | device findings: level tracker floor after digital silence, `bot-output` display |
+
+All three were signed by `direct-install.yml` (Ad Hoc profile `rlm-adk-ios adhoc iPhone 12`,
+expires 2027-10-13) and installed with `pymobiledevice3 apps install` without uninstalling.
+
+**Install finding.** Every install over the running app waited in installcoordinationd at
+"Acquiring termination assertion to install placeholder" (phone syslog); build 9's first attempt
+waited 20 minutes. Terminating the app process (DVT `ProcessControl.kill`) let the pending install
+complete within 3 s. The recording app is not terminated by the installer on iOS 26.6.2; terminate
+it first. A stuck first attempt also left a process-scoped coordinator that made a `--streaming`
+retry fail with `IXErrorDomain Code=48`.
+
+**Retention** (manifest via `sync_manifest`, `GET /devices/<id>/manifest`). Build 10 to 11:
+497 of 497 then 514 of 514 segments identical. Final check after build 11, against the build 8
+baseline: 450 of 450 identical, 9 captures, 521 segments, 0 orphans. **Build 8 to 9:**
+before 5 captures, 450 segments, 2,536,078,464 bytes (open `00000445.wav`); after 5 captures, 475
+segments; **450 of 450 identical in bytes and sha256**, 0 missing, 0 changed, 25 new (445 to 469;
+the segment open at termination was recovered as a closed file), capture continuing. The data
+container path changed (`4D009E8A…` to `0036F8A0…`); the data moved with it.
+
+### WebRTC coexistence spike: capture holds
+
+| Window | Talk server | Evidence |
+| --- | --- | --- |
+| 04:16:12 to 04:20:58 | silent spike instance (`talk.bot` on :7880 with STT and LLM pointed at a closed port, so nothing is ever spoken) | `rtc audio unit started (play/record)` 04:16:11. Baseline `audio_owner_state=Recording engine_running=true last_buffer_age_s=0.1 open_segment=00000473.wav`; at +30 s `last_buffer_age_s=0.1`, `growth_since_connect=2880000 bytes` (exactly 48 kHz x 16 bit x 30 s); segments 473 and 474 closed at full length (5,764,096 B). A fixture played at 04:18:00 reached **both** microphone paths: the server's VAD saw speech over WebRTC (00:18:02.4 EDT), and the phone's segment 474 holds it at 50.75 to 53 s, peak -15.8 dBFS against a -57 dBFS floor. Cohere transcribes that window exactly ("What does Psalm twenty three say about rest?"). |
+| 04:21:14 to 04:31:06 | same | 60 snapshots every 10 s during the other agent's room benchmark: engine running in all, maximum `last_buffer_age_s` 0.1. A fixture prayer put the phone in prayer at 04:21:57 (`rtc audio unit stopped`); build 9 then left the unit off (the suppression bug fixed in build 10). |
+| 04:38 to 04:40 | real (:7860), build 10 | Bot speech from the phone in the room recording (8.5 to 35.5 s); `webrtc coexistence holding` at 04:38:30; Cohere transcribes the phone's capture of the 04:39 prayer window exactly. |
+| 04:41:30 to 04:42 | silent, build 10 | Prayer by address with unit off then on again (`toggles 3`); the server heard speech again after the prayer (00:41:58.6 EDT). |
+| 04:48:44 to 04:49:14 | real, build 11 | `webrtc coexistence holding` at 04:49:14 (`last_buffer_age_s=0.0`); reply audible in the room 7 to 29 s; reply text now shown ("One moment. Psalm 23. A Psalm by David. Yahweh is my shepherd; …"). |
+
+The session stayed `PlayAndRecord / VoiceChat / options 12 / 48000 Hz / io 0.023 / MicrophoneBuiltIn
+-> Speaker / voice processing on` before, during and after WebRTC. Each launch logs one
+`engine_configuration_change` gap and an automatic engine restart (also on the WebSocket path, so
+it is not WebRTC's). **Conclusion: the native capture keeps receiving buffers and records
+intelligible audio while libwebrtc's unit runs; no fallback was triggered.** What made it
+coexist: our session first, libwebrtc's `RTCAudioSessionConfiguration` set to the same category,
+mode, options, rate and IO buffer, one held `RTCAudioSession` activation, manual audio, the SDK's
+audio manager told the current route is preferred and released once connected, and the engine
+restart on configuration change. The capture guard (restart once, then fall back to WebSocket
+and record `webrtcFallback-<build>`) is in place but never fired.
+
+**What does not coexist well: on-device recognition.** With libwebrtc's unit running, the on-device
+`SFSpeechRecognizer` (fed the same tap buffers that transcribe exactly in Cohere) garbled 3 of 5
+utterances (04:18:02 "No", 04:38:23 "What is", 04:39:36 "No"; the prayers at 04:21:57 and 04:41:42
+were recognized). On the WebSocket path every utterance tested was recognized. Phone-side prayer
+by address is therefore unreliable on WebRTC; the server's own address detection still works
+there (it heard the 04:39 prayer and ran prayer and amen itself), but on WebRTC its floor messages
+do not reach the phone (server work item 1 above).
+
+### What works on the phone
+
+| Case | WebSocket | WebRTC |
+| --- | --- | --- |
+| Connect | yes: 04:13:07 (build 9) and every relaunch; reconnected on its own 4 s after the server was restarted under it (04:32:28 down, 04:32:32 up) | yes: `bot ready (rtvi 2.1.0)`; SDK audio manager released after connect |
+| Hear the bot | yes: the question at 04:32:05 got the bridge phrase at 7.5 to 8.5 s and the reply at 11 to 26 s in the room recording (about 15 to 19 dB over the -39 dBFS room floor); 420 downlink frames (787 KiB) played, none dropped; no on-device final while it spoke | yes: reply audible in the room 8.5 to 35.5 s (04:38); reply text empty until build 11 (`bot-output`) |
+| Prayer by address | yes: build 10 entered at fixture t = 1.91 s and build 11 at 1.94 s; the address utterance ends at 2.40 s. The server followed (`server prayer (client:address:lord)`) | yes when the recognizer heard it (build 9 at 04:21:57, about 0.86 s before the end of the other agent's address utterance; build 10 at 04:41:42, 0.49 s before); missed once (04:39) |
+| 3.0 s and 4.5 s pauses | never ended a prayer (5 prayers) | same |
+| Amen | build 10: 1.53 s from the end of "Amen." to the end of the prayer (1.46 s against the room-aligned end); build 11: 1.57 s. Both times the server's amen message (its 1.2 s window anchored at its VAD stop) arrived before the phone's own amen partial, so this is the server's timing, at the 1.5 s threshold | build 9: 2.19 s; build 10: 2.30 s, level tracker "ended never" (fixed in build 11, not re-measured on WebRTC) |
+| No bot audio in prayer | room recording shows only the fixture's four speech segments, nothing in the pauses or after the amen | unit stopped for the prayer |
+| Capture | published by the isolated intake, text equal to the reference (WER 0.0) for 3 prayers, pre-roll 2 s | same |
+| Journal | 3 lines per prayer (build 10) | same |
+| Floor sync | both directions | not yet: server work items 1 and 2 |
+
+### Coordination notes
+
+The other agent's `voicesim` room benchmark shared the room and the 7860 server. The phone was
+live on 7860 from 04:13:07 to 04:13:54 during their `full-room1` run (it answered their fixture
+"Which of my prayers mentions my son?") and from 04:20:32 to 04:20:58 during their file-mode run
+(no room audio). The server was restarted under the phone at about 04:32:30. For all other tests
+the phone pointed at the silent instance or ran while no room run was active.
+
+### State left on the phone
+
+Build 11, production backend `http://100.90.105.30:8765`, talk server `http://100.121.221.42:7860`,
+transport **WebSocket** (persisted choice; the default for a fresh install is still `webrtc`), mode
+Available, recording. Choice: WebSocket is the path with floor sync in both directions today. On
+WebRTC the phone's `client_mode` does not reach the server, so after a prayer the phone detected
+(WebRTC microphone off during it) the server can stay in prayer until it hears an amen. Select
+WebRTC in Diagnostics once the server changes above are in.
+
+### Left out, and why
+
+* The WebRTC floor sync needs the two server changes above; not mine to make.
+* `prayer_text` from the server is journaled on the phone (`Documents/prayer-talk/`), not synced
+  to the backend (no backend route takes it apart from the on-device journal).
+* The phone loop latency and barge-in thresholds of the acceptance matrix were not measured; the
+  room recordings here are evidence of the app's behaviour, not benchmark runs.
+* Bluetooth routes, interruptions and lock-screen behaviour on build 9 onwards are unverified.
+* Several older DeviceInspection tests reuse fixed command ids against the real Documents store,
+  so they fail on a second run on the same simulator (fresh simulators, as in CI, pass). Not
+  changed here.
