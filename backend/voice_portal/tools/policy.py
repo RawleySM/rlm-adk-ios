@@ -20,7 +20,8 @@ SCHEMA = "voice-portal.conversation-policy.v1"
 
 DEFAULT_POLICY: dict = {
     # Prayer by address: an utterance whose first words match enters prayer on the partial.
-    "address_phrases": ["Lord", "Father", "Heavenly Father", "Dear God", "Jesus", "Holy Spirit", "Abba", "Our Father", "let's pray", "let us pray", "I pray"],
+    # Mirrors the talk tier's TalkConfig.address_phrases; the phone fetches this list, so the two must agree.
+    "address_phrases": ["Lord", "Dear Lord", "Lord Jesus", "Father", "Dear Father", "Heavenly Father", "Our Father", "Dear God", "God,", "Jesus", "Dear Jesus", "Holy Spirit", "Abba", "let's pray", "let us pray", "I pray", "We pray"],
     # Prayer ends when the partial text ends with one of these and amen_silence_s pass with no new words.
     "amen_phrases": ["amen", "amen, amen", "in Jesus' name, amen", "in Jesus name, amen", "in Jesus' name amen", "in Jesus name amen"],
     "amen_silence_s": 1.2,
