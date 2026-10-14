@@ -40,9 +40,11 @@ curl -s http://127.0.0.1:7860/status
 ```
 
 Kokoro's model files download to `~/.cache/pipecat/kokoro-onnx` on first synthesis (325 MB). The
-owners it depends on: `spark-inference.service` on Spark-A (Cohere and `qwen-coding`; Spark-A's
-cold admission gate was lowered to 72 GiB in `~/.config/spark-inference/owner.env` on 2026-10-13
-because desktop applications hold about 40 GiB there), and the skill service on the desktop.
+owners it depends on: Cohere on Spark-A's `spark-inference.service` (28080), the LLM on **Spark-B's**
+owner (`qwen-coding-b`, reached through the Spark-A loopback forward 127.0.0.1:28111: with Qwen and
+Cohere both resident, Spark-A had about 20 GiB free because desktop applications hold about 40 GiB there,
+and the owner refused with `host_memory_pressure`), and the skill service on the desktop. Both owners
+run spark-inference 7e98c9d (per-model `sparkctl reset <model>`; Spark-B allows fish-speech on the GPU).
 
 ## Tests
 
