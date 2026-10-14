@@ -44,7 +44,9 @@ test on purpose: which resident answers Rawley is an authoring choice (the launc
 recipient id; the skill service posts `--to` it), not a host decision at an acceptance point.
 
 So the proposal is a **declared resident with grants and a mission**, with **no new duty kind**
-and no duty slot held. What constitutes its assignment is exactly what the launch docs call
+and exactly one duty slot: `project_coordination` for a dedicated `voice-requests` project (section
+3.5), the one kind a non-root resident is eligible for and the smallest assignment that lets a
+request end in a durable branch and artifact without touching any other project. What constitutes its assignment is exactly what the launch docs call
 grants and baseline: `spec.requests.project_ids` for read access, `spec.instructions` for the
 mission, mail delivery by address, and the delegate route it may use.
 
@@ -77,9 +79,12 @@ published package of its own.
    operation id and the expected deliverable path in the prompt. When the delegate returns,
    check its report (success, files changed, commits) and reply to the operator with the
    artifact or the failure. Prefer `readonly` autonomy for questions, `scoped` for products.
-5. Do not start projects, open branches, change capacity, enroll repositories or create
-   residents. If a request needs that, reply that it needs the Steward or Rawley, and say why;
-   do not forward the mail yourself.
+5. Coordinate one project, `voice-requests`, and no other: one branch per accepted request that
+   needs produced work (named after the operation id), the delegate runs with that branch as cwd,
+   the reply names branch, commit and artifact. Branches open only within the capacity the
+   Steward set. Do not open branches elsewhere, change capacity, enroll repositories, create
+   residents, promote or merge. If a request needs that, reply `needs_steward` and say why; do
+   not forward the mail yourself.
 6. Keep a request ledger in your workspace (one JSON line per operation id: received, replied,
    delegate ids, artifacts) and publish nothing else as a package unless a method is reused.
 7. Between messages, wait on `resident_wait` for mail; do not poll, do not run background work.
@@ -135,7 +140,8 @@ those checkouts under Intake's git identity, so returned-work commits are attrib
 | Agent delegation (`llm_query(agent=...)`) | baseline, needs ready delegate routes | The "dig further" path; gateway policy cycle14g has claude_code, codex and grok ready |
 | Finite children (`llm_query` without `agent`) | baseline | Cheap summarisation of a register read before replying |
 | `capacity_governance` | no (root only) | Intake must not change targets or holds |
-| `project_coordination` slots | no | Opening branches is project work, not intake |
+| `project_coordination` slot for `voice-requests` | **yes, the only slot** | Eligibility is "continuing admitted or declared resident with project access"; gives each accepted request a branch and durable artifact in a project no other resident works in |
+| `project_coordination` slots for the seven existing projects | no | Opening their branches is those residents' work |
 | `project_registration` | no (root only) | Enrollment stays with the Steward |
 | `model_routing_control` delegate slot | no | Nothing in the mission needs route changes |
 | `installed_release_activation` | no | Harness installation is not a voice request |
@@ -143,9 +149,31 @@ those checkouts under Intake's git identity, so returned-work commits are attrib
 | SRV cloud jobs (`submit_job`) | no, keep `controls.cloud_job` unset | Spend boundary; a delegate is enough |
 
 Assignments block of the launch (`resident.assignments`, mode `initialize`): all six kinds named,
-`capacity_governance` and `project_registration` enabled with holder `stwref`, coordination and
-promotion disabled or configured as today without Intake, routing and activation disabled. Intake
-appears nowhere in `adoptions`.
+`capacity_governance` and `project_registration` enabled with holder `stwref`, coordination
+configured for today's projects plus `voice-requests` with holder `intk01` on that one slot,
+promotion as today without Intake, routing and activation disabled. Intake appears in `adoptions`
+once, on the `voice-requests` coordination slot.
+
+### 3.5 The coordination slot and the `voice-requests` project
+
+"Launching a project" is three duties, two of them root-only: `project_registration` enrolls the
+repository, `capacity_governance` sets the target that lets branches open, and
+`project_coordination` names who opens a given project's next branch. Intake can hold only the
+third, and only for a project it has access to. The launch therefore:
+
+1. registers one new repository, `voice-requests`, at activation under
+   `grants.project_registration` with `register_at: "launch"` (the Steward's authority does this;
+   Intake never enrolls anything);
+2. adds `voice-requests` to the `project_coordination` configuration and assigns that slot to
+   `intk01` in `adoptions`;
+3. adds `voice-requests` to Intake's `requests.project_ids`;
+4. sets `resources.capacity.initial_target` one higher than today so an Intake branch can open
+   without the Steward raising the target first (the Steward still governs holds and the target).
+
+The exact fields are in `intake-resident.launch-fragment.json` beside this file. Promotion of
+`voice-requests` branches is not assigned: the branch with its commits and the file under
+`docs/requests/<operation_id>.md` is the deliverable the voice portal reports; if merged products
+are wanted later, a `project_promotion_execution` slot for that project is a separate decision.
 
 ## 4. Voice-portal side (rlm-adk-ios, skill service)
 
