@@ -173,7 +173,6 @@ async def run_bot(transport, cfg: TalkConfig, *, session_label: str) -> None:
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
         logger.info(f"[{session_label}] client connected")
-        await flow.initialize(flow_node("available"))
 
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport, client):

@@ -6,7 +6,9 @@ Scripture reading is open; questions are about the passage; ``continue_reading``
 ``project`` (a project check-in is open; confirm uncertain matches, report the five axes) and
 ``quiet`` (speech blocked until the wake phrase). Function handlers (``talk.tools``) return the next
 node; the floor switches to ``prayer`` / ``quiet`` / ``available`` itself (``FloorProcessor``). Every
-node shares one role message (``SYSTEM_PROMPT``) and never responds on entry: the floor and the
+node's role message is ``SYSTEM_PROMPT`` plus its state paragraph, sent as the LLM system
+instruction (the owner's Qwen template rejects a system message after the first, so nodes add no
+task messages to the context); no node responds on entry: the floor and the
 tools already decide what is spoken, so ``respond_immediately`` is False everywhere except
 ``project``, whose entry reply is the check-in report the model writes from the tool result.
 """
@@ -32,17 +34,17 @@ def node(name: str, role_message: str = "") -> NodeConfig:
     """Build the NodeConfig for ``name`` (the role message is filled in by ``make_flow_manager``)."""
     role = role_message or _ROLE["text"]
     if name == "available":
-        return NodeConfig(name="available", role_message=role, task_messages=[{"role": "system", "content": "State: available. Rawley has not spoken yet in this session. When he does, answer or call the tool his request needs."}], functions=_schemas(_ALL), respond_immediately=False)
+        return NodeConfig(name="available", role_message=role + "\n\n" + "State: available. Rawley has not spoken yet in this session. When he does, answer or call the tool his request needs.", task_messages=[], functions=_schemas(_ALL), respond_immediately=False)
     if name == "conversation":
-        return NodeConfig(name="conversation", role_message=role, task_messages=[{"role": "system", "content": "State: conversation. Keep answering Rawley's requests with the tools; readings and words are spoken by the tools themselves."}], functions=_schemas(_ALL), respond_immediately=False)
+        return NodeConfig(name="conversation", role_message=role + "\n\n" + "State: conversation. Keep answering Rawley's requests with the tools; readings and words are spoken by the tools themselves.", task_messages=[], functions=_schemas(_ALL), respond_immediately=False)
     if name == "prayer":
-        return NodeConfig(name="prayer", role_message=role, task_messages=[{"role": "system", "content": "State: prayer. Rawley is praying; nothing is spoken until he says amen. Do not answer prayer text."}], functions=[], respond_immediately=False)
+        return NodeConfig(name="prayer", role_message=role + "\n\n" + "State: prayer. Rawley is praying; nothing is spoken until he says amen. Do not answer prayer text.", task_messages=[], functions=[], respond_immediately=False)
     if name == "devotional":
-        return NodeConfig(name="devotional", role_message=role, task_messages=[{"role": "system", "content": "State: devotional. A Scripture reading is open (its text is in the last read_scripture result). A question now is about the passage heard: answer it from the passage, with interpretations when asked, without re-reading the chapter. When Rawley asks to continue, call continue_reading, which resumes where the reading stopped."}], functions=_schemas(_DEVOTIONAL), respond_immediately=False)
+        return NodeConfig(name="devotional", role_message=role + "\n\n" + "State: devotional. A Scripture reading is open (its text is in the last read_scripture result). A question now is about the passage heard: answer it from the passage, with interpretations when asked, without re-reading the chapter. When Rawley asks to continue, call continue_reading, which resumes where the reading stopped.", task_messages=[], functions=_schemas(_DEVOTIONAL), respond_immediately=False)
     if name == "project":
-        return NodeConfig(name="project", role_message=role, task_messages=[{"role": "system", "content": "State: project. A project check-in is open. If the project_checkin result is not confident, ask its confirmation question and call again with confirmed_project_id when Rawley confirms. Otherwise report plan, branches, results, checkpoints and outputs as recorded, in that order, briefly, and say what is next."}], functions=_schemas(_PROJECT), respond_immediately=True)
+        return NodeConfig(name="project", role_message=role + "\n\n" + "State: project. A project check-in is open. If the project_checkin result is not confident, ask its confirmation question and call again with confirmed_project_id when Rawley confirms. Otherwise report plan, branches, results, checkpoints and outputs as recorded, in that order, briefly, and say what is next.", task_messages=[], functions=_schemas(_PROJECT), respond_immediately=True)
     if name == "quiet":
-        return NodeConfig(name="quiet", role_message=role, task_messages=[{"role": "system", "content": "State: quiet. Speech is blocked until Rawley says the wake phrase; capture and background work continue."}], functions=[], respond_immediately=False)
+        return NodeConfig(name="quiet", role_message=role + "\n\n" + "State: quiet. Speech is blocked until Rawley says the wake phrase; capture and background work continue.", task_messages=[], functions=[], respond_immediately=False)
     raise KeyError(name)
 
 

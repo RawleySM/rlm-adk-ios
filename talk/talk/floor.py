@@ -24,6 +24,7 @@ import time
 
 from loguru import logger
 from pipecat.frames.frames import (
+    StartFrame,
     BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
     Frame,
@@ -64,6 +65,7 @@ class FloorProcessor(FrameProcessor):
         self._task = None
         self._rtvi = None
         self._flow = None
+        self._flow_started = False
         self._last_node: str | None = None
         self._vad_stopped_at: float | None = None
         self._user_speaking = False
@@ -187,9 +189,18 @@ class FloorProcessor(FrameProcessor):
     # ----- frames -----
     async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
+        if isinstance(frame, StartFrame) and self._flow is not None and not self._flow_started:
+            # Flows queues its node frames at the pipeline source; before the task runs they are lost.
+            self._flow_started = True
+            from talk.flows import node as flow_node
+
+            await self._flow.initialize(flow_node("available"))
+            await self.announce_node("start")
 
         if isinstance(frame, BotStartedSpeakingFrame):
             self.bot_speaking = True
+            if self.node == "available":
+                await self.set_node("conversation", "first reply")
             self.pending_turn = False
         elif isinstance(frame, (BotStoppedSpeakingFrame, InterruptionFrame)):
             self.bot_speaking = False
@@ -309,10 +320,7 @@ class FloorProcessor(FrameProcessor):
             if final:
                 self.pending_turn = True
                 self.reading_state["last_user_text"] = text
-                if self.node == "available":
-                    await self.set_node("conversation", "first request")
-                else:
-                    await self.announce_node("turn")
+                await self.announce_node("turn")
 
         await self.push_frame(frame, direction)
 
