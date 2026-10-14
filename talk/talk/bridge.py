@@ -21,6 +21,7 @@ from pipecat.frames.frames import (
     Frame,
     InterruptionFrame,
     TTSSpeakFrame,
+    TTSTextFrame,
     UserStartedSpeakingFrame,
     UserStoppedSpeakingFrame,
 )
@@ -64,4 +65,24 @@ class BridgeProcessor(FrameProcessor):
             self._cancel()
         elif isinstance(frame, (BotStartedSpeakingFrame, InterruptionFrame)):
             self._cancel()
+        await self.push_frame(frame, direction)
+
+
+class ContextScrubber(FrameProcessor):
+    """Keeps host-spoken bridge phrases out of the assistant's context.
+
+    The bridge speaks "One moment." through the TTS, and the assistant aggregator records whatever
+    was spoken as assistant history. After a few turns the model imitated that history and answered
+    "One moment." with no tool call (phone run 2026-10-14 05:48 UTC). This processor sits right
+    before the assistant aggregator and drops ``TTSTextFrame`` units equal to a bridge phrase.
+    """
+
+    def __init__(self, cfg: TalkConfig):
+        super().__init__(name="context-scrubber")
+        self._phrases = {p.strip().lower() for p in cfg.bridge_phrases}
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+        if isinstance(frame, TTSTextFrame) and direction == FrameDirection.DOWNSTREAM and (frame.text or "").strip().lower() in self._phrases:
+            return
         await self.push_frame(frame, direction)

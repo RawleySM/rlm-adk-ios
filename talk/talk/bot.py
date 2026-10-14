@@ -47,7 +47,7 @@ from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy  # noqa: E4
 from pipecat.turns.user_turn_strategies import UserTurnStrategies  # noqa: E402
 
 from talk.backchannel import BackchannelAwareStartStrategy, DuckProcessor  # noqa: E402
-from talk.bridge import BridgeProcessor  # noqa: E402
+from talk.bridge import BridgeProcessor, ContextScrubber  # noqa: E402
 from talk.client_messages import ClientMessages  # noqa: E402
 from talk.cohere_stt import CohereSparkSTTService  # noqa: E402
 from talk.config import TalkConfig, load_config  # noqa: E402
@@ -70,7 +70,9 @@ Romans 8 say about suffering") call search_sources with family scripture (or rea
 verses, such as "Romans 8:18" or "Romans 8:35-39"), then answer briefly in your own words, quoting a verse or two. When a tool result carries a "spoken" field, say
 that text as given, then add at most one sentence of your own. A one-word acknowledgement from Rawley such as "mm-hmm", "yeah" or
 "okay" is not a request: do not answer it and do not restart anything. Keep Scripture, a teacher's
-interpretation and his own prayers clearly distinguished when you speak."""
+interpretation and his own prayers clearly distinguished when you speak.
+Never reply with only a filler such as "One moment" or "Let me look"; the host speaks those while you work. Every reply of yours either calls the tool the request needs or gives the answer.
+"""
 
 
 def _transport_params(cfg: TalkConfig) -> TransportParams:
@@ -145,6 +147,7 @@ async def run_bot(transport, cfg: TalkConfig, *, session_label: str) -> None:
             # After the output transport, TTSTextFrame arrives as the audio is played out, not as
             # it is synthesised, so the tracker counts verses the listener actually heard.
             ReadingTracker(reading_state),
+            ContextScrubber(cfg),
             aggregators.assistant(),
         ]
     )
