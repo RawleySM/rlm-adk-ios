@@ -56,6 +56,10 @@ class TalkConfig:
     # The dossier's 320 ms assumes energy and semantic cues too; with duration alone, a spoken "mm-hmm"
     # (0.70 s voiced in the suite's fixture) needs a wider window. Barge-in is measured from the window's end.
     backchannel_max_s: float = 0.75
+    # At the window end, voice in the last ``barge_in_voiced_window_s`` of uplink (RMS >= ``barge_in_min_rms``
+    # and >= 30 % of the utterance peak) cuts the bot at once instead of waiting for the VAD stop.
+    barge_in_voiced_window_s: float = 0.3
+    barge_in_min_rms: float = 60.0
     # Words that mean "stop and wait": they interrupt the bot and are never answered as a turn.
     # Words that resume an interrupted reading; handled by the floor without the LLM.
     continue_phrases: list[str] = field(default_factory=lambda: ["continue", "go on", "keep going", "keep reading", "carry on", "resume", "pick up where you stopped", "where you stopped", "where you left off", "finish the reading"])
