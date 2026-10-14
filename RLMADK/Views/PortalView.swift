@@ -44,9 +44,15 @@ struct PortalView: View {
                 Text(PortalModel.skipPermissionPrompts ? "Capture not requested (fixture mode)" : model.audioState.label).font(.caption)
             }
             HStack {
+                Circle().fill(model.talkState.isUp ? .green : .orange).frame(width: 10, height: 10)
+                Text("Voice: \(model.activeTalkTransport?.label ?? "-") \(model.talkState.label)").font(.caption)
+                    .accessibilityIdentifier("talkStatus")
+                Spacer()
+            }
+            HStack {
                 Text("Mode: \(model.mode.label)").font(.headline)
                 Spacer()
-                if model.speaking { Label("Speaking", systemImage: "speaker.wave.2").font(.caption) }
+                if model.botSpeaking || model.botAudible { Label("Speaking", systemImage: "speaker.wave.2").font(.caption) }
             }
             Text(model.recognizerAvailability.label).font(.caption2).foregroundStyle(model.recognizerAvailability.usable ? Color.secondary : Color.orange)
         }
@@ -69,7 +75,7 @@ struct PortalView: View {
                 Spacer()
             }
             if model.mode.isPraying {
-                Text("Prayer is addressed to God. Long pauses never end it; tap End prayer when finished.")
+                Text("Prayer is addressed to God. Long pauses never end it; say amen and pause, or tap End prayer.")
                     .font(.caption).foregroundStyle(.purple)
             }
             if model.mode.quiet {
@@ -119,19 +125,12 @@ struct PortalView: View {
         GroupBox("Conversation") {
             VStack(alignment: .leading, spacing: 6) {
                 if !model.lastTranscript.isEmpty { Text("You: \(model.lastTranscript)").font(.caption) }
+                if !model.serverHeard.isEmpty {
+                    Text("Heard: \(model.serverHeard)").font(.caption2).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("serverHeard")
+                }
                 Text(model.assistantText.isEmpty ? "—" : model.assistantText).font(.body)
                     .accessibilityIdentifier("assistantText")
-                if !model.turnInfo.isEmpty { Text(model.turnInfo).font(.caption2).foregroundStyle(.secondary) }
-                if !model.citations.isEmpty {
-                    ScrollView(.horizontal) {
-                        HStack {
-                            ForEach(model.citations) { c in
-                                Button("[\(c.n ?? 0)] \(c.source_family)") { Task { showCitation = await model.citation(c.cite_id) } }
-                                    .font(.caption2).buttonStyle(.bordered)
-                            }
-                        }
-                    }
-                }
                 if let err = model.lastError { Text(err).font(.caption2).foregroundStyle(.red) }
             }
         }

@@ -18,9 +18,10 @@ final class PortalReducerTests: XCTestCase {
         XCTAssertTrue(state.quiet)
         XCTAssertFalse(SpeechGate.mayEnqueue(state))
         // Only an explicit wake clears it.
-        let (woken, _) = run([.wake], from: state)
+        let (woken, effects) = run([.wake], from: state)
         XCTAssertFalse(woken.quiet)
         XCTAssertTrue(SpeechGate.mayEnqueue(woken))
+        XCTAssertEqual(effects, [.sendClientMode(.available)])
     }
 
     func testPrayerLongPauseProducesNoOutputAndNoEnd() {
@@ -30,56 +31,83 @@ final class PortalReducerTests: XCTestCase {
         XCTAssertFalse(SpeechGate.mayEnqueue(state))
         XCTAssertFalse(effects.contains(.savePrayer(captureId: "c1")))
         XCTAssertFalse(effects.contains(.waitForUser))
-        // A recognized final transcript during prayer never starts a turn.
-        let (still, more) = run([.finalTranscript(turnId: "t1")], from: state)
+        // Bot speech that arrives during prayer is stopped again and the server is re-told.
+        let (still, more) = run([.botStartedSpeaking(turnId: "b1")], from: state)
         XCTAssertTrue(still.isPraying)
-        XCTAssertFalse(more.contains(.startTurn(turnId: "t1")))
+        XCTAssertEqual(more, [.stopVoice, .sendClientMode(.prayer)])
     }
 
     func testExplicitFinishSavesAndWaits() {
         let (state, effects) = run([.enterPrayer(captureId: "c2"), .silence(seconds: 120), .endPrayer])
         XCTAssertEqual(state.activity, .idle)
-        XCTAssertEqual(effects.suffix(2), [.savePrayer(captureId: "c2"), .waitForUser])
-        XCTAssertFalse(effects.contains { if case .startTurn = $0 { return true } else { return false } })
+        XCTAssertEqual(effects.suffix(3), [.savePrayer(captureId: "c2"), .waitForUser, .sendClientMode(.available)])
     }
 
     func testExistingQuietRemainsAfterPrayerAndReconnect() {
-        let (state, _) = run([.enterQuiet, .enterPrayer(captureId: "c3"), .endPrayer, .connectionLost, .connectionRestored])
+        let (state, effects) = run([.enterQuiet, .enterPrayer(captureId: "c3"), .endPrayer, .connectionLost, .connectionRestored])
         XCTAssertTrue(state.quiet)
         XCTAssertEqual(state.activity, .idle)
         XCTAssertFalse(SpeechGate.mayEnqueue(state))
+        XCTAssertEqual(effects.last, .sendClientMode(.quiet), "after the prayer the server is told quiet, not available")
     }
 
-    func testBargeInCancelsCurrentAndQueuedOutput() {
-        let (state, effects) = run([.finalTranscript(turnId: "t1"), .assistantDelta(turnId: "t1"), .userSpeechStarted])
-        XCTAssertEqual(state.activity, .idle)
-        XCTAssertTrue(effects.contains(.cancelOutput(turnId: "t1")))
-        XCTAssertTrue(effects.contains(.sendCancel(turnId: "t1")))
-        // A late delta for the old turn does not resurrect it.
-        let (after, late) = run([.assistantDelta(turnId: "t1"), .assistantDone(turnId: "t1")], from: state)
-        XCTAssertEqual(after.activity, .idle)
-        XCTAssertTrue(late.isEmpty)
-        // Speech while idle still stops anything that is playing, without a server cancel.
-        let (_, idleSpeech) = run([.userSpeechStarted], from: after)
-        XCTAssertEqual(idleSpeech, [.cancelOutput(turnId: nil)])
+    func testEnterPrayerStopsVoiceAndTellsTheServer() {
+        var speaking = PortalMode()
+        speaking.activity = .responding(turnId: "bot-1")
+        let (state, effects) = PortalReducer.apply(.enterPrayer(captureId: "c4"), to: speaking)
+        XCTAssertTrue(state.isPraying)
+        XCTAssertEqual(effects, [.stopVoice, .sendClientMode(.prayer)])
     }
 
-    func testOrdinaryCompletionReturnsToAvailableNotQuiet() {
-        let (state, effects) = run([.finalTranscript(turnId: "t2"), .assistantDelta(turnId: "t2"), .assistantDone(turnId: "t2")])
-        XCTAssertEqual(state.activity, .idle)
-        XCTAssertFalse(state.quiet)
-        XCTAssertTrue(SpeechGate.mayEnqueue(state))
-        XCTAssertEqual(effects, [.startTurn(turnId: "t2")])
+    func testBotSpeechTracksActivityAndReturnsToAvailableNotQuiet() {
+        let (speaking, start) = run([.botStartedSpeaking(turnId: "bot-1")])
+        XCTAssertEqual(speaking.activity, .responding(turnId: "bot-1"))
+        XCTAssertTrue(start.isEmpty)
+        let (done, _) = run([.botStoppedSpeaking], from: speaking)
+        XCTAssertEqual(done.activity, .idle)
+        XCTAssertFalse(done.quiet)
+        XCTAssertTrue(SpeechGate.mayEnqueue(done))
     }
 
-    func testQuietCancelsOutputAndStopCancelsTurn() {
-        let (state, effects) = run([.finalTranscript(turnId: "t3"), .enterQuiet])
+    func testQuietStopsVoiceAndStopRequestStopsVoice() {
+        let (state, effects) = run([.botStartedSpeaking(turnId: "bot-2"), .enterQuiet])
         XCTAssertTrue(state.quiet)
         XCTAssertEqual(state.activity, .idle)
-        XCTAssertTrue(effects.contains(.sendCancel(turnId: "t3")))
-        let (s2, e2) = run([.finalTranscript(turnId: "t4"), .stopRequested])
+        XCTAssertEqual(effects, [.stopVoice, .sendClientMode(.quiet)])
+        let (s2, e2) = run([.botStartedSpeaking(turnId: "bot-3"), .stopRequested])
         XCTAssertEqual(s2.activity, .idle)
-        XCTAssertTrue(e2.contains(.cancelOutput(turnId: "t4")))
+        XCTAssertEqual(e2, [.stopVoice])
+        // Bot speech while quiet is stopped again; activity never becomes speaking.
+        let (s3, e3) = run([.botStartedSpeaking(turnId: "bot-4")], from: state)
+        XCTAssertEqual(s3.activity, .idle)
+        XCTAssertEqual(e3, [.stopVoice, .sendClientMode(.quiet)])
+    }
+
+    func testQuietDuringPrayerKeepsTheServerInPrayer() {
+        let (state, effects) = run([.enterPrayer(captureId: "c5"), .enterQuiet, .wake])
+        XCTAssertTrue(state.isPraying)
+        XCTAssertFalse(effects.contains(.sendClientMode(.quiet)))
+        XCTAssertFalse(effects.contains(.sendClientMode(.available)))
+    }
+
+    func testRelaunchDropsAStaleBotTurnButKeepsPrayerAndQuiet() {
+        var stale = PortalMode()
+        stale.quiet = true
+        stale.activity = .responding(turnId: "old")
+        XCTAssertEqual(PortalReducer.apply(.relaunch, to: stale).0.activity, .idle)
+        XCTAssertTrue(PortalReducer.apply(.relaunch, to: stale).0.quiet)
+        var praying = PortalMode()
+        praying.activity = .prayer(captureId: "c6")
+        XCTAssertEqual(PortalReducer.apply(.relaunch, to: praying).0.prayerCaptureId, "c6")
+    }
+
+    func testClientFloorModeOfMode() {
+        var mode = PortalMode()
+        XCTAssertEqual(ClientFloorMode.of(mode), .available)
+        mode.quiet = true
+        XCTAssertEqual(ClientFloorMode.of(mode), .quiet)
+        mode.activity = .prayer(captureId: "c7")
+        XCTAssertEqual(ClientFloorMode.of(mode), .prayer)
     }
 
     func testModePersistsThroughCodable() throws {
@@ -91,6 +119,14 @@ final class PortalReducerTests: XCTestCase {
         let data = try JSONEncoder().encode(mode)
         let back = try JSONDecoder().decode(PortalMode.self, from: data)
         XCTAssertEqual(back, mode)
+    }
+
+    func testModeFilesFromEarlierBuildsStillDecode() throws {
+        // Build 8 wrote turn activities; they must still load so quiet is never lost.
+        let old = #"{"quiet":true,"activity":{"listening":{"turnId":"t1"}},"devotionalPosition":2}"#
+        let mode = try JSONDecoder().decode(PortalMode.self, from: Data(old.utf8))
+        XCTAssertTrue(mode.quiet)
+        XCTAssertEqual(PortalReducer.apply(.relaunch, to: mode).0.activity, .idle)
     }
 }
 

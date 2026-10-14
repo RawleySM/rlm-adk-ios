@@ -33,6 +33,16 @@ struct DeviceSnapshot: Codable, Equatable {
     var captures: [CaptureSummary]
     var recent_log: [String]
     var last_error: String?
+    // Talk tier (Pipecat): selected and running transport, connection, the voice output's gate.
+    var talk_transport: String? = nil
+    var talk_transport_active: String? = nil
+    var talk_url: String? = nil
+    var talk_state: String? = nil
+    var talk_detail: String? = nil
+    var bot_speaking: Bool? = nil
+    var voice_output: String? = nil
+    var webrtc_spike: String? = nil
+    var policy_source: String? = nil
 
     struct CaptureSummary: Codable, Equatable {
         var capture_id: String

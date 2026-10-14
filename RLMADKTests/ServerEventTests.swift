@@ -2,13 +2,12 @@ import XCTest
 @testable import RLMADK
 
 final class ServerEventTests: XCTestCase {
-    func testDecodesDeltaAndDone() throws {
-        let delta = try JSONDecoder().decode(ServerEvent.self, from: Data(#"{"type":"assistant_text_delta","turn_id":"t1","seq":3,"text":"He restores"}"#.utf8))
-        XCTAssertEqual(delta.type, "assistant_text_delta")
-        XCTAssertEqual(delta.seq, 3)
-        let done = try JSONDecoder().decode(ServerEvent.self, from: Data(#"{"type":"assistant_done","turn_id":"t1","text":"x","citations":[{"n":1,"cite_id":"12:abcdefabcdef:0","source_family":"scripture","title":"Psalms 23","attribution":"Scripture, WEB","verse_refs":["Ps.23.1"]}],"first_delta_ms":812,"done_ms":4100,"model":"spark-small","evidence_count":1}"#.utf8))
-        XCTAssertEqual(done.citations?.first?.verse_refs, ["Ps.23.1"])
-        XCTAssertEqual(done.first_delta_ms, 812)
+    func testDecodesSessionAndErrorEvents() throws {
+        let session = try JSONDecoder().decode(ServerEvent.self, from: Data(#"{"type":"session","session_id":"abc123","source_commit":"deadbeef"}"#.utf8))
+        XCTAssertEqual(session.type, "session")
+        XCTAssertEqual(session.session_id, "abc123")
+        let error = try JSONDecoder().decode(ServerEvent.self, from: Data(#"{"type":"error","message":"nope","turn_id":"ignored"}"#.utf8))
+        XCTAssertEqual(error.message, "nope")
     }
 
     func testDecodesStatusCounts() throws {

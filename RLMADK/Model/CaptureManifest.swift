@@ -65,6 +65,12 @@ struct CaptureManifest: Codable, Equatable, Identifiable {
     /// Set when the segment writer has settled at end of capture: the total number of segments it
     /// produced. Finalize is impossible until every one of them is recorded here and verified.
     var expectedSegmentCount: Int? = nil
+    /// How a prayer began: "button", "begin prayer phrase", "address:<phrase>" or "server <reason>".
+    /// Nil for ambient captures and for manifests written by earlier builds.
+    var trigger: String? = nil
+    /// Seconds of audio from before the trigger written at the start of this capture (an address
+    /// is recognized after it was spoken). Nil when none.
+    var prerollSeconds: Double? = nil
 
     var pendingUploads: [SegmentRecord] { segments.filter { $0.endedAt != nil && !$0.verifiedUploaded } }
     var allUploaded: Bool { !segments.isEmpty && segments.allSatisfy { $0.endedAt != nil && $0.verifiedUploaded } }

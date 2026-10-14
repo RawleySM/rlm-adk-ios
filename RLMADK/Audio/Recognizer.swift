@@ -45,12 +45,16 @@ final class SpeechEngine: RecognitionEngine {
 }
 
 /// On-device recognition fed from the audio owner's tap. Restarted per utterance without touching
-/// the recorder. Every request is bound, immutably, to the owner in force when it was opened (a
-/// prayer capture id, or nil for conversation); that identity travels with its final however late
-/// it settles. Requests move through: accepting audio -> ended (draining: no more buffers, final
-/// pending) -> settled. Rebinding or restarting ENDS the accepting request and opens the next one
-/// at once; nothing pending is cancelled, so no final is lost and the new owner gets audio
-/// immediately. Only an explicit `stop()` cancels.
+/// the recorder. Every request is bound to the owner in force when it was opened (a prayer capture
+/// id, or nil for conversation); that identity travels with its final however late it settles.
+/// Requests move through: accepting audio -> ended (draining: no more buffers, final pending) ->
+/// settled. Rebinding or restarting ENDS the accepting request and opens the next one at once;
+/// nothing pending is cancelled, so no final is lost and the new owner gets audio immediately.
+/// Only an explicit `stop()` cancels.
+///
+/// The one exception to "owner fixed at open" is `adoptCurrent`: when the utterance in progress
+/// is itself the start of a prayer (it began with an address phrase), the accepting conversation
+/// request is handed to that prayer so its words, including the address, are the prayer's.
 final class Recognizer: NSObject {
     struct Availability: Equatable {
         var authorized: Bool
@@ -66,10 +70,10 @@ final class Recognizer: NSObject {
         }
     }
 
-    /// One request. `owner` never changes after opening.
+    /// One request. `owner` changes only through `adopt`, from nil (conversation) to a prayer.
     final class OpenRequest {
         let id: Int
-        let owner: String?
+        private(set) var owner: String?
         var handle: RecognitionRequestHandle?
         /// True until `endAudio`; buffers are appended only while accepting.
         private(set) var accepting = true
@@ -79,6 +83,12 @@ final class Recognizer: NSObject {
         /// The engine delivered the final or an error: nothing more can be appended, no call needed.
         func markSettled() { accepting = false }
         func cancelNow() { accepting = false; cancelled = true; handle?.cancel() }
+        /// Hands a conversation request that is still accepting audio to a prayer.
+        func adopt(_ prayer: String) -> Bool {
+            guard owner == nil, accepting, !cancelled else { return false }
+            owner = prayer
+            return true
+        }
     }
 
     private let recognizer: SFSpeechRecognizer?
@@ -174,6 +184,21 @@ final class Recognizer: NSObject {
         guard request.owner != owner else { return }
         endCurrent()
         if continuous { start() }
+    }
+
+    /// The utterance in progress began a prayer (address phrase seen in its partial): the accepting
+    /// conversation request becomes the prayer's, so it keeps listening without a gap and its final
+    /// is journaled under the prayer. Future requests belong to the prayer too. Falls back to
+    /// `rebindOwner` when nothing adoptable is accepting audio.
+    ///
+    /// Returns:
+    ///   True when the request in progress was adopted.
+    @discardableResult
+    func adoptCurrent(owner prayer: String) -> Bool {
+        nextOwner = prayer
+        if let request = current, request.adopt(prayer) { return true }
+        rebindOwner(prayer)
+        return false
     }
 
     /// Ends the utterance; its final (if any) follows through `onFinal`, then the supervised

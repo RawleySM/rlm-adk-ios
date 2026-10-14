@@ -137,4 +137,32 @@ final class RecognizerLifecycleTests: XCTestCase {
         engine.requests[1].partial("new words")
         XCTAssertEqual(partials, ["new words"])
     }
+
+    func testAddressAdoptionKeepsTheUtteranceOpenAndItsFinalBelongsToThePrayer() {
+        var partials: [String] = []
+        recognizer.onPartial = { partials.append($0) }
+        recognizer.startContinuous()
+        let utterance = engine.requests[0]
+        utterance.partial("Lord")
+        XCTAssertTrue(recognizer.adoptCurrent(owner: "prayer-A"), "the accepting conversation request is adopted")
+        XCTAssertEqual(engine.requests.count, 1, "no new request: the utterance keeps listening without a gap")
+        XCTAssertFalse(utterance.ended)
+        XCTAssertEqual(recognizer.currentOwner, "prayer-A")
+        XCTAssertEqual(recognizer.nextOwner, "prayer-A")
+        recognizer.append(buffer)
+        XCTAssertEqual(utterance.appended, 1)
+        utterance.partial("Lord thank you")
+        utterance.final("Lord thank you for this evening")
+        XCTAssertEqual(finals.last?.owner, "prayer-A")
+        XCTAssertEqual(partials, ["Lord", "Lord thank you"])
+        // A prayer request cannot be adopted by another prayer: that is a rebind (end, then open).
+        recognizer.rebindOwner(nil)
+        recognizer.startContinuous()
+        let next = engine.requests.last!
+        XCTAssertNil(recognizer.currentOwner)
+        XCTAssertTrue(recognizer.adoptCurrent(owner: "prayer-B"))
+        XCTAssertFalse(recognizer.adoptCurrent(owner: "prayer-C"), "already a prayer's request: ended and reopened instead")
+        XCTAssertTrue(next.ended)
+        XCTAssertEqual(recognizer.currentOwner, "prayer-C")
+    }
 }
