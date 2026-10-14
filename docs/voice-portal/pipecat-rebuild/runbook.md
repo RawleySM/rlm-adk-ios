@@ -64,12 +64,22 @@ Spark-A's owner for Qwen (a misconfigured judge did this on 2026-10-13) evicts C
 
 ## Run the proofs
 
+**Every run that puts sound in the room (`--mode room`, `--mode phone`) goes through
+`scripts/phone-suite.sh`.** The phone's own prayer-by-address capture publishes whatever prayer it
+hears, hold or no hold; on 2026-10-14 two room runs and one phone run put four fixture prayers into
+the production prayer store before this wrapper existed (removed the same night, receipt under
+`~/.local/rlm-adk/stores/prayer_pipeline/removed-synthetic-20261014/` on the desktop). The wrapper
+starts an isolated prayer intake (:18091) and an isolated voice-portal backend (:18765) on Spark-A,
+relaunches the app with `RLMADK_BACKEND_URL` pointing at them, runs the suite, and relaunches the
+app on the production backend afterwards; its evidence directory lists what the isolated intake
+published.
+
 ```bash
 cd ~/rlm-voice-sim
 voicesim talk build suites/conversation-core                      # fixtures in the cloned voice (once per script change)
-voicesim talk run suites/conversation-core --mode file             # digital injection, every case
-voicesim talk run suites/conversation-core --mode room --case 01 --case 02a   # speakers → Spark-B mic → talk tier
-voicesim talk run suites/conversation-core --mode phone            # speakers → iPhone → talk tier → phone speaker → Spark-B mic
+voicesim talk run suites/conversation-core --mode file             # digital injection, every case (no sound in the room)
+scripts/phone-suite.sh suites/conversation-core --mode room        # speakers → Spark-B mic → talk tier (phone held quiet, isolated intake)
+scripts/phone-suite.sh suites/conversation-core --mode phone       # speakers → iPhone → talk tier → phone speaker → Spark-B mic
 voicesim talk report conversation-core                             # markdown over every run
 voicesim talk probe --text "Read me Psalm twenty three." --out /tmp/p   # one turn
 ```
