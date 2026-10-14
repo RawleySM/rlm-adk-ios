@@ -70,7 +70,10 @@ Spark-A's owner for Qwen (a misconfigured judge did this on 2026-10-13) evicts C
 `scripts/phone-suite.sh`.** The phone's own prayer-by-address capture publishes whatever prayer it
 hears, hold or no hold; on 2026-10-14 two room runs and one phone run put four fixture prayers into
 the production prayer store before this wrapper existed (removed the same night, receipt under
-`~/.local/rlm-adk/stores/prayer_pipeline/removed-synthetic-20261014/` on the desktop). The wrapper
+`~/.local/rlm-adk/stores/prayer_pipeline/removed-synthetic-20261014/` on the desktop). Since
+data-pipelines PR #59 a published transcript is retracted with
+`curl -X POST -H 'Content-Type: application/json' -d '{"action":"retract","reason":"test_fixture","expected_revision":0}' http://127.0.0.1:8091/recordings/<id>/disposition`
+on the desktop; no more hand surgery. The wrapper
 starts an isolated prayer intake (:18091) and an isolated voice-portal backend (:18765) on Spark-A,
 relaunches the app with `RLMADK_BACKEND_URL` pointing at them, runs the suite, and relaunches the
 app on the production backend afterwards; its evidence directory lists what the isolated intake
