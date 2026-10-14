@@ -1,0 +1,32 @@
+{
+  "resident.grants.project_registration (add)": {
+    "voice-requests": {
+      "repository": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-16/voice-requests",
+      "register_at": "launch"
+    }
+  },
+  "resident.assignments.kinds (project_coordination entry)": {
+    "kind": "project_coordination",
+    "project_ids": [
+      "voice-requests"
+    ]
+  },
+  "resident.assignments.adoptions (project_coordination entry)": {
+    "kind": "project_coordination",
+    "state": "enabled",
+    "slots": [
+      {
+        "slot": {
+          "kind": "project_coordination",
+          "project_id": "voice-requests"
+        },
+        "holder": "intk01"
+      }
+    ]
+  },
+  "resident.resources.capacity": {
+    "ceiling": 256,
+    "initial_target": 7,
+    "note": "one above today's 6 so an Intake branch can open without the Steward raising the target"
+  }
+}
