@@ -9,7 +9,10 @@ final class TalkProtocolTests: XCTestCase {
                        [.userTranscript(text: "What does Psalm twenty three say about rest?", final: true)])
         XCTAssertEqual(TalkMessageParser.events(fromText: #"{"label":"rtvi-ai","type":"bot-started-speaking"}"#), [.botStartedSpeaking])
         XCTAssertEqual(TalkMessageParser.events(fromText: #"{"label":"rtvi-ai","type":"bot-stopped-speaking"}"#), [.botStoppedSpeaking])
-        XCTAssertEqual(TalkMessageParser.events(fromText: #"{"label":"rtvi-ai","type":"bot-transcription","data":{"text":" what I know"}}"#), [.botTranscript(text: " what I know")])
+        XCTAssertEqual(TalkMessageParser.events(fromText: #"{"label":"rtvi-ai","type":"bot-transcription","data":{"text":" what I know"}}"#), [], "not sent to RTVI 2 clients; bot-output is the one display source")
+        XCTAssertEqual(TalkMessageParser.events(fromText: #"{"label":"rtvi-ai","type":"bot-output","data":{"text":"Let me look.","aggregated_by":"sentence","spoken":false,"will_be_spoken":true,"spoken_status":"new"}}"#), [.botTranscript(text: "Let me look.")])
+        XCTAssertEqual(TalkMessageParser.events(fromText: #"{"label":"rtvi-ai","type":"bot-output","data":{"text":"Let me look.","aggregated_by":"sentence","spoken":true,"will_be_spoken":true,"spoken_status":"completed"}}"#), [], "shown once, when queued")
+        XCTAssertEqual(TalkMessageParser.events(fromText: #"{"label":"rtvi-ai","type":"bot-output","data":{"text":"tool text","aggregated_by":"sentence","will_be_spoken":false,"spoken_status":"new"}}"#), [])
         XCTAssertEqual(TalkMessageParser.events(fromText: #"{"label":"rtvi-ai","type":"bot-tts-text","data":{"text":"Let me look."}}"#), [.botSpokenText(text: "Let me look.")])
         XCTAssertEqual(TalkMessageParser.events(fromText: #"{"label":"rtvi-ai","type":"bot-interrupted"}"#), [.interruption])
         XCTAssertEqual(TalkMessageParser.events(fromText: #"{"label":"rtvi-ai","type":"metrics","data":{"ttfb":[]}}"#), [])
@@ -64,6 +67,21 @@ final class TalkProtocolTests: XCTestCase {
         XCTAssertEqual(try WebSocketTalkClient.socketURL(base: base, wsUrl: "wss://0.0.0.0:7870/ws-client", token: "abc").absoluteString, "ws://100.121.221.42:7870/ws-client/abc")
         XCTAssertEqual(try WebSocketTalkClient.socketURL(base: URL(string: "https://talk.example:443")!, wsUrl: "/ws-client/tok", token: "tok").absoluteString, "wss://talk.example:443/ws-client/tok")
         XCTAssertThrowsError(try WebSocketTalkClient.socketURL(base: base, wsUrl: nil, token: nil))
+    }
+
+    func testVoiceLevelTrackerIgnoresDigitalSilence() {
+        var tracker = VoiceLevelTracker()
+        var t: TimeInterval = 0
+        func feed(_ db: Double, _ seconds: Double) { for _ in 0..<Int(seconds / 0.085) { tracker.observe(levelDb: db, duration: 0.085, at: t); t += 0.085 } }
+        feed(-57, 2)
+        feed(-120, 0.5) // an audio unit starting: zeros
+        feed(-57, 1)
+        XCTAssertFalse(tracker.active, "room noise after digital silence is not voice")
+        feed(-22, 1.5)
+        XCTAssertTrue(tracker.active)
+        feed(-57, 0.3)
+        XCTAssertFalse(tracker.active)
+        XCTAssertNotNil(tracker.lastVoiceEndUptime, "the end of the speech is seen")
     }
 
     func testDevotionalTrackerAlignsRunsAndSkipsCommentary() {

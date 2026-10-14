@@ -276,7 +276,11 @@ extension WebRTCTalkClient: PipecatClientDelegate {
         Task { @MainActor in self.deliver(.userTranscript(text: data.text, final: data.final ?? false)) }
     }
 
-    nonisolated func onBotTranscript(data: BotLLMText) {
+    nonisolated func onBotOutput(data: BotOutputData) {
+        // Same rule as the WebSocket parser: display a sentence once, when queued to be spoken.
+        guard data.willBeSpoken != false else { return }
+        let isNew = data.spokenStatus == .new || data.spokenStatus == nil
+        guard isNew else { return }
         Task { @MainActor in self.deliver(.botTranscript(text: data.text)) }
     }
 

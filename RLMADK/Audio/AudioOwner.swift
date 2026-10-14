@@ -512,10 +512,20 @@ struct VoiceLevelTracker: Equatable {
     private(set) var lastVoiceEndUptime: TimeInterval?
     static let marginDb: Double = 9
     static let absoluteMinimumDb: Double = -62
+    /// The floor never follows the signal below this level.
+    static let floorMinimumDb: Double = -75
+    /// dB per second the floor rises toward a louder signal.
+    static let floorRiseDbPerSecond: Double = 2.0
 
     mutating func observe(levelDb: Double, duration: Double, at uptime: TimeInterval) {
-        if levelDb < floorDb { floorDb = levelDb } else { floorDb = min(levelDb, floorDb + 0.4 * duration) }
-        let voiced = levelDb > max(floorDb + VoiceLevelTracker.marginDb, VoiceLevelTracker.absoluteMinimumDb)
+        // NOTE [Context]: an audio unit starting or stopping in the process (libwebrtc's, on the
+        // WebRTC transport) hands the tap buffers of digital silence. Following them dragged the
+        // floor to -120 dB, after which ordinary room noise counted as voice for minutes (device
+        // run 2026-10-14: "voice active, ended never"). Silence like that says nothing about the room.
+        guard levelDb > -100 else { return }
+        let level = max(levelDb, VoiceLevelTracker.floorMinimumDb)
+        if level < floorDb { floorDb = level } else { floorDb = min(level, floorDb + VoiceLevelTracker.floorRiseDbPerSecond * duration) }
+        let voiced = level > max(floorDb + VoiceLevelTracker.marginDb, VoiceLevelTracker.absoluteMinimumDb)
         if active, !voiced { lastVoiceEndUptime = uptime }
         active = voiced
     }

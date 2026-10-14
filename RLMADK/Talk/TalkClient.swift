@@ -40,7 +40,7 @@ enum TalkEvent: Equatable {
     case userTranscript(text: String, final: Bool)
     case userStartedSpeaking
     case userStoppedSpeaking
-    /// LLM text aggregated by sentence (`bot-transcription`), ahead of the audio. Display only.
+    /// A sentence the bot will speak (`bot-output`, when queued), ahead of the audio. Display only.
     case botTranscript(text: String)
     /// Text that was actually spoken (`bot-tts-text`). Drives devotional position.
     case botSpokenText(text: String)
@@ -150,8 +150,15 @@ enum TalkMessageParser {
                 return [.userTranscript(text: text, final: data["final"] as? Bool ?? false)]
             case "user-started-speaking": return [.userStartedSpeaking]
             case "user-stopped-speaking": return [.userStoppedSpeaking]
-            case "bot-transcription":
-                return (data["text"] as? String).map { [.botTranscript(text: $0)] } ?? []
+            case "bot-output":
+                // RTVI 2: one message per sentence when it is queued ("new") and again when it was
+                // spoken ("completed"). Displayed once, when queued and meant to be spoken. Sent on
+                // both transports, unlike bot-transcription (not sent to RTVI 2 clients), so the
+                // display uses only this one.
+                guard let text = data["text"] as? String, data["will_be_spoken"] as? Bool != false else { return [] }
+                let status = data["spoken_status"] as? String
+                let isNew = status == "new" || (status == nil && data["spoken"] as? Bool != true)
+                return isNew ? [.botTranscript(text: text)] : []
             case "bot-tts-text":
                 return (data["text"] as? String).map { [.botSpokenText(text: $0)] } ?? []
             case "bot-started-speaking": return [.botStartedSpeaking]
