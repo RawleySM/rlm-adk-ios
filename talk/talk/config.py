@@ -73,7 +73,7 @@ class TalkConfig:
     # Utterances whose RMS (int16) is below this are not transcribed: Cohere invents "Thank you." on
     # near-silence. 0 disables; the STT log line prints each utterance's RMS for tuning.
     stt_min_rms: float = 120.0
-    vad_stop_secs: float = 0.7
+    vad_stop_secs: float = 0.8
     # Smart Turn's fallback when it keeps judging a pause as mid-sentence: end the turn after this
     # much silence anyway. Pipecat's default of 3.0 s put first audio past the 3.0 s acceptance bound.
     smart_turn_stop_secs: float = 1.5
