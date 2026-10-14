@@ -184,6 +184,7 @@ fresh state under the session scratchpad), so no test prayer reached the product
 | 10 | cbed5d2 | `d94c55b2d88f92a6c31aeb3961e94c09f8d11ee4b99ccff8e0cadaa28b91d175` (5,676,788 B) | device findings: suppression after prayer, amen anchor allowance, journal on iOS 26 |
 | 11 | 3b476d3 | `fdb7e85e39829acb78bfcbbdcfba0a65e3ba011b0db87a337691b5c0f3323674` (5,677,228 B) | device findings: level tracker floor after digital silence, `bot-output` display |
 | 12 | 6d60653 | `c922a334bc02f57522a010338fe0340bb764787155a3c3e2f7ab026c63a7cba2` (5,678,358 B) | review findings: typed text as RTVI `send-text` on WebRTC; a capture switch during an input-format restart is applied after it instead of being overwritten |
+| 13 (installed 2026-10-14 12:44 UTC) | PR #17 (`a863534`) | `1c0f72ddee4e540821a99d91ece6a182b7e470a6255b057db3ca904ace8a82fb` | WebRTC keeps libwebrtc's audio unit (and the microphone) running for the whole connection; the talk tier's floor gates speech. Retention 894 of 894 segments. WebRTC subset 5 of 5 (`20261014T124621Z-phone-phone-webrtc-2`). |
 
 All three were signed by `direct-install.yml` (Ad Hoc profile `rlm-adk-ios adhoc iPhone 12`,
 expires 2027-10-13) and installed with `pymobiledevice3 apps install` without uninstalling.
