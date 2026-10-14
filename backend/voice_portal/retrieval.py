@@ -106,6 +106,14 @@ def search(conn: sqlite3.Connection, query: str, *, families: list[str] | None =
     return {"query": query, "match": plan[0][1], "plan": plan, "strategy": "+".join(strategies) or None, "focus_terms": focus_terms(query), "hits": hits}
 
 
+def search_match(conn: sqlite3.Connection, match: str, *, families: list[str] | None = None, limit: int = 8) -> list[dict]:
+    """Run one explicit FTS5 MATCH expression (a phrase such as '"romans 8 28"') over current chunks."""
+    try:
+        return _search_match(conn, match, families=families, limit=limit)
+    except sqlite3.OperationalError:  # malformed expression: no hits rather than a 500
+        return []
+
+
 def _search_match(conn: sqlite3.Connection, match: str, *, families: list[str] | None, limit: int) -> list[dict]:
     sql = (
         "SELECT f.chunk_id, f.doc_id, f.source_family, bm25(chunks_fts) AS rank, snippet(chunks_fts, 0, '[', ']', ' … ', 24) AS snip, "
@@ -150,6 +158,8 @@ def attribution(family: str, meta: dict) -> str:
         ed = meta.get("edition") or {}
         return f"Scripture, {ed.get('name') or ed.get('source_id')} {ed.get('version') or ''}".strip()
     if family == "teaching":
+        if meta.get("teacher") and meta.get("work"):  # scripture_reference library (Edwards, BibleProject)
+            return f"Teaching, {meta['teacher']}, {meta['work']} ({meta.get('date') or 'undated'})"
         return f"Teaching, {meta.get('publisher') or meta.get('provider')} ({meta.get('date') or 'undated'})"
     if family == "prayer":
         return f"Personal prayer (recorded, {meta.get('asr_model_id') or 'transcribed'})"

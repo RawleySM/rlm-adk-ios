@@ -5,7 +5,11 @@ Rules (from the plan):
 - a changed body becomes current and the previous revision remains inspectable (current=0);
 - a record missing from a family's full selection loses membership (current=0, removed_at) and
   cannot remain an FTS hit;
-- chunk boundaries are deterministic for a given body.
+- chunk boundaries are deterministic for a given body;
+- title and metadata are descriptive: an unchanged body refreshes them in place without a new revision;
+- a family fed by several adapters (teaching: the YouTube/publisher catalog and the scripture_reference
+  library) scopes membership removal with `membership_prefix`, so one adapter's complete selection
+  never retires another adapter's records.
 """
 
 from __future__ import annotations
@@ -97,14 +101,32 @@ def _activate(conn: sqlite3.Connection, row: sqlite3.Row) -> None:
         )
 
 
-def import_family(conn: sqlite3.Connection, family: str, records: Iterable[SourceRecord], *, selection: dict, source_path: str, complete_selection: bool = True) -> dict:
-    """Import one family's selection. Returns counts. `complete_selection` enables membership removal."""
+def import_family(
+    conn: sqlite3.Connection,
+    family: str,
+    records: Iterable[SourceRecord],
+    *,
+    selection: dict,
+    source_path: str,
+    complete_selection: bool = True,
+    membership_prefix: str | None = None,
+    receipt_family: str | None = None,
+) -> dict:
+    """Import one family's selection. Returns counts.
+
+    `complete_selection` enables membership removal; with `membership_prefix` only current records whose
+    `source_doc_id` starts with that prefix can lose membership (the adapter's own scope).
+    `receipt_family` names the receipt row (default: the family) so several adapters of one family
+    keep separately visible receipts.
+    """
     started = now()
     counts = {"seen": 0, "inserted": 0, "unchanged": 0, "revised": 0, "reinstated": 0, "removed": 0, "chunks": 0}
     seen_ids: set[str] = set()
+    if membership_prefix is not None:
+        selection = {**selection, "membership_prefix": membership_prefix}
     receipt = conn.execute(
         "INSERT INTO import_receipts(source_family, started_at, source_path, selection_json) VALUES (?,?,?,?)",
-        (family, started, source_path, json.dumps(selection, default=str)),
+        (receipt_family or family, started, source_path, json.dumps(selection, default=str)),
     ).lastrowid
     try:
         with conn:
@@ -119,7 +141,11 @@ def import_family(conn: sqlite3.Connection, family: str, records: Iterable[Sourc
                 if existing is not None:
                     if existing["current"]:
                         counts["unchanged"] += 1
-                        conn.execute("UPDATE documents SET title = ? WHERE doc_id = ? AND title IS NOT ?", (rec.title, existing["doc_id"], rec.title))
+                        metadata_json = json.dumps(rec.metadata, default=str)
+                        conn.execute(
+                            "UPDATE documents SET title = ?, metadata_json = ? WHERE doc_id = ? AND (title IS NOT ? OR metadata_json IS NOT ?)",
+                            (rec.title, metadata_json, existing["doc_id"], rec.title, metadata_json),
+                        )
                     else:
                         for other in conn.execute(
                             "SELECT doc_id FROM documents WHERE source_family = ? AND source_doc_id = ? AND current = 1",
@@ -148,8 +174,10 @@ def import_family(conn: sqlite3.Connection, family: str, records: Iterable[Sourc
                 counts["chunks"] += _insert_chunks(conn, cur.lastrowid, family, rec.body)
                 counts["revised" if previous else "inserted"] += 1
             if complete_selection:
+                scope_sql = "" if membership_prefix is None else " AND substr(source_doc_id, 1, ?) = ?"
+                scope_params: tuple = () if membership_prefix is None else (len(membership_prefix), membership_prefix)
                 for row in conn.execute(
-                    "SELECT doc_id, source_doc_id FROM documents WHERE source_family = ? AND current = 1", (family,)
+                    "SELECT doc_id, source_doc_id FROM documents WHERE source_family = ? AND current = 1" + scope_sql, (family, *scope_params)
                 ).fetchall():
                     if row["source_doc_id"] not in seen_ids:
                         _retire(conn, row["doc_id"], removed=True)

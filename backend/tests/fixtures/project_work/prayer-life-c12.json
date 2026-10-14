@@ -1,0 +1,256 @@
+{
+  "accepted_results": [],
+  "active_branches": [
+    {
+      "dirty": false,
+      "evidence": [
+        {
+          "claim": "Observed main at cleanup; working tree clean and pushed.",
+          "kind": "git",
+          "observed_at": "2026-10-11T12:58:16Z",
+          "reference": null
+        }
+      ],
+      "git_ref": "main",
+      "observed_at": "2026-10-11T12:58:16Z",
+      "observed_commit": "2542427a8b0980954258ac77bec2957a7da437fe",
+      "repository": {
+        "git_commit": "2542427a8b0980954258ac77bec2957a7da437fe",
+        "host": "desktop",
+        "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-12/prayer-life-c12"
+      },
+      "work_id": "scripture-per-prayer"
+    },
+    {
+      "dirty": false,
+      "evidence": [
+        {
+          "claim": "Uncommitted Cycle 14 files (docs/window_e_source_complete, products/) salvaged on 2026-10-11.",
+          "kind": "git",
+          "observed_at": "2026-10-11T12:58:16Z",
+          "reference": null
+        }
+      ],
+      "git_ref": "salvage/cycle14-uncommitted-20261011",
+      "observed_at": "2026-10-11T12:58:16Z",
+      "observed_commit": "930cae6f7ad87d203e2d34dd2621a0c22ca8a199",
+      "repository": {
+        "git_commit": "930cae6f7ad87d203e2d34dd2621a0c22ca8a199",
+        "host": "desktop",
+        "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-12/prayer-life-c12"
+      },
+      "work_id": null
+    }
+  ],
+  "baseline": {
+    "described_at": "2026-10-11T12:58:16.947578+00:00",
+    "described_by": "Rawley Stanhope (Claude Fable cleanup session 2026-10-11)",
+    "history": {
+      "references": [],
+      "state": "unknown"
+    },
+    "locations": [
+      {
+        "git_commit": null,
+        "host": "github",
+        "locator": "https://github.com/RawleySM/prayer-atlas-c8",
+        "note": "main = this project's line since 2026-10-11; cycle8/* and cycle11/* prefixes hold the older lines.",
+        "observed_at": "2026-10-11T12:58:16Z",
+        "role": "canonical_remote",
+        "runnable_on_allocator_host": null
+      },
+      {
+        "git_commit": "2542427a8b0980954258ac77bec2957a7da437fe",
+        "host": "desktop",
+        "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-12/prayer-life-c12",
+        "note": "Granted to pryc12.",
+        "observed_at": "2026-10-11T12:58:16Z",
+        "role": "working_checkout",
+        "runnable_on_allocator_host": true
+      },
+      {
+        "git_commit": null,
+        "host": "desktop",
+        "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-12/prayer-life-c12/data/cycle14d-prayer-records",
+        "note": "Copied from the Cycle 14d resident workspace: embedding-builder outputs (bge-m3, MiniLM, Qwen3 indexes, comparison-final.json), pairing batches and reports. Ignored by Git.",
+        "observed_at": "2026-10-11T12:58:16Z",
+        "role": "artifact_store",
+        "runnable_on_allocator_host": null
+      }
+    ],
+    "summary": "Cycle 12-14 Prayer project. main (fast-forwarded 2026-10-11 from codex/cycle12-prayer-life-c12) holds the closed Scripture pairing ledger (615 rows over 206 of 208 prayers), prayer_embeddings code and benchmark, prayer_foundation and prayer_enrichment readers (28.8k lines, ungraded), cycle14 reports. Shares the prayer-atlas-c8 GitHub repository with the cycle 8 and 11 lines, which were pushed under cycle8/ and cycle11/ branch prefixes.",
+    "unknowns": []
+  },
+  "current_plan": {
+    "artifact": null,
+    "evidence": [],
+    "objective": null,
+    "state": "unknown"
+  },
+  "enrollment": {
+    "note": "Selected existing work; no historical replay.",
+    "origin": "manual_baseline"
+  },
+  "host_identity": {
+    "evidence": [],
+    "observed_at": null,
+    "pointer_sha256": null,
+    "registry": null,
+    "state": "unknown"
+  },
+  "identity_evidence": [],
+  "outputs": [],
+  "owner": {
+    "kind": "resident",
+    "name": "Prayer and Life Context",
+    "resident_id": "pryc12"
+  },
+  "package_checkpoints": [],
+  "project_id": "prayer-life-c12",
+  "record_revision": 1,
+  "runtime_applicability": {
+    "note": "Applicability entered by Rawley Stanhope (Claude Fable cleanup session 2026-10-11).",
+    "package": "applicable",
+    "session": "not_applicable"
+  },
+  "schema": "rlm-adk.project-work-record.v1",
+  "title": "Prayer and life context (pairings, enrichment readers, embeddings, testimony)",
+  "unresolved": [
+    "Which embedding model wins is not decided.",
+    "The 28.8k-line inherited readers are ungraded."
+  ],
+  "updated_at": "2026-10-11T12:58:17.140066+00:00",
+  "updated_by": "Rawley Stanhope (Claude Fable cleanup session 2026-10-11)",
+  "work_items": [
+    {
+      "evidence": [
+        {
+          "claim": "ledgers/scripture_pairings.jsonl 615 rows (373 echoed, 126 editorial, 116 cited) over 206 prayers; pairing_blocked.jsonl names the two that cannot support a span; last change e4e2546.",
+          "kind": "git",
+          "observed_at": "2026-10-11T12:58:16Z",
+          "reference": {
+            "git_commit": "2542427a8b0980954258ac77bec2957a7da437fe",
+            "host": "desktop",
+            "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-12/prayer-life-c12/ledgers/scripture_pairings.jsonl"
+          }
+        }
+      ],
+      "next_action": null,
+      "plan": {
+        "artifact": {
+          "git_commit": null,
+          "host": "desktop",
+          "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-12/prayer-life-c12/ledgers/scripture_pairings_summary.json"
+        },
+        "evidence": [
+          {
+            "claim": "Plan document inspected during the 2026-10-11 cleanup.",
+            "kind": "file",
+            "observed_at": "2026-10-11T12:58:16Z",
+            "reference": {
+              "git_commit": null,
+              "host": "desktop",
+              "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-12/prayer-life-c12/ledgers/scripture_pairings_summary.json"
+            }
+          }
+        ],
+        "objective": "Pair every prayer in the 208-prayer corpus with Scripture, recording the basis.",
+        "state": "recorded"
+      },
+      "status": "complete",
+      "title": "A Scripture passage for every prayer",
+      "work_id": "scripture-per-prayer"
+    },
+    {
+      "evidence": [
+        {
+          "claim": "Cycle 14d builder ran bge-m3, MiniLM and Qwen3-Embedding; no winning model accepted before the stop on 2026-10-09.",
+          "kind": "file",
+          "observed_at": "2026-10-11T12:58:16Z",
+          "reference": null
+        }
+      ],
+      "next_action": "Grade data/cycle14d-prayer-records/embedding-builder (comparison-final.json, evidence-manifest.json); then build and commit the index and its reader.",
+      "plan": {
+        "artifact": {
+          "git_commit": null,
+          "host": "desktop",
+          "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/STANDING-WORK.md"
+        },
+        "evidence": [
+          {
+            "claim": "Plan document inspected during the 2026-10-11 cleanup.",
+            "kind": "file",
+            "observed_at": "2026-10-11T12:58:16Z",
+            "reference": {
+              "git_commit": null,
+              "host": "desktop",
+              "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/STANDING-WORK.md"
+            }
+          }
+        ],
+        "objective": "Choose an embedding model on recall evidence and build the prayer-inclusive index.",
+        "state": "recorded"
+      },
+      "status": "awaiting_review",
+      "title": "Embeddings and retrieval indexes over prayers, sermons and Scripture",
+      "work_id": "embeddings-indexes"
+    },
+    {
+      "evidence": [],
+      "next_action": "llm_query_batched fan-outs on the local pool; grade the Cycle 11 enrichment (2,813 annotations) first.",
+      "plan": {
+        "artifact": {
+          "git_commit": null,
+          "host": "desktop",
+          "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/STANDING-WORK.md"
+        },
+        "evidence": [
+          {
+            "claim": "Plan document inspected during the 2026-10-11 cleanup.",
+            "kind": "file",
+            "observed_at": "2026-10-11T12:58:16Z",
+            "reference": {
+              "git_commit": null,
+              "host": "desktop",
+              "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/STANDING-WORK.md"
+            }
+          }
+        ],
+        "objective": "Passage-grain extraction with revision keys over every prayer from 2025-09-14.",
+        "state": "recorded"
+      },
+      "status": "queued",
+      "title": "Testimony, repentance, affections, petitions and echoes over the whole corpus",
+      "work_id": "testimony-whole-corpus"
+    },
+    {
+      "evidence": [],
+      "next_action": "Delegate in the repository; record a reason per method.",
+      "plan": {
+        "artifact": {
+          "git_commit": null,
+          "host": "desktop",
+          "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/STANDING-WORK.md"
+        },
+        "evidence": [
+          {
+            "claim": "Plan document inspected during the 2026-10-11 cleanup.",
+            "kind": "file",
+            "observed_at": "2026-10-11T12:58:16Z",
+            "reference": {
+              "git_commit": null,
+              "host": "desktop",
+              "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/STANDING-WORK.md"
+            }
+          }
+        ],
+        "objective": "prayer_corpus_v1 reader, enrichment reader, prayer_foundation/prayer_enrichment code, prayer_pryc11 package.",
+        "state": "recorded"
+      },
+      "status": "queued",
+      "title": "Exercise and promote or reject inherited readers and methods",
+      "work_id": "inherited-methods"
+    }
+  ]
+}

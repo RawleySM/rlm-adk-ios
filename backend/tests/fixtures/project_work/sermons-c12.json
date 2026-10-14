@@ -1,0 +1,187 @@
+{
+  "accepted_results": [],
+  "active_branches": [
+    {
+      "dirty": false,
+      "evidence": [
+        {
+          "claim": "Observed main at cleanup; working tree clean and pushed.",
+          "kind": "git",
+          "observed_at": "2026-10-11T12:58:16Z",
+          "reference": null
+        }
+      ],
+      "git_ref": "main",
+      "observed_at": "2026-10-11T12:58:16Z",
+      "observed_commit": "c07e844eaec919f573c0285376d78b89abd7305d",
+      "repository": {
+        "git_commit": "c07e844eaec919f573c0285376d78b89abd7305d",
+        "host": "desktop",
+        "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-12/sermons-c12"
+      },
+      "work_id": "sermon-retrieval-slices"
+    },
+    {
+      "dirty": false,
+      "evidence": [
+        {
+          "claim": "Observed salvage/cycle14-uncommitted-20261011 at cleanup; working tree clean and pushed.",
+          "kind": "git",
+          "observed_at": "2026-10-11T12:58:16Z",
+          "reference": null
+        }
+      ],
+      "git_ref": "salvage/cycle14-uncommitted-20261011",
+      "observed_at": "2026-10-11T12:58:16Z",
+      "observed_commit": "d7289828b4741ca4ea1501bbd7c7c9281612c618",
+      "repository": {
+        "git_commit": "d7289828b4741ca4ea1501bbd7c7c9281612c618",
+        "host": "desktop",
+        "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-12/sermons-c12"
+      },
+      "work_id": null
+    }
+  ],
+  "baseline": {
+    "described_at": "2026-10-11T12:58:16.966402+00:00",
+    "described_by": "Rawley Stanhope (Claude Fable cleanup session 2026-10-11)",
+    "history": {
+      "references": [],
+      "state": "unknown"
+    },
+    "locations": [
+      {
+        "git_commit": null,
+        "host": "github",
+        "locator": "https://github.com/RawleySM/sermon-corpus-c8",
+        "observed_at": "2026-10-11T12:58:16Z",
+        "role": "canonical_remote",
+        "runnable_on_allocator_host": null
+      },
+      {
+        "git_commit": "c07e844eaec919f573c0285376d78b89abd7305d",
+        "host": "desktop",
+        "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-12/sermons-c12",
+        "note": "Granted to pryc12.",
+        "observed_at": "2026-10-11T12:58:16Z",
+        "role": "working_checkout",
+        "runnable_on_allocator_host": true
+      },
+      {
+        "git_commit": null,
+        "host": "desktop",
+        "locator": "/home/rawley-stanhope/.local/rlm-adk/stores/life_context/sources/sermon_transcripts",
+        "note": "Read-only source store: 598 unique sermons with caption text.",
+        "observed_at": "2026-10-11T12:58:16Z",
+        "role": "artifact_store",
+        "runnable_on_allocator_host": null
+      }
+    ],
+    "summary": "Cycle 12-14 sermons project: sermon transcript bronze with provenance, echo concordance, whole-sermon retrieval slice runner and lexical index (retrieval/sermon_lexical.jsonl), cycle14 slice-32 report. main fast-forwarded from codex/cycle12-sermons-c12 on 2026-10-11.",
+    "unknowns": []
+  },
+  "current_plan": {
+    "artifact": null,
+    "evidence": [],
+    "objective": null,
+    "state": "unknown"
+  },
+  "enrollment": {
+    "note": "Selected existing work; no historical replay.",
+    "origin": "manual_baseline"
+  },
+  "host_identity": {
+    "evidence": [],
+    "observed_at": null,
+    "pointer_sha256": null,
+    "registry": null,
+    "state": "unknown"
+  },
+  "identity_evidence": [],
+  "outputs": [],
+  "owner": {
+    "kind": "resident",
+    "name": "Prayer and Life Context",
+    "resident_id": "pryc12"
+  },
+  "package_checkpoints": [],
+  "project_id": "sermons-c12",
+  "record_revision": 1,
+  "runtime_applicability": {
+    "note": "Applicability entered by Rawley Stanhope (Claude Fable cleanup session 2026-10-11).",
+    "package": "unknown",
+    "session": "not_applicable"
+  },
+  "schema": "rlm-adk.project-work-record.v1",
+  "title": "Sermon corpus joins and retrieval",
+  "unresolved": [
+    "Only the entered baseline is known; empty arrays are not proven absence."
+  ],
+  "updated_at": "2026-10-11T12:58:17.375696+00:00",
+  "updated_by": "Rawley Stanhope (Claude Fable cleanup session 2026-10-11)",
+  "work_items": [
+    {
+      "evidence": [
+        {
+          "claim": "Last commit c07e844; cycle14/runner_attempts salvaged on salvage/cycle14-uncommitted-20261011.",
+          "kind": "git",
+          "observed_at": "2026-10-11T12:58:16Z",
+          "reference": null
+        }
+      ],
+      "next_action": null,
+      "plan": {
+        "artifact": {
+          "git_commit": null,
+          "host": "desktop",
+          "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-12/sermons-c12/cycle14/RETRIEVAL-SLICE32.md"
+        },
+        "evidence": [
+          {
+            "claim": "Plan document inspected during the 2026-10-11 cleanup.",
+            "kind": "file",
+            "observed_at": "2026-10-11T12:58:16Z",
+            "reference": {
+              "git_commit": null,
+              "host": "desktop",
+              "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-12/sermons-c12/cycle14/RETRIEVAL-SLICE32.md"
+            }
+          }
+        ],
+        "objective": "Native-tested slice runner over the sermon lexical index.",
+        "state": "recorded"
+      },
+      "status": "complete",
+      "title": "Whole-sermon retrieval slice runner",
+      "work_id": "sermon-retrieval-slices"
+    },
+    {
+      "evidence": [],
+      "next_action": "Start from the slice runner; put ASR on one Spark and Qwen children on the other.",
+      "plan": {
+        "artifact": {
+          "git_commit": null,
+          "host": "desktop",
+          "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/STANDING-WORK.md"
+        },
+        "evidence": [
+          {
+            "claim": "Plan document inspected during the 2026-10-11 cleanup.",
+            "kind": "file",
+            "observed_at": "2026-10-11T12:58:16Z",
+            "reference": {
+              "git_commit": null,
+              "host": "desktop",
+              "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/STANDING-WORK.md"
+            }
+          }
+        ],
+        "objective": "Join 598 sermons to prayers and Scripture; cohere-transcribe pass is optional Spark work.",
+        "state": "recorded"
+      },
+      "status": "queued",
+      "title": "Join sermons to prayers and Scripture; optional ASR quality pass",
+      "work_id": "sermons-into-mesh"
+    }
+  ]
+}

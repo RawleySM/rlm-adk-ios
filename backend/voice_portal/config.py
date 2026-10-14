@@ -48,6 +48,16 @@ class Config:
     devotional_passages: list[str] = field(
         default_factory=lambda: ["PSA.23", "JHN.15", "ROM.8", "PSA.121", "MAT.6", "ISA.40", "PHP.4"]
     )
+    # Skill-service tool sources (desktop paths; verified 2026-10-13). All read-only.
+    # Prayer-to-Scripture pairings ledger written by the Prayer resident (cycle 12).
+    scripture_pairings_ledger: str = str(Path.home() / ".local/rlm-adk/projects/cycle-12/prayer-life-c12/ledgers/scripture_pairings.jsonl")
+    # Project work register records (one JSON file per project; schema.json beside the directory).
+    project_register_records: str = str(Path.home() / ".local/rlm-adk/projects/project-work-registry/project/registry/project-work/records")
+    # scripture_reference sources projected into the teaching family by `import reference_teaching`.
+    reference_teaching_sources: list[str] = field(default_factory=lambda: ["ccel:edwards", "bibleproject:transcript"])
+    # The word-from-God theme call: its own timeout and output budget (one strict-JSON reply).
+    tools_inference_timeout_s: int = 420  # covers a cold model start on the owner (~230 s observed)
+    word_max_tokens: int = 700
     source_commit: str = ""
 
     @property
@@ -85,6 +95,8 @@ def load_config(path: str | os.PathLike | None = None) -> Config:
                 setattr(cfg, key, raw.lower() in {"1", "true", "yes"})
             elif isinstance(current, int):
                 setattr(cfg, key, int(raw))
+            elif isinstance(current, float):
+                setattr(cfg, key, float(raw))
             elif isinstance(current, list):
                 setattr(cfg, key, [item for item in raw.split(",") if item])
             elif isinstance(current, dict):

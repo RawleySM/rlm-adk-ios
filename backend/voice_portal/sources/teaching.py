@@ -15,6 +15,22 @@ from . import SourceRecord, SourceUnavailable
 
 FAMILY = "teaching"
 PROVIDERS = {"desiringgod": "Desiring God", "eleven22": "The Church of Eleven22"}
+# Membership scope of this adapter inside the shared teaching family: catalog records are keyed by
+# their publisher URL. The scripture_reference library adapter uses its own prefix.
+DOC_PREFIX = "http"
+
+
+def record_authors(meta: dict) -> list[str]:
+    """Individual authors the publisher's own metadata names (`authors` list or `author`); [] when none."""
+    authors = meta.get("authors")
+    if isinstance(authors, list):
+        names = [str(a).strip() for a in authors if str(a).strip()]
+        if names:
+            return names
+    author = meta.get("author")
+    if isinstance(author, str) and author.strip():
+        return [author.strip()]
+    return []
 
 
 def read_teaching(store_path: str | Path, *, limit_per_provider: int, min_chars: int) -> tuple[list[SourceRecord], dict]:
@@ -73,6 +89,7 @@ def read_teaching(store_path: str | Path, *, limit_per_provider: int, min_chars:
                             "date": row["meta_date"],
                             "description": (meta.get("description") or "")[:500],
                             "youtube_id": video_id,
+                            "authors": record_authors(meta),
                             "related_transcript_text_hashes": transcript_hashes,
                             "selection_rule": "latest_ok_nonempty_v1",
                         },

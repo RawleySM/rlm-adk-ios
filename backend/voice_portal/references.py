@@ -32,6 +32,8 @@ for _code, _name in BOOK_NAMES.items():
     else:
         _PLAIN[lower] = _code
 _NAMES = sorted(set(_PLAIN) | set(_NUMBERED) | set(ALIASES), key=len, reverse=True)
+# Book names and aliases as matched in text (longest first), for callers that pre-normalise speech.
+BOOK_NAME_PATTERNS: tuple[str, ...] = tuple(_NAMES)
 _REF = re.compile(
     r"(?<![A-Za-z0-9])(?:(?P<ord>1|2|3|first|second|third|iii|ii|i)\s+)?(?P<book>" + "|".join(re.escape(n) for n in _NAMES) + r")\.?\s+(?P<chapter>\d{1,3})(?:\s*[:.]\s*(?P<v1>\d{1,3})(?:\s*[-–]\s*(?P<v2>\d{1,3}))?)?(?![0-9])",
     re.IGNORECASE,
@@ -167,3 +169,47 @@ def coverage_note(report: dict) -> str:
     found = _compress([int(v.rsplit(".", 1)[-1]) for v in report["verses_found"]])
     missing = _compress([int(v.split(":")[-1]) for v in report["verses_missing"]])
     return f"The question names {name}; verses {found} are in the retained chapter and included; verses {missing} are not in it."
+
+
+def passage_verses(conn: sqlite3.Connection, ref: dict) -> dict:
+    """The retained edition's verses for one parsed reference, verbatim, with their citations.
+
+    Returns `{available, ref, book, book_name, chapter, verse_from, verse_to, title, edition, verses:
+    [{osis, verse, text}], cite_ids, coverage, report}`. `verses` are exact slices of the projected
+    chapter body at the reader's verse locators (whole chapter when no verse was named); `cite_ids`
+    are the version-qualified chunks that hold them (the same ones `resolve_reference` supplies).
+    """
+    hits, report = resolve_reference(conn, ref)
+    out = {
+        "available": False,
+        "ref": ref["ref"],
+        "book": ref["book"],
+        "book_name": BOOK_NAMES.get(ref["book"], ref["book"]),
+        "chapter": ref["chapter"],
+        "verse_from": ref.get("verse_from"),
+        "verse_to": ref.get("verse_to"),
+        "title": None,
+        "edition": None,
+        "verses": [],
+        "cite_ids": [hit["cite_id"] for hit in hits],
+        "coverage": report["coverage"],
+        "report": report,
+    }
+    if not hits:
+        return out
+    doc = conn.execute(
+        "SELECT * FROM documents WHERE source_family = 'scripture' AND current = 1 AND source_doc_id LIKE ? ORDER BY doc_id LIMIT 1",
+        (f"%/{ref['book']}.{ref['chapter']}",),
+    ).fetchone()
+    body = doc["body"]
+    locators = [loc for loc in json.loads(doc["locators_json"] or "[]") if loc.get("kind") == "verse"]
+    if ref.get("verse_from") is not None:
+        wanted = set(range(ref["verse_from"], (ref.get("verse_to") or ref["verse_from"]) + 1))
+        locators = [loc for loc in locators if int(loc["verse"]) in wanted]
+    out.update(
+        available=bool(locators),
+        title=doc["title"],
+        edition=(json.loads(doc["metadata_json"] or "{}").get("edition")) or {},
+        verses=[{"osis": loc["osis"], "verse": int(loc["verse"]), "text": body[loc["start"]:loc["end"]]} for loc in locators],
+    )
+    return out

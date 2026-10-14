@@ -1,0 +1,91 @@
+{
+  "accepted_results": [],
+  "active_branches": [],
+  "baseline": {
+    "described_at": "2026-10-11T12:58:17.001687+00:00",
+    "described_by": "Rawley Stanhope (Claude Fable cleanup session 2026-10-11)",
+    "history": {
+      "references": [],
+      "state": "unknown"
+    },
+    "locations": [
+      {
+        "git_commit": null,
+        "host": "github",
+        "locator": "https://github.com/RawleySM/spark-inference",
+        "observed_at": "2026-10-11T12:58:16Z",
+        "role": "canonical_remote",
+        "runnable_on_allocator_host": null
+      },
+      {
+        "git_commit": "4da6f01627aa29feda8ebf2537555375301286ab",
+        "host": "spark-a",
+        "locator": "/home/rawleysm/spark-inference",
+        "observed_at": "2026-10-11T12:58:16Z",
+        "role": "working_checkout",
+        "runnable_on_allocator_host": false
+      },
+      {
+        "git_commit": "4da6f01627aa29feda8ebf2537555375301286ab",
+        "host": "spark-a",
+        "locator": "/home/rawleysm/.local/share/spark-inference/releases/4da6f01627aa29feda8ebf2537555375301286ab",
+        "note": "spark-inference.service (user rawleysm).",
+        "observed_at": "2026-10-11T12:58:16Z",
+        "role": "deployment",
+        "runnable_on_allocator_host": null
+      },
+      {
+        "git_commit": "4da6f01627aa29feda8ebf2537555375301286ab",
+        "host": "spark-b",
+        "locator": "/home/mediaops/.local/share/spark-inference/releases/4da6f01627aa29feda8ebf2537555375301286ab",
+        "note": "spark-inference.service (user mediaops); hand-built release, no uv.",
+        "observed_at": "2026-10-11T12:58:16Z",
+        "role": "deployment",
+        "runnable_on_allocator_host": null
+      }
+    ],
+    "summary": "Independent supervisor repository (RawleySM/spark-inference, extracted from rlm-adk by PR #1248). Release 4da6f01 serves on Spark-A (127.0.0.1:28080, qwen-coding) and Spark-B (127.0.0.1:18300, qwen-coding-b; tunnel spark-a:28111). On 2026-10-11 both qwen-coding circuits were reset after cancellation-induced startup_failed records and both engines loaded and answered; a fix so such circuits expire is in progress.",
+    "unknowns": []
+  },
+  "current_plan": {
+    "artifact": null,
+    "evidence": [],
+    "objective": null,
+    "state": "unknown"
+  },
+  "enrollment": {
+    "note": "Selected existing work; no historical replay.",
+    "origin": "manual_baseline"
+  },
+  "host_identity": {
+    "evidence": [],
+    "observed_at": null,
+    "pointer_sha256": null,
+    "registry": null,
+    "state": "unknown"
+  },
+  "identity_evidence": [],
+  "outputs": [],
+  "owner": {
+    "kind": "operator",
+    "name": "Rawley Stanhope",
+    "resident_id": null
+  },
+  "package_checkpoints": [],
+  "project_id": "spark-inference",
+  "record_revision": 1,
+  "runtime_applicability": {
+    "note": "Applicability entered by Rawley Stanhope (Claude Fable cleanup session 2026-10-11).",
+    "package": "not_applicable",
+    "session": "not_applicable"
+  },
+  "schema": "rlm-adk.project-work-record.v1",
+  "title": "spark-inference: DGX Spark single-owner inference supervisors (qwen-coding, spark-small, cohere-transcribe)",
+  "unresolved": [
+    "spark-small image is absent on Spark-B by decision (keep spark-small on Spark-A).",
+    "comfyui-media.service on Spark-B is disabled at boot; delegates start it per task."
+  ],
+  "updated_at": "2026-10-11T12:58:18.217844+00:00",
+  "updated_by": "Rawley Stanhope (Claude Fable cleanup session 2026-10-11)",
+  "work_items": []
+}

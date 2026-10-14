@@ -1,0 +1,100 @@
+{
+  "accepted_results": [],
+  "active_branches": [],
+  "baseline": {
+    "described_at": "2026-10-11T12:58:16.999582+00:00",
+    "described_by": "Rawley Stanhope (Claude Fable cleanup session 2026-10-11)",
+    "history": {
+      "references": [],
+      "state": "unknown"
+    },
+    "locations": [
+      {
+        "git_commit": null,
+        "host": "github",
+        "locator": "https://github.com/RawleySM/data-pipelines",
+        "observed_at": "2026-10-11T12:58:16Z",
+        "role": "canonical_remote",
+        "runnable_on_allocator_host": null
+      },
+      {
+        "git_commit": "797bb074956d6f345994a6494453d8e55a5dc118",
+        "host": "spark-a",
+        "locator": "/home/rawleysm/data-pipelines",
+        "note": "Deploy source on Spark-A; nine feature worktrees beside it.",
+        "observed_at": "2026-10-11T12:58:16Z",
+        "role": "working_checkout",
+        "runnable_on_allocator_host": false
+      },
+      {
+        "git_commit": "797bb074956d6f345994a6494453d8e55a5dc118",
+        "host": "desktop",
+        "locator": "/home/rawley-stanhope/dev/data-pipelines",
+        "note": "Readers imported by path (scripture_reference_readers).",
+        "observed_at": "2026-10-11T12:58:16Z",
+        "role": "working_checkout",
+        "runnable_on_allocator_host": true
+      },
+      {
+        "git_commit": "8e0e8df07442f80c5f51504702bc16cf6e7d4d03",
+        "host": "spark-a",
+        "locator": "/home/rawleysm/srv/prayer-ingest/releases/8e0e8df07442f80c5f51504702bc16cf6e7d4d03",
+        "note": "rlm-prayer-ingest.service; no prayer_ingest changes on main since this commit.",
+        "observed_at": "2026-10-11T12:58:16Z",
+        "role": "deployment",
+        "runnable_on_allocator_host": null
+      },
+      {
+        "git_commit": null,
+        "host": "desktop",
+        "locator": "/home/rawley-stanhope/.local/rlm-adk/mirrors/prayer/prayer_ingest.sqlite3",
+        "note": "Read-only mirror of the canonical prayer database.",
+        "observed_at": "2026-10-11T12:58:16Z",
+        "role": "artifact_store",
+        "runnable_on_allocator_host": null
+      }
+    ],
+    "summary": "Source-owner pipelines repository (RawleySM/data-pipelines, PR #37 merged 2026-10-11). Runs on Spark-A as user units (apple-ingestion-gateway, rlm-prayer-ingest release 8e0e8df, apple-gateway-* timers, mac-storage-retention, finances-ingest). The desktop mirrors its stores every five minutes (rlm-life-data-mirror) and holds packages/scripture_reference_readers used by scripture-enrichment-c15.",
+    "unknowns": []
+  },
+  "current_plan": {
+    "artifact": null,
+    "evidence": [],
+    "objective": null,
+    "state": "unknown"
+  },
+  "enrollment": {
+    "note": "Selected existing work; no historical replay.",
+    "origin": "manual_baseline"
+  },
+  "host_identity": {
+    "evidence": [],
+    "observed_at": null,
+    "pointer_sha256": null,
+    "registry": null,
+    "state": "unknown"
+  },
+  "identity_evidence": [],
+  "outputs": [],
+  "owner": {
+    "kind": "operator",
+    "name": "Rawley Stanhope",
+    "resident_id": null
+  },
+  "package_checkpoints": [],
+  "project_id": "data-pipelines",
+  "record_revision": 1,
+  "runtime_applicability": {
+    "note": "Applicability entered by Rawley Stanhope (Claude Fable cleanup session 2026-10-11).",
+    "package": "not_applicable",
+    "session": "not_applicable"
+  },
+  "schema": "rlm-adk.project-work-record.v1",
+  "title": "data-pipelines: Apple ingestion gateway, prayer ingest, Mac actions, scripture reference readers, finances",
+  "unresolved": [
+    "Outside project: no RLM package or session applies; residents consume its stores through pointers and may commission delegates to change it through its own PR flow."
+  ],
+  "updated_at": "2026-10-11T12:58:18.020412+00:00",
+  "updated_by": "Rawley Stanhope (Claude Fable cleanup session 2026-10-11)",
+  "work_items": []
+}

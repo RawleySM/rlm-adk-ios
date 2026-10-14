@@ -1,0 +1,256 @@
+{
+  "accepted_results": [],
+  "active_branches": [
+    {
+      "dirty": false,
+      "evidence": [
+        {
+          "claim": "Observed main at cleanup; working tree clean and pushed.",
+          "kind": "git",
+          "observed_at": "2026-10-11T12:58:16Z",
+          "reference": null
+        }
+      ],
+      "git_ref": "main",
+      "observed_at": "2026-10-11T12:58:16Z",
+      "observed_commit": "45a136dab0b06dee93acd5b7124a2b73da142265",
+      "repository": {
+        "git_commit": "45a136dab0b06dee93acd5b7124a2b73da142265",
+        "host": "desktop",
+        "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-12/discipleship-vision-c12"
+      },
+      "work_id": "reconcile-corpus-lines"
+    },
+    {
+      "dirty": false,
+      "evidence": [
+        {
+          "claim": "86-story line, unmerged.",
+          "kind": "git",
+          "observed_at": "2026-10-11T12:58:16Z",
+          "reference": null
+        }
+      ],
+      "git_ref": "visc12/story-quality-g5",
+      "observed_at": "2026-10-11T12:58:16Z",
+      "observed_commit": "2a2a52c92cd9e1cd995cbbac975ae5ad2f6c3055",
+      "repository": {
+        "git_commit": "2a2a52c92cd9e1cd995cbbac975ae5ad2f6c3055",
+        "host": "desktop",
+        "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-12/discipleship-vision-c12"
+      },
+      "work_id": "reconcile-corpus-lines"
+    },
+    {
+      "dirty": false,
+      "evidence": [
+        {
+          "claim": "Uncommitted products (experience-h1, h10, h11, h7 candidate-v2, window_* commissions) salvaged 2026-10-11.",
+          "kind": "git",
+          "observed_at": "2026-10-11T12:58:16Z",
+          "reference": null
+        }
+      ],
+      "git_ref": "salvage/cycle14-uncommitted-20261011",
+      "observed_at": "2026-10-11T12:58:16Z",
+      "observed_commit": "d09af9d35e1ca2fa49dbef52d517934f04cef310",
+      "repository": {
+        "git_commit": "d09af9d35e1ca2fa49dbef52d517934f04cef310",
+        "host": "desktop",
+        "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-12/discipleship-vision-c12"
+      },
+      "work_id": null
+    }
+  ],
+  "baseline": {
+    "described_at": "2026-10-11T12:58:16.976248+00:00",
+    "described_by": "Rawley Stanhope (Claude Fable cleanup session 2026-10-11)",
+    "history": {
+      "references": [],
+      "state": "unknown"
+    },
+    "locations": [
+      {
+        "git_commit": null,
+        "host": "github",
+        "locator": "https://github.com/RawleySM/discipleship-vision-c12",
+        "note": "Created 2026-10-11; 12 branches.",
+        "observed_at": "2026-10-11T12:58:16Z",
+        "role": "canonical_remote",
+        "runnable_on_allocator_host": null
+      },
+      {
+        "git_commit": "45a136dab0b06dee93acd5b7124a2b73da142265",
+        "host": "desktop",
+        "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-12/discipleship-vision-c12",
+        "note": "Granted to visc12; delegate worktrees under projects/cycle-12/worktrees were removed.",
+        "observed_at": "2026-10-11T12:58:16Z",
+        "role": "working_checkout",
+        "runnable_on_allocator_host": true
+      }
+    ],
+    "summary": "Vision resident project. main (fast-forwarded 2026-10-11 to visc12/integration-g5) is the accepted 84-story corpus pinned by contracts/accepted_corpus_manifest.json with corpus_reader, 18 text-derived themes and expectations for Prayer. Experiences H1-H12 and testimony media live under products/. Pushed to a new GitHub repository on 2026-10-11 (previously local only); 24 uncommitted product directories salvaged.",
+    "unknowns": []
+  },
+  "current_plan": {
+    "artifact": null,
+    "evidence": [],
+    "objective": null,
+    "state": "unknown"
+  },
+  "enrollment": {
+    "note": "Selected existing work; no historical replay.",
+    "origin": "manual_baseline"
+  },
+  "host_identity": {
+    "evidence": [],
+    "observed_at": null,
+    "pointer_sha256": null,
+    "registry": null,
+    "state": "unknown"
+  },
+  "identity_evidence": [],
+  "outputs": [],
+  "owner": {
+    "kind": "resident",
+    "name": "Discipleship Vision",
+    "resident_id": "visc12"
+  },
+  "package_checkpoints": [],
+  "project_id": "discipleship-vision-c12",
+  "record_revision": 1,
+  "runtime_applicability": {
+    "note": "Applicability entered by Rawley Stanhope (Claude Fable cleanup session 2026-10-11).",
+    "package": "applicable",
+    "session": "not_applicable"
+  },
+  "schema": "rlm-adk.project-work-record.v1",
+  "title": "Discipleship Vision story corpus and experiences",
+  "unresolved": [
+    "h7-v3-listen: Rawley has not listened to the H7 v3 audio sample (discipleship-vision-c12@9b62d82).",
+    "Which of the diverging story lines is authoritative is for the resident to decide through the manifest."
+  ],
+  "updated_at": "2026-10-11T12:58:17.517408+00:00",
+  "updated_by": "Rawley Stanhope (Claude Fable cleanup session 2026-10-11)",
+  "work_items": [
+    {
+      "evidence": [
+        {
+          "claim": "HANDOFF.md at 45a136d lists revisions, digests and tests (25 OK accepted-corpus oracle).",
+          "kind": "git",
+          "observed_at": "2026-10-11T12:58:16Z",
+          "reference": null
+        }
+      ],
+      "next_action": "Delegate integrates through the manifest and reader; record rejections.",
+      "plan": {
+        "artifact": {
+          "git_commit": null,
+          "host": "desktop",
+          "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-12/discipleship-vision-c12/products/integration-g5/HANDOFF.md"
+        },
+        "evidence": [
+          {
+            "claim": "Plan document inspected during the 2026-10-11 cleanup.",
+            "kind": "file",
+            "observed_at": "2026-10-11T12:58:16Z",
+            "reference": {
+              "git_commit": null,
+              "host": "desktop",
+              "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-12/discipleship-vision-c12/products/integration-g5/HANDOFF.md"
+            }
+          }
+        ],
+        "objective": "main is integration-g5 (84 stories); story-quality-g5 adds S85-S86 and a quality review; link-ingestion-g4, prayer-links, story-draft-g3d, testimony-images and tts-h7v3 hold single findings.",
+        "state": "recorded"
+      },
+      "status": "queued",
+      "title": "Integrate story-quality-g5 (86 stories) and the single-finding visc12/* branches into the pinned corpus",
+      "work_id": "reconcile-corpus-lines"
+    },
+    {
+      "evidence": [],
+      "next_action": "After reconciliation.",
+      "plan": {
+        "artifact": {
+          "git_commit": null,
+          "host": "desktop",
+          "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/STANDING-WORK.md"
+        },
+        "evidence": [
+          {
+            "claim": "Plan document inspected during the 2026-10-11 cleanup.",
+            "kind": "file",
+            "observed_at": "2026-10-11T12:58:16Z",
+            "reference": {
+              "git_commit": null,
+              "host": "desktop",
+              "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/STANDING-WORK.md"
+            }
+          }
+        ],
+        "objective": "Draft on the local pool, review with Claude/Codex, extend the versioned bronze and manifest.",
+        "state": "recorded"
+      },
+      "status": "queued",
+      "title": "Grow the story corpus with prayer-linked stories",
+      "work_id": "vision-story-drafting"
+    },
+    {
+      "evidence": [],
+      "next_action": "Delegate; the Cycle 14 attempt reproduced the flite sample bit for bit (branch tts-h7v3).",
+      "plan": {
+        "artifact": {
+          "git_commit": null,
+          "host": "desktop",
+          "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/STANDING-WORK.md"
+        },
+        "evidence": [
+          {
+            "claim": "Plan document inspected during the 2026-10-11 cleanup.",
+            "kind": "file",
+            "observed_at": "2026-10-11T12:58:16Z",
+            "reference": {
+              "git_commit": null,
+              "host": "desktop",
+              "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/STANDING-WORK.md"
+            }
+          }
+        ],
+        "objective": "Find a licensed ARM-capable model, install on spark-media, render the H7v2 sample, rebuild H7 v3.",
+        "state": "recorded"
+      },
+      "status": "queued",
+      "title": "Expressive local TTS for H7 v3",
+      "work_id": "expressive-local-tts"
+    },
+    {
+      "evidence": [],
+      "next_action": "Delegate starts comfyui-media.service for the task and stops it after (unit disabled at boot 2026-10-11).",
+      "plan": {
+        "artifact": {
+          "git_commit": null,
+          "host": "desktop",
+          "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/STANDING-WORK.md"
+        },
+        "evidence": [
+          {
+            "claim": "Plan document inspected during the 2026-10-11 cleanup.",
+            "kind": "file",
+            "observed_at": "2026-10-11T12:58:16Z",
+            "reference": {
+              "git_commit": null,
+              "host": "desktop",
+              "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/STANDING-WORK.md"
+            }
+          }
+        ],
+        "objective": "Render previews with FLUX.2 / Z-Image weights present on spark-media.",
+        "state": "recorded"
+      },
+      "status": "queued",
+      "title": "Testimony image previews through ComfyUI on spark-media",
+      "work_id": "testimony-image-previews"
+    }
+  ]
+}

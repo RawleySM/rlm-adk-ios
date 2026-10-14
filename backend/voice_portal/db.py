@@ -197,6 +197,13 @@ CREATE TABLE IF NOT EXISTS prayer_asr (
   received_at REAL NOT NULL,
   PRIMARY KEY(install_id, capture_id, sequence)
 );
+CREATE TABLE IF NOT EXISTS tool_cache (
+  tool TEXT NOT NULL,
+  cache_key TEXT NOT NULL,
+  created_at REAL NOT NULL,
+  value_json TEXT NOT NULL,
+  PRIMARY KEY(tool, cache_key)
+);
 CREATE TABLE IF NOT EXISTS turns (
   turn_id TEXT PRIMARY KEY,
   session_id TEXT,
