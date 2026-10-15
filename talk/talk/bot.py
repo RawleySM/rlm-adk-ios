@@ -175,6 +175,7 @@ async def run_bot(transport, cfg: TalkConfig, *, session_label: str) -> None:
     # the tool handlers switch devotional/project/conversation.
     flow = make_flow_manager(llm=llm, context_aggregator=aggregators, task=task, role_message=SYSTEM_PROMPT, reading_state=reading_state)
     floor.bind(task, rtvi, flow)
+    floor.context = context
     flow.state["floor"] = floor
     LIVE_FLOORS[session_id] = floor
     if HOLD["active"] and HOLD.get("hold_new"):
@@ -195,6 +196,9 @@ async def run_bot(transport, cfg: TalkConfig, *, session_label: str) -> None:
         await runner.run(task)
     finally:
         LIVE_FLOORS.pop(session_id, None)
+        if floor.bug is not None:
+            # The phone went away mid-report: file what was heard rather than lose it.
+            await floor.abandon_bug()
         session_log.close()
 
 
@@ -265,6 +269,30 @@ if _runner_app is not None:
             return {"error": "no such session", "sessions": list(LIVE_FLOORS)}
         ok = await fl.select_passage(str(body.get("reference") or ""), "admin")
         return {"session_id": session_id, "opened": ok, "reference": fl.reading_state.get("reference")}
+
+    @_runner_app.post("/admin/sessions/{session_id}/bug")
+    async def admin_session_bug(session_id: str, body: dict[str, Any]) -> dict[str, Any]:
+        """Drive that session's bug report as the phone's Bug chip would (testing, automation).
+
+        ``action``: start | text (``text`` added as a typed segment) | stop (files it; returns the
+        ``bug_report`` message) | cancel.
+        """
+        fl = LIVE_FLOORS.get(session_id)
+        if fl is None:
+            return {"error": "no such session", "sessions": list(LIVE_FLOORS)}
+        action = str(body.get("action") or "")
+        if action == "start":
+            report = await fl.start_bug(source={"client": "admin"}, reason="admin")
+            return {"session_id": session_id, "mode": fl.mode, "report_id": report.report_id}
+        if action == "text":
+            await fl.bug_typed(str(body.get("text") or ""))
+            return {"session_id": session_id, "segments": len(fl.bug.segments) if fl.bug else None}
+        if action == "stop":
+            return {"session_id": session_id, "result": await fl.stop_bug(reason="admin"), "mode": fl.mode}
+        if action == "cancel":
+            await fl.cancel_bug("admin")
+            return {"session_id": session_id, "mode": fl.mode}
+        return {"error": "action must be start, text, stop or cancel"}
 
     @_runner_app.post("/admin/sessions/{session_id}/mode")
     async def admin_session_mode(session_id: str, body: dict[str, Any]) -> dict[str, Any]:

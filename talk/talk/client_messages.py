@@ -1,7 +1,8 @@
 """Client control messages, handled before the RTVI processor would discard them.
 
 The app and the benchmark send plain JSON (``client_text``, ``client_mode``, ``client_event``,
-``client_passage`` for the scripture pane's navigation, ``client_read`` for its Read/Pause); the
+``client_passage`` for the scripture pane's navigation, ``client_read`` for its Read/Pause,
+``client_bug`` for the Bug chip); the
 RTVI processor drops anything that is not an RTVI message, so this processor sits first in the
 pipeline, turns ``client_text`` into a user transcript and forwards the floor messages to the
 ``FloorProcessor`` directly.
@@ -42,6 +43,11 @@ class ClientMessages(FrameProcessor):
                 text = str(message.get("text") or "").strip()
                 from talk import passage
 
+                if self._floor.mode == "bug":
+                    # Typed while reporting a bug: part of the report, never a turn.
+                    await self._floor.bug_typed(text)
+                    return
+
                 if text and self._floor.reading_state.get("verses") and passage.read_request(passage.norm(text)):
                     # "Read it" typed: the same deterministic read of the pane's passage as when spoken.
                     await self._floor.read_active(restart=passage.read_request(passage.norm(text)) == "restart", user_text=text, reason="typed")
@@ -71,6 +77,10 @@ class ClientMessages(FrameProcessor):
                     await self._floor.pause_reading("client")
                 elif action in {"play", "restart"}:
                     await self._floor.read_active(restart=action == "restart", user_text=None, reason="client")
+                return
+            if kind == "client_bug":
+                # The Bug chip: start | stop | cancel a bug report (talk.bug_report).
+                await self._floor.client_bug(message)
                 return
             if kind == "client_event":
                 self._floor.events.append({"t": time.time(), "client": message})
