@@ -1,0 +1,17 @@
+# captured 2026-10-15T12:46:09Z on Spark-A
+$ lsusb | grep -i apple
+(no Apple device on USB)
+$ pymobiledevice3 usbmux list
+2026-10-15 08:46:09 spark-e4f0 pymobiledevice3.__main__[239389] ERROR Failed to connect to usbmuxd socket. Make sure it's running.
+$ curl backend /devices (last seen)
+ios-8ff15ed856194042 build 16 connected False last_seen 2026-10-15T12:29:23+00:00
+$ ls /var/lib/lockdown (USB pairing records on Spark-A)
+00008101-000C35463A32001E.plist
+SystemConfiguration.plist
+
+# follow-up 2026-10-15T13:07:10Z: network (RemotePairing) pair records
+$ ls ~/.pymobiledevice3   (where pymobiledevice3 keeps remote_<udid>.plist RemotePairing records)
+ls: cannot access '/home/rawleysm/.pymobiledevice3': No such file or directory
+$ pymobiledevice3 version used by the probes
+pymobiledevice3 11.29.0
+$ curl -w %{ssl_verify_result} meaning: 0 = X509_V_OK (verification passed); the captures ran curl without -k

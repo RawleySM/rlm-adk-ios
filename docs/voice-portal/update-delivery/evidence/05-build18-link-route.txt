@@ -1,0 +1,39 @@
+# captured 2026-10-15T12:46:09Z on Spark-A
+$ curl https://rlm-adk-spark.tail0ec4a5.ts.net:8443/build18/ (page)
+200 ssl_verify=0
+$ curl https://rlm-adk-spark.tail0ec4a5.ts.net:8443/build18/manifest.plist (asset URL, bundle-version)
+https://rlm-adk-spark.tail0ec4a5.ts.net:8443/build18/RLMADK.ipa
+<string>18</string>
+$ curl https://rlm-adk-spark.tail0ec4a5.ts.net:8443/build18/RLMADK.ipa
+200 5786017 bytes application/zip
+sha256 of download: ff596a197f1b6158cd68d97503c6e637fa611ed0e12e6a845dbe7ada87d79b40
+$ openssl s_client (certificate)
+subject=CN = rlm-adk-spark.tail0ec4a5.ts.net
+issuer=C = US, O = Let's Encrypt, CN = YE1
+notAfter=Nov 15 21:23:25 2026 GMT
+
+$ embedded.mobileprovision of build 18
+{'Name': 'rlm-adk-ios adhoc iPhone 12', 'TeamIdentifier': ['4PJBKY2WQR'], 'ExpirationDate': '2027-10-13 02:20:48', 'ProvisionedDevices': ['00008101-000C35463A32001E'], 'get-task-allow': False}
+
+$ direct-install-receipt.json (build 18)
+{
+ "commit": "c1a570ed670453c965dec971c22960b39530f9e7",
+ "export_method": "release-testing",
+ "package": {
+  "ipa": "RLMADK.ipa",
+  "app": "RLMADK.app",
+  "bundle_id": "com.rawleystanhope.rlmadk",
+  "version": "0.2.0",
+  "build": "18",
+  "display_name": "RLM-ADK",
+  "minimum_os": "17.0",
+  "sha256": "ff596a197f1b6158cd68d97503c6e637fa611ed0e12e6a845dbe7ada87d79b40",
+  "size_bytes": 5786017
+ },
+ "authorities": [
+  "Apple Distribution: Rawley Stanhope (4PJBKY2WQR)",
+  "Apple Worldwide Developer Relations Certification Authority",
+  "Apple Root CA"
+ ]
+}
+workflow run: https://github.com/RawleySM/rlm-adk-ios/actions/runs/38728601676 (direct-install, build_number=18)
