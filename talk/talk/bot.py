@@ -26,7 +26,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams  # noqa: E402
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3  # noqa: E402
-from pipecat.audio.vad.silero import SileroVADAnalyzer  # noqa: E402
 from pipecat.audio.vad.vad_analyzer import VADParams  # noqa: E402
 from pipecat.pipeline.pipeline import Pipeline  # noqa: E402
 from pipecat.pipeline.runner import PipelineRunner  # noqa: E402
@@ -53,6 +52,7 @@ from talk.cohere_stt import CohereSparkSTTService  # noqa: E402
 from talk.config import TalkConfig, load_config  # noqa: E402
 from talk.floor import FloorProcessor, OutputGate  # noqa: E402
 from talk.uplink_probe import UplinkProbe  # noqa: E402
+from talk.vad import DoubleTalkVADAnalyzer  # noqa: E402
 from talk.pcm_serializer import PCMFrameSerializer  # noqa: E402
 from talk.reading_tracker import ReadingTracker  # noqa: E402
 from talk.session_log import SessionLog  # noqa: E402
@@ -113,10 +113,15 @@ async def run_bot(transport, cfg: TalkConfig, *, session_label: str) -> None:
     reading_state = new_reading_state()
     configure_tools(cfg)
     context = LLMContext(messages=[])
+    vad = DoubleTalkVADAnalyzer(
+        params=VADParams(stop_secs=cfg.vad_stop_secs),
+        double_talk_min_confidence=cfg.double_talk_min_confidence,
+        double_talk_min_rms=cfg.double_talk_min_rms,
+    )
     aggregators = LLMContextAggregatorPair(
         context,
         user_params=LLMUserAggregatorParams(
-            vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=cfg.vad_stop_secs)),
+            vad_analyzer=vad,
             # Cohere answers per utterance, about a second warm; a cold owner takes far longer and an
             # empty user turn must never reach the LLM (the owner rejects it and Pipecat retires the service).
             user_turn_stop_timeout=15.0,
@@ -129,6 +134,7 @@ async def run_bot(transport, cfg: TalkConfig, *, session_label: str) -> None:
     )
     session_id = f"{session_label}-{uuid.uuid4().hex[:10]}"
     floor = FloorProcessor(cfg, reading_state, session_id=session_id)
+    vad.bot_speaking = lambda: floor.bot_speaking or time.time() - floor.bot_stopped_at < cfg.double_talk_hold_s
     gate = OutputGate(floor)
     bridge = BridgeProcessor(cfg, floor)
     duck = DuckProcessor(cfg)

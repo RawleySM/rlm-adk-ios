@@ -78,6 +78,9 @@ class FloorProcessor(FrameProcessor):
         self._pause = {_norm(w) for w in cfg.pause_phrases}
         self._continue = [_norm(w) for w in cfg.continue_phrases]
         self.bot_speaking = False
+        # Wall time of the last BotStoppedSpeakingFrame or interruption; the VAD's double-talk rule holds
+        # for a moment after it so the gaps between verses of a reading count as bot speech.
+        self.bot_stopped_at = 0.0
         # True from the moment a transcript was forwarded to the LLM until the bot starts speaking.
         self.pending_turn = False
         self.events: list[dict] = []
@@ -203,6 +206,8 @@ class FloorProcessor(FrameProcessor):
                 await self.set_node("conversation", "first reply")
             self.pending_turn = False
         elif isinstance(frame, (BotStoppedSpeakingFrame, InterruptionFrame)):
+            if self.bot_speaking:
+                self.bot_stopped_at = time.time()
             self.bot_speaking = False
         if isinstance(frame, VADUserStartedSpeakingFrame):
             self._user_speaking = True
