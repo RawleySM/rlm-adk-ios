@@ -201,6 +201,8 @@ jobs:
             simulator-reading.png
             simulator-navigator.png
             simulator-read-mode.png
+            simulator-bug-reporting.png
+            simulator-bug-filed.png
             simulator-after-turn.png
             simulator-work.png
             simulator-diagnostics.png
