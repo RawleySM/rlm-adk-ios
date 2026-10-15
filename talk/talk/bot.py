@@ -38,7 +38,6 @@ from pipecat.processors.aggregators.llm_response_universal import (  # noqa: E40
 from pipecat.processors.frameworks.rtvi.observer import RTVIObserver  # noqa: E402
 from pipecat.processors.frameworks.rtvi.processor import RTVIProcessor  # noqa: E402
 from pipecat.runner.types import RunnerArguments, SmallWebRTCRunnerArguments, WebSocketRunnerArguments  # noqa: E402
-from pipecat.services.kokoro.tts import KokoroTTSService  # noqa: E402
 from pipecat.services.openai.llm import OpenAILLMService  # noqa: E402
 from pipecat.transports.base_transport import TransportParams  # noqa: E402
 from pipecat.utils.text.markdown_text_filter import MarkdownTextFilter  # noqa: E402
@@ -53,6 +52,7 @@ from talk.config import TalkConfig, load_config  # noqa: E402
 from talk.floor import FloorProcessor, OutputGate  # noqa: E402
 from talk.uplink_probe import UplinkProbe  # noqa: E402
 from talk.vad import DoubleTalkVADAnalyzer  # noqa: E402
+from talk.scripture_tts import ReaderKokoroTTSService  # noqa: E402
 from talk.pcm_serializer import PCMFrameSerializer  # noqa: E402
 from talk.reading_tracker import ReadingTracker  # noqa: E402
 from talk.session_log import SessionLog  # noqa: E402
@@ -103,10 +103,12 @@ async def run_bot(transport, cfg: TalkConfig, *, session_label: str) -> None:
             extra={"extra_body": dict(cfg.llm_extra_body)},
         ),
     )
-    tts = KokoroTTSService(
+    tts = ReaderKokoroTTSService(
+        reader_voice=cfg.scripture_tts_voice,
+        reader_language=cfg.scripture_tts_language,
         model_path=cfg.kokoro_model_path,
         voices_path=cfg.kokoro_voices_path,
-        settings=KokoroTTSService.Settings(voice=cfg.tts_voice, speed=cfg.tts_speed),
+        settings=ReaderKokoroTTSService.Settings(voice=cfg.tts_voice, speed=cfg.tts_speed),
         sample_rate=cfg.audio_out_sample_rate,
         text_filters=[MarkdownTextFilter()],
     )
@@ -156,7 +158,7 @@ async def run_bot(transport, cfg: TalkConfig, *, session_label: str) -> None:
             transport.output(),
             # After the output transport, TTSTextFrame arrives as the audio is played out, not as
             # it is synthesised, so the tracker counts verses the listener actually heard.
-            ReadingTracker(reading_state),
+            ReadingTracker(reading_state, floor),
             ContextScrubber(cfg),
             aggregators.assistant(),
         ]
@@ -173,6 +175,7 @@ async def run_bot(transport, cfg: TalkConfig, *, session_label: str) -> None:
     # the tool handlers switch devotional/project/conversation.
     flow = make_flow_manager(llm=llm, context_aggregator=aggregators, task=task, role_message=SYSTEM_PROMPT, reading_state=reading_state)
     floor.bind(task, rtvi, flow)
+    flow.state["floor"] = floor
     LIVE_FLOORS[session_id] = floor
     if HOLD["active"] and HOLD.get("hold_new"):
         floor.held = True
@@ -253,6 +256,15 @@ if _runner_app is not None:
             return {"error": "no such session", "sessions": list(LIVE_FLOORS)}
         await fl.broadcast_interruption()
         return {"session_id": session_id, "interrupted": True}
+
+    @_runner_app.post("/admin/sessions/{session_id}/passage")
+    async def admin_session_passage(session_id: str, body: dict[str, Any]) -> dict[str, Any]:
+        """Open a passage in that session's scripture pane, as if chosen on the phone (testing, automation)."""
+        fl = LIVE_FLOORS.get(session_id)
+        if fl is None:
+            return {"error": "no such session", "sessions": list(LIVE_FLOORS)}
+        ok = await fl.select_passage(str(body.get("reference") or ""), "admin")
+        return {"session_id": session_id, "opened": ok, "reference": fl.reading_state.get("reference")}
 
     @_runner_app.post("/admin/sessions/{session_id}/mode")
     async def admin_session_mode(session_id: str, body: dict[str, Any]) -> dict[str, Any]:

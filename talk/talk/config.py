@@ -65,6 +65,9 @@ class TalkConfig:
     double_talk_min_confidence: float = 0.3
     double_talk_min_rms: float = 600.0
     double_talk_hold_s: float = 1.0
+    # Scripture is read in its own voice (talk/scripture_tts.py); the assistant keeps tts_voice.
+    scripture_tts_voice: str = "am_michael"
+    scripture_tts_language: str = "en-us"
     # Words that mean "stop and wait": they interrupt the bot and are never answered as a turn.
     # Words that resume an interrupted reading; handled by the floor without the LLM.
     continue_phrases: list[str] = field(default_factory=lambda: ["continue", "go on", "keep going", "keep reading", "carry on", "resume", "pick up where you stopped", "where you stopped", "where you left off", "finish the reading"])

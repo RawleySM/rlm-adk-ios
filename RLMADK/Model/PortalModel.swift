@@ -41,6 +41,17 @@ final class PortalModel: ObservableObject {
     @Published var typedInput: String = ""
     @Published var lastError: String?
 
+    // Scripture pane
+    /// The passage open in the pane (the talk tier's `passage` events are its authority).
+    @Published private(set) var passage: ScripturePassage?
+    /// Reading progress of that passage (verse heard, verse playing, word shading).
+    @Published private(set) var reading = ReadingProgress()
+    /// A passage requested from the pane and not yet answered by the server.
+    @Published private(set) var passageRequested: String?
+    @Published var scriptureFontSize: Double = UserDefaults.standard.object(forKey: "scriptureFontSize") as? Double ?? 21 {
+        didSet { UserDefaults.standard.set(scriptureFontSize, forKey: "scriptureFontSize") }
+    }
+
     // Talk tier
     @Published private(set) var talkState: TalkConnectionState = .disconnected(nil)
     /// Transport in use now; differs from the selection after a coexistence fallback.
@@ -1302,12 +1313,24 @@ final class PortalModel: ObservableObject {
         if state.isUp {
             // The phone's persisted mode is the authority: the server is told on every (re)connect.
             sendClientMode(ClientFloorMode.of(mode), reason: "sync")
+            // So is the pane's passage: a new talk session opens it again (it keeps its position when
+            // the server still holds it).
+            if let reference = passage?.reference ?? UserDefaults.standard.string(forKey: "panePassage") {
+                talk?.send(.clientPassage(reference: reference, reason: "sync"))
+            }
             if activeTalkTransport == .webrtc { startSpikeMonitor() }
             if ProcessInfo.processInfo.environment["RLMADK_CI_DEMO"] == "1", !ciDemoDone {
                 // CI demo: a typed turn against the fixture talk server so the screenshot shows a reply.
                 ciDemoDone = true
                 typedInput = "What does the shepherd psalm say about rest?"
                 submitTyped()
+                // And the scripture pane: open Psalm 23 and read it (the fixture server times the verses).
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    openPassage("Psalm 23")
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    toggleReading()
+                }
             }
         } else {
             botSpeaking = false
@@ -1355,6 +1378,23 @@ final class PortalModel: ObservableObject {
             applyServerFloor(serverMode, reason: reason ?? "server")
         case .prayerText(let text, let final):
             journalTalkPrayerText(text, final: final)
+        case .passage(let p):
+            passage = p
+            passageRequested = nil
+            reading.reset(for: p)
+            UserDefaults.standard.set(p.reference, forKey: "panePassage")
+            logLine("pane: \(p.reference) (\(p.verses.count) verses, \(p.source ?? "?"), heard \(p.spokenCount))")
+        case .passageError(let reference, let reason):
+            passageRequested = nil
+            lastError = "Could not open \(reference): \(reason)"
+            logLine("pane: \(reference) unavailable: \(reason)")
+        case .reading(let event):
+            if event.reference == nil || event.reference == passage?.reference {
+                let verses = passage?.verses ?? []
+                reading.apply(event) { i in verses.indices.contains(i) ? verses[i].text : nil }
+                passage?.spokenCount = reading.spokenCount
+            }
+            if event.state == "blocked" { lastError = "Reading is held while \(event.reason ?? "quiet")" }
         case .error(let message):
             lastError = "talk: \(message)"
             logLine("talk error: \(message.prefix(200))")
@@ -1475,6 +1515,70 @@ final class PortalModel: ObservableObject {
         UserDefaults.standard.set(reason, forKey: "webrtcFallback-\(PortalModel.appBuild)")
         connectTalk()
         audio.restartIfNeeded(reason: "webrtc_fallback")
+    }
+
+    // MARK: scripture pane
+
+    /// Opens `reference` in the pane: through the talk tier (it pauses any reading and becomes the
+    /// passage the assistant answers about), or from the backend's reader when the talk tier is down.
+    func openPassage(_ reference: String) {
+        let ref = reference.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !ref.isEmpty else { return }
+        passageRequested = ref
+        if let talk, talkState.isUp {
+            talk.send(.clientPassage(reference: ref, reason: "select"))
+            logLine("pane: requested \(ref)")
+        } else {
+            Task { await loadPassageFromBackend(ref) }
+        }
+    }
+
+    func openChapter(_ book: BibleBook, _ chapter: Int) { openPassage(book.reference(chapter: chapter)) }
+
+    /// The previous (-1) or next (+1) chapter of the open passage.
+    func stepChapter(_ step: Int) {
+        guard let p = passage, let code = p.book, let chapter = p.chapter, let (book, next) = BibleBook.neighbour(of: code, chapter: chapter, step: step) else { return }
+        openChapter(book, next)
+    }
+
+    /// The pane's speaker button: read the open passage from where it stopped, or pause it.
+    func toggleReading() {
+        guard passage != nil else { return }
+        if reading.isReading {
+            talk?.send(.clientRead(action: "pause"))
+        } else if talkState.isUp {
+            if mode.quiet { lastError = "The portal is quiet; wake it to hear the reading." }
+            talk?.send(.clientRead(action: "play"))
+        } else {
+            lastError = "talk server not connected; reading not requested"
+        }
+    }
+
+    private struct ScriptureToolResult: Decodable {
+        var available: Bool
+        var reference: String?
+        var title: String?
+        var verses: [ScriptureVerse]?
+        var spoken: String?
+        struct Ref: Decodable { var book: String?; var chapter: Int? }
+        var references: [Ref]?
+    }
+
+    private func loadPassageFromBackend(_ reference: String) async {
+        do {
+            let r = try await client.get("tools/scripture", query: ["reference": reference], as: ScriptureToolResult.self)
+            guard r.available, let verses = r.verses, !verses.isEmpty else {
+                passageRequested = nil
+                lastError = "Could not open \(reference): \(r.spoken ?? "unavailable")"
+                return
+            }
+            let first = r.references?.first
+            let p = ScripturePassage(reference: r.reference ?? reference, title: r.title, edition: "World English Bible", book: first?.book, chapter: first?.chapter, verses: verses, spokenCount: 0, source: "backend")
+            handleTalk(.passage(p))
+        } catch {
+            passageRequested = nil
+            lastError = "Could not open \(reference): \(error.localizedDescription)"
+        }
     }
 
     // MARK: devotional

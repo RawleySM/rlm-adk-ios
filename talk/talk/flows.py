@@ -30,21 +30,42 @@ def _schemas(names: list[str]):
     return [tools.SCHEMAS[n] for n in names]
 
 
-def node(name: str, role_message: str = "") -> NodeConfig:
-    """Build the NodeConfig for ``name`` (the role message is filled in by ``make_flow_manager``)."""
-    role = role_message or _ROLE["text"]
+PANE_NOTE_MAX_CHARS = 9000
+
+_STATES = {
+    "available": "State: available. Rawley has not spoken yet in this session. When he does, answer or call the tool his request needs.",
+    "conversation": "State: conversation. Keep answering Rawley's requests with the tools; readings and words are spoken by the tools themselves.",
+    "prayer": "State: prayer. Rawley is praying; nothing is spoken until he says amen. Do not answer prayer text.",
+    "devotional": "State: devotional. A Scripture passage is open in the scripture pane (its verses are in the pane note below). A question now is about that passage: answer it yourself in two or three plain sentences from the passage (quote at most the one verse it concerns); offer teachers' readings only when Rawley asks for interpretations; never re-read the chapter unasked. When Rawley asks to continue or to read it, call continue_reading, which reads the pane's passage from where it stopped.",
+    "project": "State: project. A project check-in is open. If the project_checkin result is not confident, ask its confirmation question and call again with confirmed_project_id when Rawley confirms. Otherwise report plan, branches, results, checkpoints and outputs as recorded, in that order, briefly, and say what is next.",
+    "quiet": "State: quiet. Speech is blocked until Rawley says the wake phrase; capture and background work continue.",
+}
+
+
+def role_message(name: str, reading_state: dict | None = None, base: str = "") -> str:
+    """The system instruction for node ``name``: the role, the node's state paragraph and the pane note."""
+    from talk.passage import pane_note
+
+    text = (base or _ROLE["text"]) + "\n\n" + _STATES[name]
+    note = pane_note(reading_state or {}, PANE_NOTE_MAX_CHARS) if name not in {"prayer", "quiet"} else ""
+    return text + ("\n\n" + note if note else "")
+
+
+def node(name: str, role_message_text: str = "", reading_state: dict | None = None) -> NodeConfig:
+    """Build the NodeConfig for ``name``; its role message carries the open passage when ``reading_state`` has one."""
+    role = role_message(name, reading_state, role_message_text)
     if name == "available":
-        return NodeConfig(name="available", role_message=role + "\n\n" + "State: available. Rawley has not spoken yet in this session. When he does, answer or call the tool his request needs.", task_messages=[], functions=_schemas(_ALL), respond_immediately=False)
+        return NodeConfig(name="available", role_message=role, task_messages=[], functions=_schemas(_ALL), respond_immediately=False)
     if name == "conversation":
-        return NodeConfig(name="conversation", role_message=role + "\n\n" + "State: conversation. Keep answering Rawley's requests with the tools; readings and words are spoken by the tools themselves.", task_messages=[], functions=_schemas(_ALL), respond_immediately=False)
+        return NodeConfig(name="conversation", role_message=role, task_messages=[], functions=_schemas(_ALL), respond_immediately=False)
     if name == "prayer":
-        return NodeConfig(name="prayer", role_message=role + "\n\n" + "State: prayer. Rawley is praying; nothing is spoken until he says amen. Do not answer prayer text.", task_messages=[], functions=[], respond_immediately=False)
+        return NodeConfig(name="prayer", role_message=role, task_messages=[], functions=[], respond_immediately=False)
     if name == "devotional":
-        return NodeConfig(name="devotional", role_message=role + "\n\n" + "State: devotional. A Scripture reading is open (its text is in the last read_scripture result). A question now is about the passage heard: answer it yourself in two or three plain sentences from the passage (quote at most the one verse it concerns); offer teachers' readings only when Rawley asks for interpretations; never re-read the chapter. When Rawley asks to continue, call continue_reading, which resumes where the reading stopped.", task_messages=[], functions=_schemas(_DEVOTIONAL), respond_immediately=False)
+        return NodeConfig(name="devotional", role_message=role, task_messages=[], functions=_schemas(_DEVOTIONAL), respond_immediately=False)
     if name == "project":
-        return NodeConfig(name="project", role_message=role + "\n\n" + "State: project. A project check-in is open. If the project_checkin result is not confident, ask its confirmation question and call again with confirmed_project_id when Rawley confirms. Otherwise report plan, branches, results, checkpoints and outputs as recorded, in that order, briefly, and say what is next.", task_messages=[], functions=_schemas(_PROJECT), respond_immediately=True)
+        return NodeConfig(name="project", role_message=role, task_messages=[], functions=_schemas(_PROJECT), respond_immediately=True)
     if name == "quiet":
-        return NodeConfig(name="quiet", role_message=role + "\n\n" + "State: quiet. Speech is blocked until Rawley says the wake phrase; capture and background work continue.", task_messages=[], functions=[], respond_immediately=False)
+        return NodeConfig(name="quiet", role_message=role, task_messages=[], functions=[], respond_immediately=False)
     raise KeyError(name)
 
 

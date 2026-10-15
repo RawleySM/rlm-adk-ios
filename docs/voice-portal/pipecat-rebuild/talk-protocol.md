@@ -28,8 +28,9 @@ pipeline:
 * Text frames: JSON.
   * Server → client: every RTVI message (same shapes as above), `{"type":"interruption"}` (flush
     the playback queue immediately), and the floor messages below.
-  * Client → server: `{"type":"client_mode","mode":"prayer|available|quiet","reason":"..."}` and
-    `{"type":"client_event", ...}` (free-form, recorded in the run's event log).
+  * Client → server: `{"type":"client_mode","mode":"prayer|available|quiet","reason":"..."}`,
+    `{"type":"client_text","text":"..."}`, the scripture pane's `client_passage` / `client_read`
+    (below) and `{"type":"client_event", ...}` (free-form, recorded in the run's event log).
 
 ## Floor messages (both paths)
 
@@ -40,6 +41,29 @@ pipeline:
 | `{"type":"mode","mode":"quiet","reason":"phrase"}` / `{"mode":"available","reason":"wake"}` | Quiet entered by phrase or client; left by the wake phrase. |
 | `{"type":"prayer_text","text":"...","final":true}` | Transcript text heard while praying; never sent to the LLM. The app journals it against its capture. |
 | `{"type":"node","node":"devotional","reason":"turn","t":<unix>}` | The Pipecat Flows node changed (see below). `mode` messages also carry the current `node`. |
+
+## Scripture pane messages (both paths; `talk/passage.py`, `talk/reading_tracker.py`)
+
+The talk tier holds the passage open in the phone's scripture pane, one per session. The pane shows
+exactly what the bot reads, and every Flows node's system instruction carries a pane note (the
+reference, whether it was read and how far, and its verses up to 9,000 characters) so "what does
+verse 2 say?" means the passage on screen.
+
+| Direction | Message | Meaning |
+|---|---|---|
+| client → server | `{"type":"client_passage","reference":"Romans 12","reason":"select"}` | Open a passage. Any reading pauses first (the floor waits until the interruption crossed the pipeline), the passage loads from the skill service, a `passage` event answers, a history line "(I opened Romans 12 in the scripture pane.)" is added and the system instruction refreshed. `reason: "sync"` (sent on every reconnect) keeps the position when the session already holds that passage. |
+| client → server | `{"type":"client_read","action":"play\|pause\|restart"}` | The pane's speaker button: read the open passage from the verse after the last one fully heard (from the start, with the reference, when never read, finished, or `restart`), or pause it. |
+| server → client | `{"type":"passage","reference","title","edition","book","chapter","verses":[{"verse","text","osis"}],"spoken_count","source":"tool\|client"}` | The pane's passage changed: chosen on the phone, or opened by `read_scripture` (a verse reference inside a chapter opens the whole chapter and reads only those verses). |
+| server → client | `{"type":"passage_error","reference","reason"}` | The reference could not be opened. |
+| server → client | `{"type":"reading","state":"started","from_index","from_verse","spoken_count"}` | A reading of the open passage was queued. |
+| server → client | `{"type":"reading","state":"verse","verse","index"}` / `"verse_done"` (+ `duration_s`) | A verse started / finished playing (emitted after the output transport, as the audio plays). The app shades word by word between the two at the calibrated speaking rate. |
+| server → client | `{"type":"reading","state":"paused\|finished\|blocked\|none"}` | The reading was interrupted (barge-in, a new passage, Pause, prayer, quiet), reached the end, was refused in prayer/quiet, or no passage is open. |
+
+Read phrases, spoken or typed ("read it", "please read this to me", "continue", "read it again"),
+read the open passage without a model turn; "read me Psalm 23" names a new reference and goes to the
+model. Scripture is spoken in its own voice (`scripture_tts_voice`, default `am_michael`, through
+`ReaderKokoroTTSService` and `ScriptureSpeakFrame`); the assistant keeps `tts_voice` (`bm_george`).
+`talk/tools/pane_probe.py` checks the whole flow against a running tier.
 
 ## Conversation states (Pipecat Flows, `talk/flows.py`)
 

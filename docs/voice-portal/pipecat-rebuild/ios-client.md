@@ -25,6 +25,37 @@ Deleted: `Audio/Speaker.swift`, `Model/PhraseQueue.swift` and its tests, the red
 (`finalTranscript`, `assistantDelta/Done/Cancelled`, `startTurn`, `sendCancel`), the `Citation`
 model of `assistant_done`. Forward only; no compatibility path.
 
+## Portal page (build 15): scripture front and centre
+
+The Voice Portal tab is laid out around a Logos-style scripture pane (`RLMADK/Views/ScripturePane.swift`):
+
+* **Status strip** on top: backend, capture and voice dots, the mode, and the floor buttons
+  (`prayerButton` "Begin prayer"/"End prayer", `quietButton`, Stop). Device scripts depend on those
+  identifiers and labels.
+* **Scripture pane** (about 60 % of the height): a dark reading surface with justified, hyphenated
+  serif paragraphs (the World English Bible carries no paragraph marks; a paragraph closes at a
+  sentence end after about 420 characters), small blue superscript verse numbers, the reference as a
+  heading and the edition under it. The top bar holds the previous/next chapter arrows, the
+  reference pill (opens the navigator), text size, the speaker button (Read / Pause) and read mode.
+* **Navigator**: expands from the pill, Logos style: Old/New Testament tabs, a grid of book
+  abbreviations tinted by genre, then a chapter grid; one-chapter books open directly; a reference
+  field takes anything the skill service parses ("John 3:16").
+* **Read mode**: the pane full screen, text 3 points larger, status bar hidden.
+* **Shading**: while a reading plays, text not yet reached is dimmed, verses heard are full
+  ink, and the verse being spoken brightens word by word in a warm reading colour, timed from the
+  server's `verse` / `verse_done` events and the speaking rate calibrated from each finished verse.
+  After a pause the unheard text stays slightly dimmed to show where it stopped. The pane scrolls to
+  the verse being read unless the reader scrolled in the last 6 s.
+* **Conversation pane** below: partial transcript, what was said and heard, the reply, errors, and
+  the devotional (collapsed). The input row holds Listen, the typed field and Send.
+
+State: the talk tier owns the open passage (`passage` events); the app keeps the last reference in
+UserDefaults (`panePassage`) and re-opens it on every reconnect (`client_passage`, reason `sync`).
+With the talk tier down, a selection loads the text from the backend's `/tools/scripture` for
+display only. CI (`cloud-mac.yml`) drives the pane against `scripts/ci_fake_talk.py`, which answers
+with Psalm 23 and timed reading events, and uploads `simulator-reading.png`,
+`simulator-navigator.png` and `simulator-read-mode.png`.
+
 ## Components
 
 | File | Role |
@@ -186,6 +217,7 @@ fresh state under the session scratchpad), so no test prayer reached the product
 | 12 | 6d60653 | `c922a334bc02f57522a010338fe0340bb764787155a3c3e2f7ab026c63a7cba2` (5,678,358 B) | review findings: typed text as RTVI `send-text` on WebRTC; a capture switch during an input-format restart is applied after it instead of being overwritten |
 | 13 (installed 2026-10-14 12:44 UTC) | PR #17 (`a863534`) | `1c0f72ddee4e540821a99d91ece6a182b7e470a6255b057db3ca904ace8a82fb` | WebRTC keeps libwebrtc's audio unit (and the microphone) running for the whole connection; the talk tier's floor gates speech. Retention 894 of 894 segments. WebRTC subset 5 of 5 (`20261014T124621Z-phone-phone-webrtc-2`). |
 | 14 (installed 2026-10-15 01:17 UTC) | PR #24 (`374adaf`) | `56b00968be30762075ec92ee8f20c93febf27798baf4f5c24d6a29f53ca29c9c` | double-talk investigation: `AudioTuning` launch knobs (`RLMADK_AUDIO_MODE`, `RLMADK_VOICE_PROCESSING`, `RLMADK_VP_AGC`, `RLMADK_BOT_GAIN_DB`), persisted like the backend URL, shown in the snapshot (`audio_tuning`) and Diagnostics. Defaults reproduce build 13. |
+| 16 (installed 2026-10-15 03:00 UTC) | PR #26 | `17d30726d1d3c5389e70e78ab8216860eca7e386d2210773d1f15f0653560851` | Logos-style scripture pane at the centre of the portal page (passage navigator, read mode, word shading from the talk tier's reading events); the conversation below. Build 15 was signed and not installed (its pane hid the identifiers of its own buttons). On device: Romans 12 opened through `/admin/sessions/{id}/passage`, app-rendered screenshot through the backend. |
 
 All three were signed by `direct-install.yml` (Ad Hoc profile `rlm-adk-ios adhoc iPhone 12`,
 expires 2027-10-13) and installed with `pymobiledevice3 apps install` without uninstalling.

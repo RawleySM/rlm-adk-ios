@@ -53,7 +53,9 @@ final class KeyboardNavigationUITests: XCTestCase {
         assertKeyboardGone("Diagnostics Done")
         XCTAssertTrue(app.tabBars.buttons["Portal"].isHittable)
         app.tabBars.buttons["Portal"].tap()
-        XCTAssertTrue(app.navigationBars["Voice Portal"].waitForExistence(timeout: 5))
+        // The portal page hides its navigation bar (the scripture pane takes the space); its own controls mark it.
+        XCTAssertTrue(app.buttons["passagePill"].waitForExistence(timeout: 5), "Portal page with the scripture pane opened")
+        XCTAssertTrue(app.textFields["typedInput"].exists)
     }
 
     func testQuietButtonDismissesKeyboardAndStillTogglesQuiet() throws {

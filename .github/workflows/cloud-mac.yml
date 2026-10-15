@@ -128,7 +128,10 @@ jobs:
           SIMCTL_CHILD_RLMADK_BACKEND_URL=http://127.0.0.1:8765 SIMCTL_CHILD_RLMADK_TALK_URL=http://127.0.0.1:7860 SIMCTL_CHILD_RLMADK_CI_DEMO=1 SIMCTL_CHILD_RLMADK_SKIP_PERMISSION_PROMPTS=1 \
             xcrun simctl launch "$UDID" com.rawleystanhope.rlmadk
           sleep 12
-          xcrun simctl io "$UDID" screenshot simulator.png
+          # The CI demo opened Psalm 23 in the scripture pane and pressed Read; at this point the
+          # fixture reading is in verse 3 or 4: heard verses in full ink, the spoken word highlighted.
+          xcrun simctl io "$UDID" screenshot simulator-reading.png
+          cp simulator-reading.png simulator.png
           sleep 8
           xcrun simctl io "$UDID" screenshot simulator-after-turn.png
           # The app's talk protocol as the fixture talk server saw it: floor sync and typed text as
@@ -148,9 +151,19 @@ jobs:
           if log["binary_frames"] < 100 or set(log["binary_sizes"]) != {"641"} or log["bad_tags"]: problems.append("uplink frames are not 0x01 + 640 bytes")
           if not 35 <= rate <= 65: problems.append(f"uplink not near 50 frames/s: {rate:.1f}")
           if log["bot_turns"] < 1: problems.append("scripted bot turn not played")
+          if not any(m.get("type") == "client_passage" for m in messages): problems.append("scripture pane did not send client_passage")
+          if not any(m.get("type") == "client_read" and m.get("action") == "play" for m in messages): problems.append("scripture pane did not send client_read play")
           if problems: raise SystemExit("TALK PROTOCOL PROBLEMS: " + "; ".join(problems))
           print("talk protocol exercised against the fixture talk server")
           PY
+          # The scripture pane's navigator and read mode, each from a fresh launch.
+          for view in NAVIGATOR READ_MODE; do
+            xcrun simctl terminate "$UDID" com.rawleystanhope.rlmadk || true
+            env "SIMCTL_CHILD_RLMADK_CI_$view=1" SIMCTL_CHILD_RLMADK_BACKEND_URL=http://127.0.0.1:8765 SIMCTL_CHILD_RLMADK_TALK_URL=http://127.0.0.1:7860 SIMCTL_CHILD_RLMADK_SKIP_PERMISSION_PROMPTS=1 \
+              xcrun simctl launch "$UDID" com.rawleystanhope.rlmadk
+            sleep 8
+            xcrun simctl io "$UDID" screenshot "simulator-$(echo $view | tr 'A-Z_' 'a-z-').png"
+          done
           for tab in work diagnostics; do
             xcrun simctl terminate "$UDID" com.rawleystanhope.rlmadk || true
             SIMCTL_CHILD_RLMADK_BACKEND_URL=http://127.0.0.1:8765 SIMCTL_CHILD_RLMADK_TALK_URL=http://127.0.0.1:7860 SIMCTL_CHILD_RLMADK_START_TAB=$tab SIMCTL_CHILD_RLMADK_SKIP_PERMISSION_PROMPTS=1 \
@@ -172,6 +185,9 @@ jobs:
           name: simulator-screenshot
           path: |
             simulator.png
+            simulator-reading.png
+            simulator-navigator.png
+            simulator-read-mode.png
             simulator-after-turn.png
             simulator-work.png
             simulator-diagnostics.png
