@@ -1,6 +1,7 @@
 """Client control messages, handled before the RTVI processor would discard them.
 
-The app and the benchmark send plain JSON (``client_text``, ``client_mode``, ``client_event``); the
+The app and the benchmark send plain JSON (``client_text``, ``client_mode``, ``client_event``,
+``client_passage`` for the scripture pane's navigation, ``client_read`` for its Read/Pause); the
 RTVI processor drops anything that is not an RTVI message, so this processor sits first in the
 pipeline, turns ``client_text`` into a user transcript and forwards the floor messages to the
 ``FloorProcessor`` directly.
@@ -11,7 +12,12 @@ from __future__ import annotations
 import time
 
 from loguru import logger
-from pipecat.frames.frames import Frame, InputTransportMessageFrame, LLMMessagesAppendFrame, OutputTransportMessageUrgentFrame
+from pipecat.frames.frames import (
+    Frame,
+    InputTransportMessageFrame,
+    LLMMessagesAppendFrame,
+    OutputTransportMessageUrgentFrame,
+)
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 
@@ -34,6 +40,12 @@ class ClientMessages(FrameProcessor):
             kind = message.get("type")
             if kind == "client_text":
                 text = str(message.get("text") or "").strip()
+                from talk import passage
+
+                if text and self._floor.reading_state.get("verses") and passage.read_request(passage.norm(text)):
+                    # "Read it" typed: the same deterministic read of the pane's passage as when spoken.
+                    await self._floor.read_active(restart=passage.read_request(passage.norm(text)) == "restart", user_text=text, reason="typed")
+                    return
                 if text:
                     # Typed input bypasses VAD and turn detection: append and run the LLM now. The
                     # output gate still enforces prayer and quiet.
@@ -45,6 +57,20 @@ class ClientMessages(FrameProcessor):
                 mode = message.get("mode")
                 if mode in {"prayer", "available", "quiet"}:
                     await self._floor.set_mode(mode, f"client:{message.get('reason', 'request')}")
+                return
+            if kind == "client_passage":
+                # The scripture pane's navigation: open this passage (pauses any reading).
+                reference = str(message.get("reference") or "").strip()
+                if reference:
+                    await self._floor.select_passage(reference, f"client:{message.get('reason', 'select')}")
+                return
+            if kind == "client_read":
+                # The scripture pane's Read / Pause button.
+                action = message.get("action")
+                if action == "pause":
+                    await self._floor.pause_reading("client")
+                elif action in {"play", "restart"}:
+                    await self._floor.read_active(restart=action == "restart", user_text=None, reason="client")
                 return
             if kind == "client_event":
                 self._floor.events.append({"t": time.time(), "client": message})

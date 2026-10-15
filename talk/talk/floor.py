@@ -14,6 +14,12 @@ new speech cancels the pending end. Silence alone never ends prayer, and nothing
 
 Quiet: ``quiet please`` (or the client message) suppresses output until ``wake up``; capture and
 backend work continue because they never depended on this process.
+
+Scripture pane (``talk.passage``): the floor also owns the passage open on the phone. A
+``client_passage`` selection interrupts any reading, loads the passage, tells the client and
+refreshes the LLM's system instruction so questions refer to it; ``client_read`` (the pane's Read
+and Pause) and the spoken read phrases ("read it", "continue", "read this again") read the open
+passage from where it stopped, verse by verse in the reading voice (``ScriptureSpeakFrame``).
 """
 
 from __future__ import annotations
@@ -44,7 +50,9 @@ from pipecat.frames.frames import (
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
+from talk import passage
 from talk.config import TalkConfig
+from talk.scripture_tts import ScriptureSpeakFrame
 
 
 def _norm(text: str) -> str:
@@ -78,6 +86,8 @@ class FloorProcessor(FrameProcessor):
         self._pause = {_norm(w) for w in cfg.pause_phrases}
         self._continue = [_norm(w) for w in cfg.continue_phrases]
         self.bot_speaking = False
+        # Set by the ReadingTracker (the last processor) when an interruption has crossed the whole pipeline.
+        self.interruption_seen = asyncio.Event()
         # Wall time of the last BotStoppedSpeakingFrame or interruption; the VAD's double-talk rule holds
         # for a moment after it so the gaps between verses of a reading count as bot speech.
         self.bot_stopped_at = 0.0
@@ -103,7 +113,7 @@ class FloorProcessor(FrameProcessor):
         from talk.flows import node as flow_node
 
         try:
-            await self._flow.set_node_from_config(flow_node(name))
+            await self._flow.set_node_from_config(flow_node(name, reading_state=self.reading_state))
         except Exception as exc:  # noqa: BLE001 - a failed node switch must not take the floor down
             logger.warning(f"flows: set_node {name} failed: {exc}")
             return
@@ -189,6 +199,116 @@ class FloorProcessor(FrameProcessor):
             return
         await self.set_mode("available", "amen")
 
+    # ----- scripture pane -----
+    async def _interrupt_and_settle(self) -> None:
+        """Interrupt and wait until the interruption crossed the pipeline (or 1 s), so frames queued next survive it."""
+        self.interruption_seen.clear()
+        await self.broadcast_interruption()
+        try:
+            await asyncio.wait_for(self.interruption_seen.wait(), timeout=1.0)
+        except asyncio.TimeoutError:
+            logger.warning("floor: interruption not seen by the reading tracker within 1 s")
+
+    async def refresh_instruction(self, reason: str) -> None:
+        """Re-send the current node's system instruction with the pane note (the open passage)."""
+        if self._flow is None or not self._flow_started:
+            return
+        from pipecat.frames.frames import LLMUpdateSettingsFrame
+        from pipecat.services.settings import LLMSettings
+
+        from talk.flows import role_message
+
+        await self.push_frame(LLMUpdateSettingsFrame(delta=LLMSettings(system_instruction=role_message(self.node or "available", self.reading_state))))
+        logger.info(f"floor: system instruction refreshed ({reason}) for {self.reading_state.get('reference')}")
+
+    async def select_passage(self, reference: str, reason: str) -> bool:
+        """Open ``reference`` in the pane: pause any reading, load it, tell the client, refresh the LLM."""
+        from talk import tools
+
+        reference = (reference or "").strip()
+        if not reference:
+            return False
+        if self.reading_state.get("reading") or self.bot_speaking:
+            await self._interrupt_and_settle()
+        try:
+            result = await tools.fetch_scripture(reference)
+        except Exception as exc:  # noqa: BLE001 - the skill service being down is an ordinary condition
+            result = {"available": False, "spoken": str(exc)}
+        loaded = passage.from_tool_result(result, reference)
+        if loaded is None:
+            logger.warning(f"floor: passage {reference!r} unavailable: {str(result.get('spoken') or result.get('reason'))[:160]}")
+            await self._tell_client({"type": "passage_error", "reference": reference, "reason": result.get("spoken") or result.get("reason") or "unavailable"})
+            return False
+        if self.reading_state.get("reference") == loaded["reference"] and reason == "client:sync":
+            # The phone re-announcing what this session already has (a reconnect): keep the position.
+            await self._tell_client(passage.message(self.reading_state))
+            return True
+        passage.apply(self.reading_state, loaded, source="client")
+        self.events.append({"t": time.time(), "passage": loaded["reference"], "reason": reason})
+        from pipecat.frames.frames import LLMMessagesAppendFrame
+
+        # The conversation history must show the switch too: a reading of another passage may be the
+        # last thing in it, and "verse 2" must now mean this passage's verse 2.
+        await self.push_frame(LLMMessagesAppendFrame(messages=[{"role": "user", "content": f"(I opened {loaded['reference']} in the scripture pane.)"}], run_llm=False))
+        logger.info(f"floor: passage {loaded['reference']} opened ({reason}), {len(loaded['verses'])} verses")
+        await self._tell_client(passage.message(self.reading_state))
+        if self.mode == "available" and self.node in {"available", "conversation", "project"}:
+            await self.set_node("devotional", "passage")
+        await self.refresh_instruction("passage")
+        return True
+
+    async def read_active(self, *, restart: bool = False, user_text: str | None = None, reason: str = "", interrupt: bool = True, switch_node: bool = True, indices: list[int] | None = None, announce: str | None = None) -> bool:
+        """Read the open passage from where it stopped (or from the start), one verse per unit, in the reading voice.
+
+        Args:
+            restart: Read from the first verse (with the reference) even if a position is kept.
+            user_text: The utterance that asked for it, appended to the context (no model turn runs).
+            reason: For the log.
+            interrupt: Stop whatever plays first. Tool handlers pass False: an interruption during a
+                function call would cancel the call itself.
+            switch_node: Move Flows to ``devotional``. Tool handlers pass False and return the node.
+            indices: Read only these verses of the open passage (positions in its verse list).
+            announce: Spoken first with ``indices`` (the requested reference, e.g. "Romans 12:2.").
+        """
+        from pipecat.frames.frames import LLMMessagesAppendFrame
+
+        if not self.reading_state.get("verses"):
+            await self._tell_client({"type": "reading", "state": "none", "reference": None, "spoken_count": 0})
+            return False
+        if self.mode in {"prayer", "quiet"}:
+            await self._tell_client({"type": "reading", "state": "blocked", "reason": self.mode, "reference": self.reading_state.get("reference"), "spoken_count": int(self.reading_state.get("spoken_count") or 0)})
+            return False
+        if interrupt and (self.reading_state.get("reading") or self.bot_speaking):
+            await self._interrupt_and_settle()
+        units = passage.read_queue(self.reading_state, restart, indices, announce)
+        if indices is None and units and units[0].get("index") is None:
+            self.reading_state["spoken_count"] = 0
+            self.reading_state["spoken_through"] = 0
+        self.reading_state["queue"] = [dict(u) for u in units]
+        self.reading_state["reading"] = True
+        first = next((u for u in units if u.get("index") is not None), None)
+        logger.info(f"floor: reading {self.reading_state.get('reference')} from verse {first and first['verse']} ({reason})")
+        await self._tell_client({"type": "reading", "state": "started", "reference": self.reading_state.get("reference"), "from_index": first and first["index"], "from_verse": first and first["verse"], "spoken_count": int(self.reading_state.get("spoken_count") or 0)})
+        if user_text:
+            await self.push_frame(LLMMessagesAppendFrame(messages=[{"role": "user", "content": user_text}], run_llm=False))
+        for unit in units:
+            await self.push_frame(ScriptureSpeakFrame(unit["text"]))
+        if switch_node and self.node != "devotional":
+            await self.set_node("devotional", "reading")
+        return True
+
+    async def pause_reading(self, reason: str) -> None:
+        """Stop the reading now; the position (verses fully heard) is kept for the next read."""
+        if self.reading_state.get("reading") or self.bot_speaking:
+            await self._interrupt_and_settle()
+        await self.refresh_instruction(f"pause:{reason}")
+
+    async def reading_event(self, message: dict) -> None:
+        """Forward a ReadingTracker progress message; a pause or the end refreshes the LLM's view of the pane."""
+        await self._tell_client(message)
+        if message.get("state") in {"paused", "finished"}:
+            await self.refresh_instruction(message["state"])
+
     # ----- frames -----
     async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
@@ -197,7 +317,7 @@ class FloorProcessor(FrameProcessor):
             self._flow_started = True
             from talk.flows import node as flow_node
 
-            await self._flow.initialize(flow_node("available"))
+            await self._flow.initialize(flow_node("available", reading_state=self.reading_state))
             await self.announce_node("start")
 
         if isinstance(frame, BotStartedSpeakingFrame):
@@ -299,23 +419,16 @@ class FloorProcessor(FrameProcessor):
                 frame.text = text[len(text) - len(remainder) :] if text.lower().endswith(remainder) else remainder
                 text = frame.text
                 n = _norm(text)
-            if final and any(p in n for p in self._continue) and len(n.split()) <= 10:
-                verses = self.reading_state.get("verses") or []
-                through = int(self.reading_state.get("spoken_through") or 0)
-                remaining = [v for v in verses if v["verse"] > through]
-                if verses and remaining:
-                    # Resume the interrupted reading deterministically, without a model turn.
-                    from pipecat.frames.frames import LLMMessagesAppendFrame, TTSSpeakFrame
-
-                    logger.info(f"floor: continue phrase {text!r}; resuming {self.reading_state.get('reference')} at verse {remaining[0]['verse']}")
-                    self.events.append({"t": time.time(), "resume_reading": remaining[0]["verse"]})
-                    if self.bot_speaking:
-                        await self.broadcast_interruption()
-                    for v in remaining:
-                        await self.push_frame(TTSSpeakFrame(v["text"]))
-                    await self.push_frame(LLMMessagesAppendFrame(messages=[{"role": "user", "content": text}, {"role": "assistant", "content": " ".join(v["text"] for v in remaining)}], run_llm=False))
-                    await self._swallow(frame)
-                    return
+            request = passage.read_request(passage.norm(text)) if final else None
+            if request is None and final and any(p in n for p in self._continue) and len(n.split()) <= 10:
+                request = "resume"
+            if request is not None and self.reading_state.get("verses"):
+                # "Read it", "continue", "read this again": read the open passage without a model turn.
+                logger.info(f"floor: read request {request!r} in {text!r} for {self.reading_state.get('reference')}")
+                self.events.append({"t": time.time(), "read_request": request, "text": text})
+                await self.read_active(restart=request == "restart", user_text=text, reason="phrase")
+                await self._swallow(frame)
+                return
             if final and self.bot_speaking:
                 # A short utterance that outlasted nothing but is not a backchannel is an interruption
                 # decided by its words rather than its length.

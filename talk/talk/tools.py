@@ -22,8 +22,6 @@ from typing import Any
 
 import aiohttp
 from loguru import logger
-from pipecat.adapters.schemas.function_schema import FunctionSchema
-from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.flows import NO_RESPONSE, FlowArgs, FlowManager, FlowsFunctionSchema
 from pipecat.frames.frames import TTSSpeakFrame
 
@@ -32,6 +30,11 @@ from talk.config import TalkConfig
 _cfg: TalkConfig | None = None
 
 LONG_READING_VERSES = 10
+
+UNAVAILABLE_NOTE = (
+    "This source is unavailable right now. Tell Rawley plainly that you could not reach it, answer briefly "
+    "from what you already know, and do not call any tool again for this question."
+)
 
 
 def new_reading_state() -> dict[str, Any]:
@@ -42,7 +45,7 @@ def new_reading_state() -> dict[str, Any]:
     utterance the floor last forwarded to the LLM; decides whether a long chapter is read or quoted).
     Each session gets its own: two phones, or a phone and a benchmark client, must never share one.
     """
-    return {"reference": None, "chapter_reference": None, "verses": [], "spoken_through": 0, "last_user_text": ""}
+    return {"reference": None, "chapter_reference": None, "verses": [], "spoken_through": 0, "spoken_count": 0, "queue": [], "reading": False, "last_user_text": ""}
 
 
 def _unavailable(reason: str) -> dict[str, Any]:
@@ -73,6 +76,11 @@ async def _post(path: str, payload: dict[str, Any]) -> dict[str, Any]:
             return json.loads(text)
 
 
+async def fetch_scripture(reference: str) -> dict[str, Any]:
+    """The skill service's ``/tools/scripture`` result for ``reference`` (verbatim retained verses)."""
+    return await _get("/tools/scripture", {"reference": reference})
+
+
 def _chapter_reference(reference: str) -> str:
     m = re.match(r"^(.*?\d+)", reference.strip())
     return m.group(1) if m else reference
@@ -100,10 +108,15 @@ async def _speak_exact(flow_manager: FlowManager, sentences: list[str]) -> str:
 # ``next_node`` values name nodes from talk.flows (resolved lazily to avoid an import cycle).
 
 
-def _node(name: str):
+def _node(name: str, flow_manager: FlowManager | None = None):
     from talk import flows
 
-    return flows.node(name)
+    return flows.node(name, reading_state=_state(flow_manager) if flow_manager is not None else None)
+
+
+def _floor(flow_manager: FlowManager):
+    """This session's FloorProcessor (set on the FlowManager's state by the bot), or None in tests."""
+    return flow_manager.state.get("floor")
 
 
 async def search_sources(args: FlowArgs, flow_manager: FlowManager):
@@ -131,7 +144,7 @@ async def project_checkin(args: FlowArgs, flow_manager: FlowManager):
         result = await _get("/tools/project", {"description": args.get("description", ""), "confirm": args.get("confirmed_project_id")})
     except Exception as exc:
         return _unavailable(str(exc)), None
-    return result, (_node("project") if flow_manager.current_node != "project" else None)
+    return result, (_node("project", flow_manager) if flow_manager.current_node != "project" else None)
 
 
 async def read_scripture(args: FlowArgs, flow_manager: FlowManager):
@@ -147,29 +160,70 @@ async def read_scripture(args: FlowArgs, flow_manager: FlowManager):
     state = _state(flow_manager)
     wants_reading = bool(re.search(r"\b(read|reads|reading|recite|hear|listen to|play)\b", str(state.get("last_user_text") or "").lower()))
     if len(verses) > LONG_READING_VERSES and not wants_reading:
-        # A question about a long chapter: hand the text to the model to quote from, instead of reading it all.
+        # A question about a long chapter: hand the text to the model to quote from, instead of reading it
+        # all; the pane opens the chapter so Rawley sees what the answer is drawn from.
+        from talk import passage
+
+        opened = passage.from_tool_result(result, reference)
+        floor = _floor(flow_manager)
+        if opened is not None and state.get("reference") != opened["reference"]:
+            passage.apply(state, opened, source="tool")
+            if floor is not None:
+                await floor._tell_client(passage.message(state))
         return {
             "reference": reference,
             "verses": [{"verse": v["verse"], "text": v["text"]} for v in verses],
             "instruction": "Rawley asked a question, not for a reading. Quote the two or three verses that answer it (with their verse numbers) and answer briefly in your own words; do not read the whole chapter.",
         }, None
-    state.update({"reference": reference, "chapter_reference": _chapter_reference(reference), "verses": verses, "spoken_through": 0})
-    spoken = await _speak_exact(flow_manager, [f"{reference}."] + [v["text"] for v in verses])
-    result_out = {"reference": reference, "verses_read": [v["verse"] for v in verses], "text": spoken, "cite_ids": result.get("cite_ids"), "coverage": result.get("coverage"), "spoken": True}
-    return result_out, (_node("devotional") if flow_manager.current_node != "devotional" else NO_RESPONSE)
+    from talk import passage
+
+    floor = _floor(flow_manager)
+    loaded = passage.from_tool_result(result, reference)
+    indices = None
+    announce = None
+    within = passage.requested_range(result)
+    if within is not None:
+        # Verses inside one chapter: the pane shows the whole chapter and the reading covers the verses asked for.
+        chapter_ref, first, last = within
+        if state.get("reference") != chapter_ref:
+            chapter = passage.from_tool_result(await fetch_scripture(chapter_ref), chapter_ref)
+            if chapter is not None:
+                passage.apply(state, chapter, source="tool")
+                if floor is not None:
+                    await floor._tell_client(passage.message(state))
+        if state.get("reference") == chapter_ref:
+            indices = [i for i, v in enumerate(state.get("verses") or []) if first <= v["verse"] <= last]
+            announce = f"{loaded['reference']}."
+    if indices is None:
+        passage.apply(state, loaded, source="tool")
+        if floor is not None:
+            await floor._tell_client(passage.message(state))
+    if floor is not None:
+        # The pane shows what is read; the floor queues the verses in the reading voice and tracks them.
+        await floor.read_active(restart=True, reason="read_scripture", interrupt=False, switch_node=False, indices=indices, announce=announce)
+        if flow_manager.current_node == "devotional":
+            await floor.refresh_instruction("read_scripture")
+        spoken = " ".join(v["text"] for v in verses)
+    else:
+        spoken = await _speak_exact(flow_manager, [f"{reference}."] + [v["text"] for v in verses])
+    result_out = {"reference": loaded["reference"], "verses_read": [v["verse"] for v in verses], "text": spoken, "cite_ids": result.get("cite_ids"), "coverage": result.get("coverage"), "spoken": True}
+    return result_out, (_node("devotional", flow_manager) if flow_manager.current_node != "devotional" else NO_RESPONSE)
 
 
 async def continue_reading(args: FlowArgs, flow_manager: FlowManager):
-    """Resume the interrupted reading from the verse after the last one fully spoken."""
+    """Read the passage open in the scripture pane, resuming after the last verse fully heard (or from the start)."""
     state = _state(flow_manager)
+    if not state.get("verses"):
+        return {"error": "no passage open", "instruction": "Tell Rawley no passage is open in the scripture pane and ask what he would like read."}, None
+    floor = _floor(flow_manager)
+    if floor is not None:
+        await floor.read_active(restart=bool(args.get("from_start")), reason="continue_reading", interrupt=False, switch_node=False)
+        if flow_manager.current_node == "devotional":
+            await floor.refresh_instruction("continue_reading")
+        return {"reference": state.get("reference"), "spoken": True}, (_node("devotional", flow_manager) if flow_manager.current_node != "devotional" else NO_RESPONSE)
     verses = state.get("verses") or []
-    through = int(state.get("spoken_through") or 0)
-    remaining = [v for v in verses if v["verse"] > through]
-    if not verses:
-        return {"error": "no reading in progress", "instruction": "Tell Rawley there is no reading to continue and ask what he would like read."}, None
-    if not remaining:
-        await _speak_exact(flow_manager, ["That was the end of the passage."])
-        return {"done": True, "spoken": True}, NO_RESPONSE
+    count = int(state.get("spoken_count") or 0)
+    remaining = verses[count:] if 0 < count < len(verses) else verses
     spoken = await _speak_exact(flow_manager, [v["text"] for v in remaining])
     return {"reference": state.get("reference"), "resumed_from_verse": remaining[0]["verse"], "text": spoken, "spoken": True}, NO_RESPONSE
 
@@ -195,7 +249,7 @@ async def word_from_prayer(args: FlowArgs, flow_manager: FlowManager):
                 sentences.append(text)
     spoken = await _speak_exact(flow_manager, sentences)
     summary = {"prayer": {k: prayer.get(k) for k in ("id", "recorded_at")}, "themes": result.get("themes"), "passages": [p.get("reference") for p in result["passages"]], "text": spoken, "spoken": True}
-    return summary, (_node("conversation") if flow_manager.current_node == "available" else NO_RESPONSE)
+    return summary, (_node("conversation", flow_manager) if flow_manager.current_node == "available" else NO_RESPONSE)
 
 
 async def request_work(args: FlowArgs, flow_manager: FlowManager):
@@ -233,8 +287,8 @@ SCHEMAS: dict[str, FlowsFunctionSchema] = {
     ),
     "continue_reading": FlowsFunctionSchema(
         name="continue_reading",
-        description="Resume the last Scripture reading from where it was interrupted. Use when Rawley says continue, go on, or pick up where you stopped. The tool speaks it; you add nothing.",
-        properties={},
+        description="Read the passage open in the scripture pane (the one in the pane note), resuming where its reading stopped, or from the start when it was never read or finished. Use when Rawley says read it, read this, continue, go on, or pick up where you stopped. The tool speaks it; you add nothing.",
+        properties={"from_start": {"type": "boolean", "description": "True when Rawley asks to hear it again from the beginning."}},
         required=[],
         handler=continue_reading,
     ),
