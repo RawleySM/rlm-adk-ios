@@ -1,0 +1,22 @@
+# captured 2026-10-15T12:42:57Z on Spark-A
+$ bash /dev/tcp probe of lockdownd 100.115.237.108:62078
+bash: connect: Connection refused
+bash: line 1: /dev/tcp/100.115.237.108/62078: Connection refused
+-> not open
+
+$ python3 tailnet_probe.py 100.115.237.108
+host 100.115.237.108: 17413 TCP ports probed (1-1024, 49152-65535, 62078, 5353, 3689, 7000, 8080, 8443) in 15 s
+open: [62811]
+refused (RST): 17333
+no answer within 3 s: 79 [27, 37, 78, 126, 130, 154, 165, 276, 307, 369, 385, 640, 753, 49447, 49494, 49725, 49762, 50057, 50103, 50565]
+
+# follow-up 2026-10-15T12:45:10Z: identify the open ports
+$ tailscale status --json | PeerAPIURL of iphone-12
+[['http://100.115.237.108:45001', 'http://[fd7a:115c:a1e0::6601:eda1]:44538']]
+-> 45001 is the Tailscale peer API (Taildrop); outside the probed range, open on recheck
+$ curl http://100.115.237.108:62811/
+000 (000 = no HTTP response)
+$ openssl s_client -connect 100.115.237.108:62811 (8 s)
+exit 124 (124 = no TLS server hello within 8 s)
+$ rp_handshake.py 100.115.237.108 62811 (RemotePairing opening handshake only)
+handshake failed: TimeoutError: 

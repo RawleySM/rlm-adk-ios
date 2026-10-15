@@ -1,0 +1,46 @@
+# captured 2026-10-15T12:42:38Z on Spark-A (spark-e4f0)
+$ tailscale status --json (Self, CertDomains, iOS peers)
+{
+ "self": {
+  "HostName": "rlm-adk-spark",
+  "DNSName": "rlm-adk-spark.tail0ec4a5.ts.net.",
+  "TailscaleIPs": [
+   "100.121.221.42",
+   "fd7a:115c:a1e0::b939:dd2c"
+  ]
+ },
+ "MagicDNSSuffix": "tail0ec4a5.ts.net",
+ "CertDomains": [
+  "rlm-adk-spark.tail0ec4a5.ts.net"
+ ],
+ "ios_peers": [
+  {
+   "HostName": "localhost",
+   "DNSName": "iphone-12.tail0ec4a5.ts.net.",
+   "OS": "iOS",
+   "TailscaleIPs": [
+    "100.115.237.108",
+    "fd7a:115c:a1e0::6601:eda1"
+   ],
+   "Online": true,
+   "Relay": "ord",
+   "CurAddr": ""
+  }
+ ]
+}
+
+$ tailscale serve status
+|-- tcp://rlm-adk-spark.tail0ec4a5.ts.net:18080 (tailnet only)
+|-- tcp://100.121.221.42:18080
+|-- tcp://[fd7a:115c:a1e0::b939:dd2c]:18080
+|--> tcp://127.0.0.1:8786
+
+https://rlm-adk-spark.tail0ec4a5.ts.net:8443 (tailnet only)
+|-- / path  /home/rawleysm/.local/state/rlm-adk-ios-prototype-supervision/private-delivery
+
+
+$ tailscale ping -c 3 100.115.237.108
+pong from iphone-12 (100.115.237.108) via DERP(ord) in 90ms
+pong from iphone-12 (100.115.237.108) via DERP(ord) in 78ms
+pong from iphone-12 (100.115.237.108) via DERP(ord) in 89ms
+direct connection not established

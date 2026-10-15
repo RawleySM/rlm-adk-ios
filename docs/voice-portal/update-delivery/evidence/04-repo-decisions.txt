@@ -1,0 +1,31 @@
+# captured 2026-10-15T12:45:55Z on Spark-A
+$ git log --oneline (delivery decisions)
+86745b3 Direct private installation: Ad Hoc signing workflow, package utility, tests and guidance (#8)
+86745b3 Direct private installation: Ad Hoc signing workflow, package utility, tests and guidance (#8)
+3e0efed Fix recognition startup ordering, writer close guard, build versioning and private TestFlight path
+
+$ grep -n (prototype-runbook.md: route status)
+111:Voice command phrases (configuration in `PortalModel`; buttons are the deterministic fallback):
+158:   below for updates of the same bundle id; TestFlight is a fallback. Do **not** uninstall: deleting
+260:route below (or the retained TestFlight fallback), without uninstalling.
+331:- TestFlight internal testing is now the **fallback** route (no device UDID needed). The last
+341:## Direct private installation (Ad Hoc / release-testing, no TestFlight)
+352:files continued growing. The HTTPS package is hosted but OTA installation has not been exercised.
+382:  name for Ad Hoc; `ad-hoc` as fallback) and the export options plist is written for that method
+400:- Link route (later, once we host the files over HTTPS): open `index.html` on the phone and tap
+402:  the phone, never a silent push.
+
+$ sed -n 8,20p .github/workflows/testflight.yml (trigger)
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: "CURRENT_PROJECT_VERSION override (empty = run number)"
+        default: ""
+      build_upload_id:
+        description: "Reuse an existing AWAITING_UPLOAD buildUploads record (optional)"
+        default: ""
+
+defaults:
+  run:

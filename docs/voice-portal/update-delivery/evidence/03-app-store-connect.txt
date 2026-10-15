@@ -1,0 +1,9 @@
+# captured 2026-10-15T12:45:53+00:00 on Spark-A, App Store Connect API, GET requests only
+GET /v1/apps/6822129536 -> 200 {'name': 'RLM-ADK Voice Portal', 'bundleId': 'com.rawleystanhope.rlmadk'}
+GET /v1/builds?filter[app]=6822129536 -> 200
+   {"version": "6", "uploadedDate": "2026-10-13T07:34:53-07:00", "expirationDate": "2027-01-11T06:34:53-08:00", "expired": false, "processingState": "VALID"}
+   {"version": "5", "uploadedDate": "2026-10-13T04:34:45-07:00", "expirationDate": "2027-01-11T03:34:45-08:00", "expired": false, "processingState": "VALID"}
+   {"version": "4", "uploadedDate": "2026-10-12T20:17:59-07:00", "expirationDate": "2027-01-10T19:17:59-08:00", "expired": false, "processingState": "VALID"}
+GET /v1/apps/6822129536/betaGroups -> 200
+   93dc08e3-d600-4606-9508-2a37d56c0225 {"name": "Prototype internal", "isInternalGroup": true, "hasAccessToAllBuilds": true, "publicLinkEnabled": null}
+     tester {"email": "rawley.stanhope@gmail.com", "state": "INSTALLED", "inviteType": "EMAIL"}
