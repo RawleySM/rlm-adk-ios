@@ -10,15 +10,15 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from pipecat.frames.frames import (  # noqa: E402
+from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
     InputAudioRawFrame,
     VADUserStartedSpeakingFrame,
     VADUserStoppedSpeakingFrame,
 )
 
-from talk.backchannel import BackchannelAwareStartStrategy  # noqa: E402
-from talk.config import TalkConfig  # noqa: E402
+from talk.backchannel import BackchannelAwareStartStrategy
+from talk.config import TalkConfig
 
 
 class RecordingStrategy(BackchannelAwareStartStrategy):
@@ -26,7 +26,7 @@ class RecordingStrategy(BackchannelAwareStartStrategy):
         super().__init__(cfg)
         self.triggered_at: list[float] = []
 
-    async def trigger_user_turn_started(self, **kwargs):  # noqa: D401 - test seam
+    async def trigger_user_turn_started(self, **kwargs):
         self.triggered_at.append(time.time())
 
 

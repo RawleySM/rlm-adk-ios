@@ -60,6 +60,11 @@ class TalkConfig:
     # and >= 30 % of the utterance peak) cuts the bot at once instead of waiting for the VAD stop.
     barge_in_voiced_window_s: float = 0.3
     barge_in_min_rms: float = 60.0
+    # While the bot speaks (and for double_talk_hold_s after), a loud frame (int16 RMS >= double_talk_min_rms)
+    # with a Silero score >= double_talk_min_confidence counts as speech; see talk/vad.py for the evidence.
+    double_talk_min_confidence: float = 0.3
+    double_talk_min_rms: float = 600.0
+    double_talk_hold_s: float = 1.0
     # Words that mean "stop and wait": they interrupt the bot and are never answered as a turn.
     # Words that resume an interrupted reading; handled by the floor without the LLM.
     continue_phrases: list[str] = field(default_factory=lambda: ["continue", "go on", "keep going", "keep reading", "carry on", "resume", "pick up where you stopped", "where you stopped", "where you left off", "finish the reading"])
