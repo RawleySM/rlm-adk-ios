@@ -58,12 +58,13 @@ struct PortalView: View {
                     .accessibilityValue("Voice: \(model.activeTalkTransport?.label ?? "-") \(model.talkState.label)")
                 if model.botSpeaking || model.botAudible { Image(systemName: "speaker.wave.2").font(.caption) }
                 Spacer(minLength: 4)
-                Button(model.mode.isPraying ? "End prayer" : "Begin prayer") { model.dismissKeyboard(); model.mode.isPraying ? model.endPrayer() : model.beginPrayer() }
-                    .buttonStyle(.borderedProminent).tint(.purple).controlSize(.small).accessibilityIdentifier("prayerButton")
-                    .disabled(model.bug.silencesOutput)
-                Button(model.mode.quiet ? "Wake" : "Quiet") { model.dismissKeyboard(); model.mode.quiet ? model.wake() : model.enterQuiet() }
-                    .buttonStyle(.borderedProminent).tint(model.mode.quiet ? .orange : .gray).controlSize(.small).accessibilityIdentifier("quietButton")
-                    .disabled(model.bug.silencesOutput)
+                if !model.bug.silencesOutput {
+                    // Hidden while a bug report is open: the floor returns to its mode when the report ends.
+                    Button(model.mode.isPraying ? "End prayer" : "Begin prayer") { model.dismissKeyboard(); model.mode.isPraying ? model.endPrayer() : model.beginPrayer() }
+                        .buttonStyle(.borderedProminent).tint(.purple).controlSize(.small).accessibilityIdentifier("prayerButton")
+                    Button(model.mode.quiet ? "Wake" : "Quiet") { model.dismissKeyboard(); model.mode.quiet ? model.wake() : model.enterQuiet() }
+                        .buttonStyle(.borderedProminent).tint(model.mode.quiet ? .orange : .gray).controlSize(.small).accessibilityIdentifier("quietButton")
+                }
                 Button { model.dismissKeyboard(); model.stopOutput() } label: { Image(systemName: "stop.fill") }
                     .buttonStyle(.bordered).controlSize(.small).accessibilityLabel("Stop")
             }
@@ -162,6 +163,9 @@ struct PortalView: View {
         }
         .buttonStyle(.borderedProminent)
         .tint(model.bug.silencesOutput ? .red : Color(.systemGray2))
+        // "Bug Reporting..." is shown whole; the text field gives up the width.
+        .fixedSize(horizontal: true, vertical: false)
+        .layoutPriority(1)
         .disabled(model.bug.phase == .filing || model.mode.isPraying)
         .accessibilityIdentifier("bugButton")
         .accessibilityValue(model.bug.outcome ?? model.bug.chipLabel)
@@ -207,7 +211,7 @@ struct PortalView: View {
             bugChip
             if model.bug.phase == .reporting {
                 Button { model.cancelBugReport() } label: { Image(systemName: "xmark") }
-                    .buttonStyle(.bordered).tint(.red)
+                    .buttonStyle(.bordered).tint(.red).controlSize(.small)
                     .accessibilityLabel("Cancel bug report")
                     .accessibilityIdentifier("bugCancelButton")
             }
