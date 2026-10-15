@@ -109,6 +109,7 @@ struct PortalView: View {
         }
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(.secondarySystemBackground)))
         .scrollDismissesKeyboard(.interactively)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("conversationPane")
     }
 

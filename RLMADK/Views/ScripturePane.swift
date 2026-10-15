@@ -41,6 +41,8 @@ struct ScripturePaneView: View {
         .background(ScriptureTheme.background)
         .clipShape(RoundedRectangle(cornerRadius: readMode ? 0 : 16, style: .continuous))
         .environment(\.colorScheme, .dark)
+        // A container keeps its children's own identifiers (passagePill, readButton, ...).
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scripturePane")
     }
 
@@ -334,6 +336,7 @@ struct ScriptureNavigator: View {
         .onAppear {
             if let code = model.passage?.book, let b = BibleBook.byCode[code] { newTestament = b.newTestament }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("passageNavigator")
     }
 

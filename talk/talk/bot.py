@@ -257,6 +257,15 @@ if _runner_app is not None:
         await fl.broadcast_interruption()
         return {"session_id": session_id, "interrupted": True}
 
+    @_runner_app.post("/admin/sessions/{session_id}/passage")
+    async def admin_session_passage(session_id: str, body: dict[str, Any]) -> dict[str, Any]:
+        """Open a passage in that session's scripture pane, as if chosen on the phone (testing, automation)."""
+        fl = LIVE_FLOORS.get(session_id)
+        if fl is None:
+            return {"error": "no such session", "sessions": list(LIVE_FLOORS)}
+        ok = await fl.select_passage(str(body.get("reference") or ""), "admin")
+        return {"session_id": session_id, "opened": ok, "reference": fl.reading_state.get("reference")}
+
     @_runner_app.post("/admin/sessions/{session_id}/mode")
     async def admin_session_mode(session_id: str, body: dict[str, Any]) -> dict[str, Any]:
         fl = LIVE_FLOORS.get(session_id)
