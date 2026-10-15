@@ -8,6 +8,10 @@ binary frames (``0x01`` + int16 LE 16 kHz mono, 20 ms each). On ``client_text`` 
 scripted bot turn: RTVI ``user-transcription``, ``bot-started-speaking``, ``bot-transcription``,
 0.4 s of 24 kHz tone as tagged binary frames, ``bot-tts-text``, ``bot-stopped-speaking``. On
 ``client_mode`` it echoes the floor change as the real server does (``reason`` = ``client:<reason>``).
+The scripture pane: ``client_passage`` answers with a ``passage`` event (Psalm 23 of the World
+English Bible, whatever was asked), ``client_read`` ``play`` reads it from where it stopped with the
+real server's ``reading`` events (started, verse, verse_done every 2.6 s, finished) and ``pause``
+pauses it.
 
 ``GET /log`` returns everything recorded, for the CI assertions. Not the real pipeline: no STT,
 LLM or TTS; this proves the app's wire protocol and its silence keepalive only.
@@ -33,6 +37,15 @@ LOG: dict = {"started": time.time(), "starts": [], "connections": 0, "text": [],
              "binary_sizes": {}, "bad_tags": 0, "first_binary_t": None, "last_binary_t": None, "bot_turns": 0}
 LOCK = threading.Lock()
 FLOOR = {"mode": "available"}
+PSALM_23 = [
+    "Yahweh is my shepherd; I shall lack nothing.",
+    "He makes me lie down in green pastures. He leads me beside still waters.",
+    "He restores my soul. He guides me in the paths of righteousness for his name\u2019s sake.",
+    "Even though I walk through the valley of the shadow of death, I will fear no evil, for you are with me. Your rod and your staff, they comfort me.",
+    "You prepare a table before me in the presence of my enemies. You anoint my head with oil. My cup runs over.",
+    "Surely goodness and loving kindness shall follow me all the days of my life, and I will dwell in Yahweh\u2019s house forever.",
+]
+PANE = {"spoken": 0, "reading": 0}
 
 
 def tone_frames(seconds: float = 0.4, rate: int = 24000, frame_ms: int = 20) -> list[bytes]:
@@ -169,6 +182,36 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json({"type": "mode", "mode": mode, "from": previous, "reason": f"client:{message.get('reason', 'request')}", "t": time.time()})
         elif kind == "client_text":
             threading.Thread(target=self._bot_turn, args=(str(message.get("text", "")),), daemon=True).start()
+        elif kind == "client_passage":
+            PANE["reading"] += 1  # a selection pauses any reading
+            PANE["spoken"] = 0
+            self._send_json({"type": "passage", "reference": "Psalm 23", "title": "Psalm 23 (World English Bible)", "edition": "World English Bible", "book": "PSA", "chapter": 23,
+                             "verses": [{"verse": i + 1, "text": t, "osis": f"Ps.23.{i + 1}"} for i, t in enumerate(PSALM_23)], "spoken_count": 0, "source": "client"})
+        elif kind == "client_read":
+            if message.get("action") == "pause":
+                PANE["reading"] += 1
+                self._send_json({"type": "reading", "state": "paused", "reference": "Psalm 23", "spoken_count": PANE["spoken"]})
+            else:
+                PANE["reading"] += 1
+                threading.Thread(target=self._read, args=(PANE["reading"],), daemon=True).start()
+
+    def _read(self, token: int) -> None:
+        """Reads the fixture psalm from where it stopped, one verse every 2.6 s, as the real server reports it."""
+        start = PANE["spoken"] if 0 < PANE["spoken"] < len(PSALM_23) else 0
+        self._send_json({"type": "reading", "state": "started", "reference": "Psalm 23", "from_index": start, "from_verse": start + 1, "spoken_count": start})
+        rtvi = lambda kind: {"label": "rtvi-ai", "type": kind}  # noqa: E731
+        for i in range(start, len(PSALM_23)):
+            if PANE["reading"] != token:
+                return
+            self._send_json(rtvi("bot-started-speaking"))
+            self._send_json({"type": "reading", "state": "verse", "reference": "Psalm 23", "verse": i + 1, "index": i, "spoken_count": i})
+            time.sleep(2.6)
+            if PANE["reading"] != token:
+                return
+            PANE["spoken"] = i + 1
+            self._send_json({"type": "reading", "state": "verse_done", "reference": "Psalm 23", "verse": i + 1, "index": i, "spoken_count": i + 1, "duration_s": 2.6})
+            self._send_json(rtvi("bot-stopped-speaking"))
+        self._send_json({"type": "reading", "state": "finished", "reference": "Psalm 23", "spoken_count": len(PSALM_23)})
 
     def _bot_turn(self, heard: str) -> None:
         rtvi = lambda kind, data=None: {"label": "rtvi-ai", "type": kind, **({"data": data} if data is not None else {})}  # noqa: E731

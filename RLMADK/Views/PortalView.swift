@@ -3,22 +3,25 @@ import SwiftUI
 struct PortalView: View {
     @EnvironmentObject var model: PortalModel
     @State private var showCitation: CitationDetail?
+    @State private var readMode = ProcessInfo.processInfo.environment["RLMADK_CI_READ_MODE"] == "1"
+    @State private var showDevotional = false
     @FocusState private var typedFocused: Bool
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+            GeometryReader { geo in
+                VStack(spacing: 8) {
                     statusHeader
-                    modeControls
-                    devotionalCard
-                    conversationCard
+                    // Scripture front and centre; the conversation below it.
+                    ScripturePaneView(readMode: false) { typedFocused = false; readMode = true }
+                        .frame(height: max(260, geo.size.height * (typedFocused ? 0.42 : 0.6)))
+                    conversationPane
                     typedInput
                 }
-                .padding()
+                .padding(.horizontal, 10)
+                .padding(.bottom, 6)
             }
-            .scrollDismissesKeyboard(.interactively)
-            .navigationTitle("Voice Portal")
+            .toolbar(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
@@ -31,68 +34,86 @@ struct PortalView: View {
             .sheet(item: Binding(get: { showCitation.map { IdentifiedCitation(detail: $0) } }, set: { showCitation = $0?.detail })) { item in
                 CitationSheet(detail: item.detail)
             }
+            .fullScreenCover(isPresented: $readMode) {
+                ScripturePaneView(readMode: true) { readMode = false }
+                    .environmentObject(model)
+                    .background(ScriptureTheme.background.ignoresSafeArea())
+                    .statusBarHidden(true)
+            }
         }
     }
 
+    /// One compact strip: connection, capture and voice status, the mode, and the floor buttons.
     private var statusHeader: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Circle().fill(model.connection.isConnected ? .green : .red).frame(width: 10, height: 10)
-                Text(model.connection.label).font(.caption)
-                Spacer()
-                Circle().fill(model.audioState == .running ? .red : .gray).frame(width: 10, height: 10)
-                Text(PortalModel.skipPermissionPrompts ? "Capture not requested (fixture mode)" : model.audioState.label).font(.caption)
-            }
-            HStack {
-                Circle().fill(model.talkState.isUp ? .green : .orange).frame(width: 10, height: 10)
-                Text("Voice: \(model.activeTalkTransport?.label ?? "-") \(model.talkState.label)").font(.caption)
+            HStack(spacing: 8) {
+                Circle().fill(model.connection.isConnected ? .green : .red).frame(width: 8, height: 8)
+                    .accessibilityLabel(model.connection.label)
+                Circle().fill(model.audioState == .running ? .red : .gray).frame(width: 8, height: 8)
+                    .accessibilityLabel(PortalModel.skipPermissionPrompts ? "Capture not requested (fixture mode)" : model.audioState.label)
+                Circle().fill(model.talkState.isUp ? .green : .orange).frame(width: 8, height: 8)
+                Text(model.mode.label).font(.subheadline.weight(.semibold)).lineLimit(1)
                     .accessibilityIdentifier("talkStatus")
-                Spacer()
-            }
-            HStack {
-                Text("Mode: \(model.mode.label)").font(.headline)
-                Spacer()
-                if model.botSpeaking || model.botAudible { Label("Speaking", systemImage: "speaker.wave.2").font(.caption) }
-            }
-            Text(model.recognizerAvailability.label).font(.caption2).foregroundStyle(model.recognizerAvailability.usable ? Color.secondary : Color.orange)
-        }
-        .accessibilityIdentifier("statusHeader")
-    }
-
-    private var modeControls: some View {
-        VStack(spacing: 8) {
-            HStack {
+                    .accessibilityValue("Voice: \(model.activeTalkTransport?.label ?? "-") \(model.talkState.label)")
+                if model.botSpeaking || model.botAudible { Image(systemName: "speaker.wave.2").font(.caption) }
+                Spacer(minLength: 4)
                 Button(model.mode.isPraying ? "End prayer" : "Begin prayer") { model.dismissKeyboard(); model.mode.isPraying ? model.endPrayer() : model.beginPrayer() }
-                    .buttonStyle(.borderedProminent).tint(.purple).accessibilityIdentifier("prayerButton")
+                    .buttonStyle(.borderedProminent).tint(.purple).controlSize(.small).accessibilityIdentifier("prayerButton")
                 Button(model.mode.quiet ? "Wake" : "Quiet") { model.dismissKeyboard(); model.mode.quiet ? model.wake() : model.enterQuiet() }
-                    .buttonStyle(.borderedProminent).tint(model.mode.quiet ? .orange : .gray).accessibilityIdentifier("quietButton")
-                Button("Stop") { model.dismissKeyboard(); model.stopOutput() }.buttonStyle(.bordered)
-            }
-            HStack {
-                Button { model.beginListening() } label: { Label("Listen", systemImage: "mic.fill") }
-                    .buttonStyle(.borderedProminent).disabled(model.mode.isPraying)
-                if !model.partialTranscript.isEmpty { Text(model.partialTranscript).font(.caption).italic().lineLimit(2) }
-                Spacer()
+                    .buttonStyle(.borderedProminent).tint(model.mode.quiet ? .orange : .gray).controlSize(.small).accessibilityIdentifier("quietButton")
+                Button { model.dismissKeyboard(); model.stopOutput() } label: { Image(systemName: "stop.fill") }
+                    .buttonStyle(.bordered).controlSize(.small).accessibilityLabel("Stop")
             }
             if model.mode.isPraying {
                 Text("Prayer is addressed to God. Long pauses never end it; say amen and pause, or tap End prayer.")
-                    .font(.caption).foregroundStyle(.purple)
+                    .font(.caption2).foregroundStyle(.purple)
             }
             if model.mode.quiet {
                 Text("Quiet: no spoken output until you wake the portal. Recording and backend work continue.")
-                    .font(.caption).foregroundStyle(.orange)
+                    .font(.caption2).foregroundStyle(.orange)
             }
             if let warning = model.captureWarning {
-                Text(warning).font(.caption).foregroundStyle(.red).accessibilityIdentifier("captureWarning")
+                Text(warning).font(.caption2).foregroundStyle(.red).accessibilityIdentifier("captureWarning")
             }
             if let err = model.lastJournalError {
                 Text("Prayer text journal: \(err)").font(.caption2).foregroundStyle(.red)
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("statusHeader")
+    }
+
+    /// The conversation under the scripture: what was said and heard, the reply, and the devotional.
+    private var conversationPane: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 6) {
+                if !model.partialTranscript.isEmpty {
+                    Text(model.partialTranscript).font(.caption).italic().foregroundStyle(.secondary)
+                }
+                if !model.lastTranscript.isEmpty {
+                    Text("You: \(model.lastTranscript)").font(.callout.weight(.medium))
+                }
+                if !model.serverHeard.isEmpty {
+                    Text("Heard: \(model.serverHeard)").font(.caption2).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("serverHeard")
+                }
+                Text(model.assistantText.isEmpty ? "—" : model.assistantText).font(.body)
+                    .accessibilityIdentifier("assistantText")
+                if let err = model.lastError { Text(err).font(.caption2).foregroundStyle(.red) }
+                DisclosureGroup("Devotional", isExpanded: $showDevotional) { devotionalCard }
+                    .font(.caption)
+                    .padding(.top, 6)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(10)
+        }
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(.secondarySystemBackground)))
+        .scrollDismissesKeyboard(.interactively)
+        .accessibilityIdentifier("conversationPane")
     }
 
     private var devotionalCard: some View {
-        GroupBox("Devotional") {
+        VStack(alignment: .leading) {
             if let d = model.devotional, d.available {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(d.title ?? d.passage).font(.subheadline.bold())
@@ -121,24 +142,12 @@ struct PortalView: View {
         }
     }
 
-    private var conversationCard: some View {
-        GroupBox("Conversation") {
-            VStack(alignment: .leading, spacing: 6) {
-                if !model.lastTranscript.isEmpty { Text("You: \(model.lastTranscript)").font(.caption) }
-                if !model.serverHeard.isEmpty {
-                    Text("Heard: \(model.serverHeard)").font(.caption2).foregroundStyle(.secondary)
-                        .accessibilityIdentifier("serverHeard")
-                }
-                Text(model.assistantText.isEmpty ? "—" : model.assistantText).font(.body)
-                    .accessibilityIdentifier("assistantText")
-                if let err = model.lastError { Text(err).font(.caption2).foregroundStyle(.red) }
-            }
-        }
-    }
-
     private var typedInput: some View {
-        HStack {
-            TextField("Typed input (not live voice)", text: $model.typedInput)
+        HStack(spacing: 8) {
+            Button { model.beginListening() } label: { Image(systemName: "mic.fill") }
+                .buttonStyle(.borderedProminent).disabled(model.mode.isPraying)
+                .accessibilityLabel("Listen")
+            TextField("Ask, or type a request", text: $model.typedInput)
                 .textFieldStyle(.roundedBorder)
                 .focused($typedFocused)
                 .submitLabel(.send)

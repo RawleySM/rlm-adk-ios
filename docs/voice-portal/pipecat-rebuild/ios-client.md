@@ -25,6 +25,37 @@ Deleted: `Audio/Speaker.swift`, `Model/PhraseQueue.swift` and its tests, the red
 (`finalTranscript`, `assistantDelta/Done/Cancelled`, `startTurn`, `sendCancel`), the `Citation`
 model of `assistant_done`. Forward only; no compatibility path.
 
+## Portal page (build 15): scripture front and centre
+
+The Voice Portal tab is laid out around a Logos-style scripture pane (`RLMADK/Views/ScripturePane.swift`):
+
+* **Status strip** on top: backend, capture and voice dots, the mode, and the floor buttons
+  (`prayerButton` "Begin prayer"/"End prayer", `quietButton`, Stop). Device scripts depend on those
+  identifiers and labels.
+* **Scripture pane** (about 60 % of the height): a dark reading surface with justified, hyphenated
+  serif paragraphs (the World English Bible carries no paragraph marks; a paragraph closes at a
+  sentence end after about 420 characters), small blue superscript verse numbers, the reference as a
+  heading and the edition under it. The top bar holds the previous/next chapter arrows, the
+  reference pill (opens the navigator), text size, the speaker button (Read / Pause) and read mode.
+* **Navigator**: expands from the pill, Logos style: Old/New Testament tabs, a grid of book
+  abbreviations tinted by genre, then a chapter grid; one-chapter books open directly; a reference
+  field takes anything the skill service parses ("John 3:16").
+* **Read mode**: the pane full screen, text 3 points larger, status bar hidden.
+* **Shading**: while a reading plays, text not yet reached is dimmed, verses heard are full
+  ink, and the verse being spoken brightens word by word in a warm reading colour, timed from the
+  server's `verse` / `verse_done` events and the speaking rate calibrated from each finished verse.
+  After a pause the unheard text stays slightly dimmed to show where it stopped. The pane scrolls to
+  the verse being read unless the reader scrolled in the last 6 s.
+* **Conversation pane** below: partial transcript, what was said and heard, the reply, errors, and
+  the devotional (collapsed). The input row holds Listen, the typed field and Send.
+
+State: the talk tier owns the open passage (`passage` events); the app keeps the last reference in
+UserDefaults (`panePassage`) and re-opens it on every reconnect (`client_passage`, reason `sync`).
+With the talk tier down, a selection loads the text from the backend's `/tools/scripture` for
+display only. CI (`cloud-mac.yml`) drives the pane against `scripts/ci_fake_talk.py`, which answers
+with Psalm 23 and timed reading events, and uploads `simulator-reading.png`,
+`simulator-navigator.png` and `simulator-read-mode.png`.
+
 ## Components
 
 | File | Role |

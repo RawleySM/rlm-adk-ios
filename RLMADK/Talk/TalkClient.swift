@@ -52,6 +52,12 @@ enum TalkEvent: Equatable {
     case floorMode(mode: String, from: String?, reason: String?)
     /// Transcript text heard while praying (never sent to the LLM).
     case prayerText(text: String, final: Bool)
+    /// The passage open in the scripture pane changed (`{"type":"passage",...}`).
+    case passage(ScripturePassage)
+    /// A requested passage could not be opened (`{"type":"passage_error",...}`).
+    case passageError(reference: String, reason: String)
+    /// Reading progress of the open passage (`{"type":"reading",...}`).
+    case reading(ReadingEvent)
     case error(String)
 }
 
@@ -60,6 +66,10 @@ enum TalkClientMessage: Equatable {
     case clientMode(ClientFloorMode, reason: String)
     case clientText(String)
     case clientEvent(name: String, detail: [String: String])
+    /// Open a passage in the scripture pane ("Romans 12"); pauses any reading.
+    case clientPassage(reference: String, reason: String)
+    /// The pane's Read / Pause: "play", "pause" or "restart".
+    case clientRead(action: String)
 
     /// The `type` value on the wire (WebSocket) and the RTVI client-message `t` (WebRTC).
     var type: String {
@@ -67,6 +77,8 @@ enum TalkClientMessage: Equatable {
         case .clientMode: return "client_mode"
         case .clientText: return "client_text"
         case .clientEvent: return "client_event"
+        case .clientPassage: return "client_passage"
+        case .clientRead: return "client_read"
         }
     }
 
@@ -76,6 +88,8 @@ enum TalkClientMessage: Equatable {
         case .clientMode(let mode, let reason): return ["mode": mode.rawValue, "reason": reason]
         case .clientText(let text): return ["text": text]
         case .clientEvent(let name, let detail): return detail.merging(["event": name]) { _, new in new }
+        case .clientPassage(let reference, let reason): return ["reference": reference, "reason": reason]
+        case .clientRead(let action): return ["action": action]
         }
     }
 
@@ -180,6 +194,12 @@ enum TalkMessageParser {
         case "prayer_text":
             guard let text = message["text"] as? String else { return [] }
             return [.prayerText(text: text, final: message["final"] as? Bool ?? true)]
+        case "passage":
+            return ScripturePassage(message: message).map { [.passage($0)] } ?? []
+        case "passage_error":
+            return [.passageError(reference: message["reference"] as? String ?? "", reason: message["reason"] as? String ?? "unavailable")]
+        case "reading":
+            return ReadingEvent(message: message).map { [.reading($0)] } ?? []
         default:
             return []
         }
