@@ -48,6 +48,10 @@ final class PortalModel: ObservableObject {
     @Published private(set) var reading = ReadingProgress()
     /// A passage requested from the pane and not yet answered by the server.
     @Published private(set) var passageRequested: String?
+    /// The Bug chip's report (BugReport.swift); while it is open the phone keeps bot speech silent.
+    @Published private(set) var bug = BugReportState() {
+        didSet { if bug.silencesOutput != oldValue.silencesOutput { talk?.voice.gateOpen = speechGateOpen } }
+    }
     @Published var scriptureFontSize: Double = UserDefaults.standard.object(forKey: "scriptureFontSize") as? Double ?? 21 {
         didSet { UserDefaults.standard.set(scriptureFontSize, forKey: "scriptureFontSize") }
     }
@@ -228,7 +232,7 @@ final class PortalModel: ObservableObject {
             mode = next
             store.saveMode(mode)
             // The gate is evaluated on every mode change, before any effect runs.
-            talk?.voice.gateOpen = SpeechGate.mayEnqueue(mode)
+            talk?.voice.gateOpen = speechGateOpen
             if modeChanged { sendSnapshot(reason: "mode") }
         }
         for effect in effects { perform(effect) }
@@ -248,6 +252,9 @@ final class PortalModel: ObservableObject {
             logLine("prayer ended; capture settling (saved only once the writer reports its segments); waiting for the user")
         }
     }
+
+    /// The phone's speech gate: the mode's rule (quiet, prayer) and an open bug report.
+    private var speechGateOpen: Bool { SpeechGate.mayEnqueue(mode) && !bug.silencesOutput }
 
     private func sendClientMode(_ floorMode: ClientFloorMode, reason: String) {
         lastClientModeSent = floorMode
@@ -430,6 +437,8 @@ final class PortalModel: ObservableObject {
     private func partial(_ text: String) {
         partialTranscript = text
         endpoint.speech()
+        // Reporting a bug: words are the report's; no address or phrase acts on them.
+        if bug.silencesOutput { return }
         act(on: floor.observe(text: text, final: false, praying: mode.isPraying, at: floorClock()), text: text)
         trackPrayerPartial(text)
     }
@@ -506,6 +515,11 @@ final class PortalModel: ObservableObject {
             }
             return
         }
+        if bug.silencesOutput {
+            // Kept beside the server's transcript and sent with the report; never a command.
+            bug.deviceLines.append(cleaned)
+            return
+        }
         if mode.isPraying {
             if addressFinalPending, let captureId = mode.prayerCaptureId, policy.address(startOf: cleaned) != nil {
                 // The utterance that opened this prayer by address ended before it could be adopted.
@@ -543,6 +557,15 @@ final class PortalModel: ObservableObject {
         logLine("final (typed): \(text)")
         if mode.isPraying {
             logLine("typed input not sent during prayer")
+            return
+        }
+        if bug.silencesOutput {
+            // Typed while reporting: the talk tier adds it to the report; it is never a turn.
+            guard let talk else {
+                bug.lines.append(text)
+                return
+            }
+            talk.send(.clientText(text))
             return
         }
         if handleVoiceCommand(text) { return }
@@ -602,6 +625,63 @@ final class PortalModel: ObservableObject {
                 }
             }
         }
+    }
+
+    // MARK: bug chip
+
+    /// The Bug chip's tap: opens a report, or files the open one.
+    func toggleBugReport() {
+        switch bug.phase {
+        case .reporting:
+            finishBugReport()
+        case .filing:
+            break
+        default:
+            startBugReport()
+        }
+    }
+
+    func startBugReport() {
+        guard !mode.isPraying else {
+            lastError = "End the prayer before reporting a bug."
+            return
+        }
+        bug.begin()
+        talk?.voice.stop()
+        devotionalInterrupted(reason: "bug report")
+        logLine("bug report started")
+        guard let talk else {
+            bug.phase = .failed
+            bug.detail = "the talk server is not connected"
+            return
+        }
+        talk.send(.clientBug(action: "start", context: bugContext, deviceLines: []))
+    }
+
+    func finishBugReport() {
+        guard bug.phase == .reporting else { return }
+        bug.phase = .filing
+        logLine("bug report stopped (\(bug.lines.count) lines heard, \(bug.deviceLines.count) on the phone); filing")
+        talk?.send(.clientBug(action: "stop", context: bugContext, deviceLines: bug.deviceLines))
+    }
+
+    func cancelBugReport() {
+        guard bug.silencesOutput else { return }
+        talk?.send(.clientBug(action: "cancel", context: [:], deviceLines: []))
+        bug = BugReportState()
+        logLine("bug report cancelled")
+    }
+
+    /// Clears a filed (or failed) report's card.
+    func dismissBugOutcome() {
+        guard !bug.silencesOutput else { return }
+        bug = BugReportState()
+    }
+
+    /// The phone's facts a report carries (flat strings for both transports).
+    private var bugContext: [String: String] {
+        ["client": "ios", "app_build": PortalModel.appBuild, "install_id": installId,
+         "transport": activeTalkTransport?.rawValue ?? "none", "audio_route": audio.sessionDescription]
     }
 
     /// Stop: silences the bot now (and the rest of its current turn) and tells the server.
@@ -937,7 +1017,8 @@ final class PortalModel: ObservableObject {
             voice_output: talk?.voice.statusLine,
             webrtc_spike: webrtcSpike,
             policy_source: policySource,
-            audio_tuning: AudioTuning.current.description
+            audio_tuning: AudioTuning.current.description,
+            bug_report: "\(bug.phase) lines \(bug.lines.count) device \(bug.deviceLines.count)\(bug.ticketId.map { " \($0)" } ?? "")\(bug.outcome.map { " — \($0)" } ?? "")"
         )
     }
 
@@ -1006,6 +1087,20 @@ final class PortalModel: ObservableObject {
             Task { await captureAndPostImage(commandId: command.command_id) }
         case .sync_manifest:
             Task { await postManifest(commandId: command.command_id) }
+        case .bug_report:
+            let action = command.args?["action"]?.stringValue ?? ""
+            switch action {
+            case "start": startBugReport()
+            case "stop": finishBugReport()
+            case "cancel": cancelBugReport()
+            case "text":
+                typedInput = command.args?["text"]?.stringValue ?? ""
+                submitTyped()
+            default:
+                report(CommandResult(commandId: command.command_id, status: .failed, detail: ["reason": "action must be start, stop, cancel or text"]))
+                return
+            }
+            report(CommandResult(commandId: command.command_id, status: .applied, detail: ["action": action, "phase": "\(bug.phase)", "lines": "\(bug.lines.count)"]))
         case .sync_prayer_asr:
             let pending = asrJournals.values.reduce(0) { $0 + $1.unsynced.count }
             syncPrayerASR()
@@ -1273,7 +1368,7 @@ final class PortalModel: ObservableObject {
         made.onState = { [weak self] state in self?.talkStateChanged(state) }
         made.onLog = { [weak self] line in self?.logLine(line) }
         made.voice.onPlayingChange = { [weak self] playing in Task { @MainActor in self?.botAudible = playing } }
-        made.voice.gateOpen = SpeechGate.mayEnqueue(mode)
+        made.voice.gateOpen = speechGateOpen
         talk = made
         activeTalkTransport = kind
         talkState = made.state
@@ -1319,6 +1414,18 @@ final class PortalModel: ObservableObject {
                 talk?.send(.clientPassage(reference: reference, reason: "sync"))
             }
             if activeTalkTransport == .webrtc { startSpikeMonitor() }
+            if let ciBug = ProcessInfo.processInfo.environment["RLMADK_CI_BUG"], !ciDemoDone {
+                // CI screenshots of the Bug chip: a report open with the fixture's lines ("reporting"),
+                // or opened and filed ("filed").
+                ciDemoDone = true
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    startBugReport()
+                    guard ciBug == "filed" else { return }
+                    try? await Task.sleep(nanoseconds: 3_500_000_000)
+                    finishBugReport()
+                }
+            }
             if ProcessInfo.processInfo.environment["RLMADK_CI_DEMO"] == "1", !ciDemoDone {
                 // CI demo: a typed turn against the fixture talk server so the screenshot shows a reply.
                 ciDemoDone = true
@@ -1334,6 +1441,7 @@ final class PortalModel: ObservableObject {
             }
         } else {
             botSpeaking = false
+            bug.connectionLost()
             if activeTalkTransport == .webrtc { spikeNotDeliveringSince = nil }
         }
         sendSnapshot(reason: "talk")
@@ -1388,6 +1496,13 @@ final class PortalModel: ObservableObject {
             passageRequested = nil
             lastError = "Could not open \(reference): \(reason)"
             logLine("pane: \(reference) unavailable: \(reason)")
+        case .bugReport(let event):
+            bug.apply(event)
+            logLine("bug report \(event.state)\(event.ticketId.map { " \($0)" } ?? "")\(event.title.map { ": \($0)" } ?? "")\(event.error.map { " (\($0))" } ?? "")")
+            if event.state == "filed" || event.state == "spooled" || event.state == "triaged" { sendSnapshot(reason: "bug") }
+        case .bugText(let text, let final):
+            bug.heard(text, final: final)
+            if final { serverHeard = text }
         case .reading(let event):
             if event.reference == nil || event.reference == passage?.reference {
                 let verses = passage?.verses ?? []

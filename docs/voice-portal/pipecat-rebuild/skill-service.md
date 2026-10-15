@@ -19,8 +19,8 @@ RPC barrier in `live-voice-stack-alternatives.md`); the phone and the voicesim h
 - Nothing is invented: Scripture is the retained World English Bible text verbatim; teacher excerpts
   are verbatim spans of cited chunks; traditions come only from an explicit map; register reports say
   "none recorded" for empty arrays.
-- Only `POST /tools/work` writes anything outside the portal's own SQLite, and only through the
-  existing outbox (`allocatorctl inbox post`). The prayer store and the register are opened
+- Only `POST /tools/work` (through the existing outbox, `allocatorctl inbox post`) and `POST /issues`
+  (the intake issues log) write anything outside the portal's own SQLite. The prayer store and the register are opened
   read-only; nothing is written to the production prayer store.
 
 ## Endpoints
@@ -143,6 +143,17 @@ repeat with the same `operation_id` never posts twice). Returns `accepted`, `ope
 - `delivery_unknown`: "Operation <short id> was sent, but delivery is not confirmed. It is not done."
 
 Completion is never claimed; results arrive later through the existing `/work/<id>` artifacts.
+
+### `POST /issues`, `GET /issues`, `GET /issues/<ticket_id>`
+
+The intake issues log (`issues.py`, format in [intake-issues-log.md](intake-issues-log.md)). The
+talk tier posts a Bug chip report `{report_id, transcript {segments, device_segments, asr},
+started_at, ended_at, ended_by, source, context}`; the service appends a `reported` event at once
+(`201 {ticket_id, report_id, created, title, triage_state: "pending", log}`; a repeated `report_id`
+answers `200` with `created: false` and writes nothing) and triages it on a background thread (one
+strict-JSON reasoning call, keyword rules on failure), appending a `triaged` event. `GET /issues`
+lists tickets newest first (`status`, `limit`); `GET /issues/<id>` returns the folded ticket. The log
+is the one write this service makes outside its own SQLite besides the work outbox.
 
 ### `GET /policy`
 

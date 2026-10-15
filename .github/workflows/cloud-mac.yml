@@ -164,6 +164,19 @@ jobs:
             sleep 8
             xcrun simctl io "$UDID" screenshot "simulator-$(echo $view | tr 'A-Z_' 'a-z-').png"
           done
+          # The Bug chip: a report open with two transcribed lines, then one opened and filed.
+          for bug in reporting filed; do
+            xcrun simctl terminate "$UDID" com.rawleystanhope.rlmadk || true
+            SIMCTL_CHILD_RLMADK_CI_BUG=$bug SIMCTL_CHILD_RLMADK_BACKEND_URL=http://127.0.0.1:8765 SIMCTL_CHILD_RLMADK_TALK_URL=http://127.0.0.1:7860 SIMCTL_CHILD_RLMADK_SKIP_PERMISSION_PROMPTS=1 \
+              xcrun simctl launch "$UDID" com.rawleystanhope.rlmadk
+            sleep 9
+            xcrun simctl io "$UDID" screenshot "simulator-bug-$bug.png"
+          done
+          curl -s http://127.0.0.1:7860/log | python3 -c '
+          import json, sys
+          actions = [m["message"].get("action") for m in json.load(sys.stdin)["text"] if m["message"].get("type") == "client_bug"]
+          if "start" not in actions or "stop" not in actions: raise SystemExit(f"BUG CHIP PROBLEM: client_bug actions {actions}")
+          print("bug chip sent", actions)'
           for tab in work diagnostics; do
             xcrun simctl terminate "$UDID" com.rawleystanhope.rlmadk || true
             SIMCTL_CHILD_RLMADK_BACKEND_URL=http://127.0.0.1:8765 SIMCTL_CHILD_RLMADK_TALK_URL=http://127.0.0.1:7860 SIMCTL_CHILD_RLMADK_START_TAB=$tab SIMCTL_CHILD_RLMADK_SKIP_PERMISSION_PROMPTS=1 \
@@ -188,6 +201,8 @@ jobs:
             simulator-reading.png
             simulator-navigator.png
             simulator-read-mode.png
+            simulator-bug-reporting.png
+            simulator-bug-filed.png
             simulator-after-turn.png
             simulator-work.png
             simulator-diagnostics.png

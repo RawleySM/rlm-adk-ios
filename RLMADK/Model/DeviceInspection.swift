@@ -44,6 +44,8 @@ struct DeviceSnapshot: Codable, Equatable {
     var webrtc_spike: String? = nil
     var policy_source: String? = nil
     var audio_tuning: String? = nil
+    /// The Bug chip: phase, lines heard, ticket and outcome.
+    var bug_report: String? = nil
 
     struct CaptureSummary: Codable, Equatable {
         var capture_id: String
@@ -63,6 +65,8 @@ struct DeviceSnapshot: Codable, Equatable {
 /// Remote commands the backend may send over the existing text/control socket.
 enum RemoteCommandKind: String {
     case snapshot, image, dismiss_keyboard, select_tab, copy_capture_files, sync_manifest, sync_prayer_asr
+    /// Drives the Bug chip as a tap would: args `action` = start | stop | cancel | text (with `text`).
+    case bug_report
 }
 
 struct RemoteCommand: Decodable {

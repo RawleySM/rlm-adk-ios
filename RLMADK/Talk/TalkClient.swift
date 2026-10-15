@@ -58,6 +58,10 @@ enum TalkEvent: Equatable {
     case passageError(reference: String, reason: String)
     /// Reading progress of the open passage (`{"type":"reading",...}`).
     case reading(ReadingEvent)
+    /// A step of the Bug chip's report (`{"type":"bug_report",...}`).
+    case bugReport(BugReportEvent)
+    /// Transcript heard while reporting a bug (`{"type":"bug_text",...}`); never sent to the LLM.
+    case bugText(text: String, final: Bool)
     case error(String)
 }
 
@@ -70,6 +74,9 @@ enum TalkClientMessage: Equatable {
     case clientPassage(reference: String, reason: String)
     /// The pane's Read / Pause: "play", "pause" or "restart".
     case clientRead(action: String)
+    /// The Bug chip: "start", "stop" or "cancel", with flat context fields (app_build, transport,
+    /// audio_route, install_id, client) and, on stop, the phone's own transcript lines.
+    case clientBug(action: String, context: [String: String], deviceLines: [String])
 
     /// The `type` value on the wire (WebSocket) and the RTVI client-message `t` (WebRTC).
     var type: String {
@@ -79,6 +86,7 @@ enum TalkClientMessage: Equatable {
         case .clientEvent: return "client_event"
         case .clientPassage: return "client_passage"
         case .clientRead: return "client_read"
+        case .clientBug: return "client_bug"
         }
     }
 
@@ -90,6 +98,10 @@ enum TalkClientMessage: Equatable {
         case .clientEvent(let name, let detail): return detail.merging(["event": name]) { _, new in new }
         case .clientPassage(let reference, let reason): return ["reference": reference, "reason": reason]
         case .clientRead(let action): return ["action": action]
+        case .clientBug(let action, let context, let deviceLines):
+            var out = context.merging(["action": action]) { _, new in new }
+            if !deviceLines.isEmpty { out["device_segments"] = deviceLines.joined(separator: "\n") }
+            return out
         }
     }
 
@@ -200,6 +212,11 @@ enum TalkMessageParser {
             return [.passageError(reference: message["reference"] as? String ?? "", reason: message["reason"] as? String ?? "unavailable")]
         case "reading":
             return ReadingEvent(message: message).map { [.reading($0)] } ?? []
+        case "bug_report":
+            return BugReportEvent(message: message).map { [.bugReport($0)] } ?? []
+        case "bug_text":
+            guard let text = message["text"] as? String else { return [] }
+            return [.bugText(text: text, final: message["final"] as? Bool ?? true)]
         default:
             return []
         }

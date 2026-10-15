@@ -20,7 +20,7 @@ from pathlib import Path
 from .db import now
 
 STALE_AFTER_S = 90.0
-COMMAND_KINDS = {"snapshot", "image", "dismiss_keyboard", "select_tab", "copy_capture_files", "sync_manifest", "sync_prayer_asr"}
+COMMAND_KINDS = {"snapshot", "image", "dismiss_keyboard", "select_tab", "copy_capture_files", "sync_manifest", "sync_prayer_asr", "bug_report"}
 SAFE_ID = re.compile(r"[A-Za-z0-9_-]{1,128}")
 
 

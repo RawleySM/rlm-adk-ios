@@ -11,7 +11,9 @@ scripted bot turn: RTVI ``user-transcription``, ``bot-started-speaking``, ``bot-
 The scripture pane: ``client_passage`` answers with a ``passage`` event (Psalm 23 of the World
 English Bible, whatever was asked), ``client_read`` ``play`` reads it from where it stopped with the
 real server's ``reading`` events (started, verse, verse_done every 2.6 s, finished) and ``pause``
-pauses it.
+pauses it. The Bug chip: ``client_bug`` ``start`` enters ``bug`` mode and plays two scripted
+``bug_text`` lines as if transcribed; ``stop`` answers finishing, filing, filed (``bug-ci-01``) and,
+a second later, triaged; ``cancel`` answers cancelled.
 
 ``GET /log`` returns everything recorded, for the CI assertions. Not the real pipeline: no STT,
 LLM or TTS; this proves the app's wire protocol and its silence keepalive only.
@@ -187,6 +189,8 @@ class Handler(BaseHTTPRequestHandler):
             PANE["spoken"] = 0
             self._send_json({"type": "passage", "reference": "Psalm 23", "title": "Psalm 23 (World English Bible)", "edition": "World English Bible", "book": "PSA", "chapter": 23,
                              "verses": [{"verse": i + 1, "text": t, "osis": f"Ps.23.{i + 1}"} for i, t in enumerate(PSALM_23)], "spoken_count": 0, "source": "client"})
+        elif kind == "client_bug":
+            threading.Thread(target=self._bug, args=(str(message.get("action") or ""),), daemon=True).start()
         elif kind == "client_read":
             if message.get("action") == "pause":
                 PANE["reading"] += 1
@@ -194,6 +198,29 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 PANE["reading"] += 1
                 threading.Thread(target=self._read, args=(PANE["reading"],), daemon=True).start()
+
+    def _bug(self, action: str) -> None:
+        """The real server's bug_report / bug_text sequence for one client_bug action."""
+        report = {"report_id": "ci-report-1"}
+        if action == "start":
+            previous, FLOOR["mode"] = FLOOR["mode"], "bug"
+            self._send_json({"type": "mode", "mode": "bug", "from": previous, "reason": "bug:client", "t": time.time()})
+            self._send_json({"type": "bug_report", "state": "started", "segments": 0, **report})
+            for line in ("When Psalm 23 is read, the shading falls behind the voice.", "By verse four it is a whole verse behind."):
+                time.sleep(1.0)
+                self._send_json({"type": "bug_text", "text": line, "final": True, "source": "voice"})
+        elif action == "stop":
+            self._send_json({"type": "bug_report", "state": "finishing", "segments": 2, **report})
+            FLOOR["mode"] = "available"
+            self._send_json({"type": "mode", "mode": "available", "from": "bug", "reason": "bug:client", "t": time.time()})
+            self._send_json({"type": "bug_report", "state": "filing", "segments": 2, **report})
+            self._send_json({"type": "bug_report", "state": "filed", "ticket_id": "bug-ci-01", "title": "When Psalm 23 is read, the shading falls behind the voice.", "segments": 2, **report})
+            time.sleep(1.0)
+            self._send_json({"type": "bug_report", "state": "triaged", "ticket_id": "bug-ci-01", "title": "Verse shading lags the reading voice", "kind": "bug", "component": "scripture_pane", "severity": "major", "priority": "P2", "disposition": "ready", **report})
+        elif action == "cancel":
+            FLOOR["mode"] = "available"
+            self._send_json({"type": "mode", "mode": "available", "from": "bug", "reason": "bug:client", "t": time.time()})
+            self._send_json({"type": "bug_report", "state": "cancelled", **report})
 
     def _read(self, token: int) -> None:
         """Reads the fixture psalm from where it stopped, one verse every 2.6 s, as the real server reports it."""

@@ -12,7 +12,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from . import __version__, conversation, devices, outbox, prayer_intake, retrieval
+from . import __version__, conversation, devices, issues, outbox, prayer_intake, retrieval
 from .tools.interpretations import interpretations_tool
 from .tools.policy import load_policy
 from .tools.project import project_tool
@@ -91,6 +91,9 @@ class PortalService:
         recovered = outbox.recover_stale_posting(self.conn(), cfg, all_rows=True)
         if recovered:
             log.warning("recovered stale posting operations as delivery_unknown: %s", recovered)
+        pending = issues.resume_pending(cfg)
+        if pending:
+            log.info("issues still pending triage, triaging again: %s", pending)
 
     def conn(self) -> sqlite3.Connection:
         conn = getattr(self._local, "conn", None)
@@ -350,6 +353,19 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(201, prayer_intake.mint_test_run(cfg.prayer_intake_url, self._read_json().get("test_kind", "phone_receipt")))
             if method == "GET" and len(parts) == 3 and parts[:2] == ["prayer", "test-runs"]:
                 return self._json(200, prayer_intake.test_run_status(cfg.prayer_intake_url, parts[2]))
+            # ----- intake issues log (the phone's Bug chip, posted by the talk tier) -----
+            if parts[:1] == ["issues"]:
+                if method == "POST" and len(parts) == 1:
+                    ticket, created = issues.record_report(cfg, self._read_json())
+                    if created:
+                        issues.triage_in_background(cfg, ticket["ticket_id"])
+                    triage = ticket.get("triage") or {}
+                    return self._json(201 if created else 200, {"ticket_id": ticket["ticket_id"], "report_id": ticket["report_id"], "created": created, "title": triage.get("title"), "triage_state": triage.get("state"), "chars": len(ticket.get("text") or ""), "log": str(issues.log_path(cfg)), "spoken": f"Filed {ticket['ticket_id']}."})
+                if method == "GET" and len(parts) == 1:
+                    return self._json(200, {"log": str(issues.log_path(cfg)), "issues": issues.list_tickets(cfg, status=query.get("status"), limit=int(query.get("limit") or 50))})
+                if method == "GET" and len(parts) == 2:
+                    ticket = issues.read_tickets(issues.log_path(cfg)).get(parts[1])
+                    return self._json(200 if ticket else 404, ticket or {"error": "not_found"})
             return self._json(404, {"error": "not_found", "path": url.path})
         except (ValueError, KeyError, json.JSONDecodeError) as exc:
             return self._json(400, {"error": str(exc)})

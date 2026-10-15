@@ -58,6 +58,10 @@ class Config:
     # The word-from-God theme call: its own timeout and output budget (one strict-JSON reply).
     tools_inference_timeout_s: int = 420  # covers a cold model start on the owner (~230 s observed)
     word_max_tokens: int = 700
+    # Intake issues log (bug reports from the Bug chip, append-only JSON Lines; see issues.py). Empty
+    # means <state root>/intake/issues.jsonl; production sets ~/.local/rlm-adk/stores/intake/issues.jsonl.
+    issues_log: str = ""
+    issue_triage_max_tokens: int = 700
     source_commit: str = ""
 
     @property

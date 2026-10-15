@@ -52,15 +52,19 @@ struct PortalView: View {
                 Circle().fill(model.audioState == .running ? .red : .gray).frame(width: 8, height: 8)
                     .accessibilityLabel(PortalModel.skipPermissionPrompts ? "Capture not requested (fixture mode)" : model.audioState.label)
                 Circle().fill(model.talkState.isUp ? .green : .orange).frame(width: 8, height: 8)
-                Text(model.mode.label).font(.subheadline.weight(.semibold)).lineLimit(1)
+                Text(model.bug.silencesOutput ? "Bug Reporting..." : model.mode.label).font(.subheadline.weight(.semibold)).lineLimit(1)
+                    .foregroundStyle(model.bug.silencesOutput ? .red : .primary)
                     .accessibilityIdentifier("talkStatus")
                     .accessibilityValue("Voice: \(model.activeTalkTransport?.label ?? "-") \(model.talkState.label)")
                 if model.botSpeaking || model.botAudible { Image(systemName: "speaker.wave.2").font(.caption) }
                 Spacer(minLength: 4)
-                Button(model.mode.isPraying ? "End prayer" : "Begin prayer") { model.dismissKeyboard(); model.mode.isPraying ? model.endPrayer() : model.beginPrayer() }
-                    .buttonStyle(.borderedProminent).tint(.purple).controlSize(.small).accessibilityIdentifier("prayerButton")
-                Button(model.mode.quiet ? "Wake" : "Quiet") { model.dismissKeyboard(); model.mode.quiet ? model.wake() : model.enterQuiet() }
-                    .buttonStyle(.borderedProminent).tint(model.mode.quiet ? .orange : .gray).controlSize(.small).accessibilityIdentifier("quietButton")
+                if !model.bug.silencesOutput {
+                    // Hidden while a bug report is open: the floor returns to its mode when the report ends.
+                    Button(model.mode.isPraying ? "End prayer" : "Begin prayer") { model.dismissKeyboard(); model.mode.isPraying ? model.endPrayer() : model.beginPrayer() }
+                        .buttonStyle(.borderedProminent).tint(.purple).controlSize(.small).accessibilityIdentifier("prayerButton")
+                    Button(model.mode.quiet ? "Wake" : "Quiet") { model.dismissKeyboard(); model.mode.quiet ? model.wake() : model.enterQuiet() }
+                        .buttonStyle(.borderedProminent).tint(model.mode.quiet ? .orange : .gray).controlSize(.small).accessibilityIdentifier("quietButton")
+                }
                 Button { model.dismissKeyboard(); model.stopOutput() } label: { Image(systemName: "stop.fill") }
                     .buttonStyle(.bordered).controlSize(.small).accessibilityLabel("Stop")
             }
@@ -87,6 +91,7 @@ struct PortalView: View {
     private var conversationPane: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 6) {
+                if model.bug.phase != .idle { bugReportCard }
                 if !model.partialTranscript.isEmpty {
                     Text(model.partialTranscript).font(.caption).italic().foregroundStyle(.secondary)
                 }
@@ -111,6 +116,59 @@ struct PortalView: View {
         .scrollDismissesKeyboard(.interactively)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("conversationPane")
+    }
+
+    /// The report the Bug chip is collecting (live lines while reporting), then its ticket.
+    private var bugReportCard: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: "ladybug.fill")
+                Text(model.bug.silencesOutput ? model.bug.chipLabel : "Bug report").font(.subheadline.weight(.semibold))
+                Spacer()
+                if !model.bug.silencesOutput {
+                    Button("Dismiss") { model.dismissBugOutcome() }.font(.caption).accessibilityIdentifier("bugDismissButton")
+                }
+            }
+            .foregroundStyle(.red)
+            if model.bug.phase == .reporting {
+                Text("Describe the problem, then tap Bug Reporting... to file it. The assistant stays silent; your voice is still recorded and transcribed.")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            ForEach(Array(model.bug.lines.enumerated()), id: \.offset) { _, line in
+                Text(line).font(.callout)
+            }
+            if !model.bug.interim.isEmpty {
+                Text(model.bug.interim).font(.callout).italic().foregroundStyle(.secondary)
+            } else if model.bug.phase == .reporting && model.bug.lines.isEmpty {
+                Text("Listening…").font(.caption).foregroundStyle(.secondary)
+            }
+            if let outcome = model.bug.outcome {
+                Text(outcome).font(.caption.weight(.medium)).foregroundStyle(model.bug.phase == .failed ? .red : .primary)
+                    .accessibilityIdentifier("bugOutcome")
+            }
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Color.red.opacity(0.6)))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("bugReportCard")
+    }
+
+    /// The Bug chip: "Bug", then "Bug Reporting..." until the second tap files the report.
+    private var bugChip: some View {
+        Button { typedFocused = false; model.toggleBugReport() } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "ladybug.fill")
+                Text(model.bug.chipLabel).lineLimit(1)
+            }
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(model.bug.silencesOutput ? .red : Color(.systemGray2))
+        // "Bug Reporting..." is shown whole; the text field gives up the width.
+        .fixedSize(horizontal: true, vertical: false)
+        .layoutPriority(1)
+        .disabled(model.bug.phase == .filing || model.mode.isPraying)
+        .accessibilityIdentifier("bugButton")
+        .accessibilityValue(model.bug.outcome ?? model.bug.chipLabel)
     }
 
     private var devotionalCard: some View {
@@ -145,10 +203,19 @@ struct PortalView: View {
 
     private var typedInput: some View {
         HStack(spacing: 8) {
-            Button { model.beginListening() } label: { Image(systemName: "mic.fill") }
-                .buttonStyle(.borderedProminent).disabled(model.mode.isPraying)
-                .accessibilityLabel("Listen")
-            TextField("Ask, or type a request", text: $model.typedInput)
+            if !model.bug.silencesOutput {
+                Button { model.beginListening() } label: { Image(systemName: "mic.fill") }
+                    .buttonStyle(.borderedProminent).disabled(model.mode.isPraying)
+                    .accessibilityLabel("Listen")
+            }
+            bugChip
+            if model.bug.phase == .reporting {
+                Button { model.cancelBugReport() } label: { Image(systemName: "xmark") }
+                    .buttonStyle(.bordered).tint(.red).controlSize(.small)
+                    .accessibilityLabel("Cancel bug report")
+                    .accessibilityIdentifier("bugCancelButton")
+            }
+            TextField(model.bug.silencesOutput ? "Type to add to the report" : "Ask, or type a request", text: $model.typedInput)
                 .textFieldStyle(.roundedBorder)
                 .focused($typedFocused)
                 .submitLabel(.send)

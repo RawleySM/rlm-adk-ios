@@ -30,7 +30,7 @@ pipeline:
     the playback queue immediately), and the floor messages below.
   * Client → server: `{"type":"client_mode","mode":"prayer|available|quiet","reason":"..."}`,
     `{"type":"client_text","text":"..."}`, the scripture pane's `client_passage` / `client_read`
-    (below) and `{"type":"client_event", ...}` (free-form, recorded in the run's event log).
+    and the Bug chip's `client_bug` (below) and `{"type":"client_event", ...}` (free-form, recorded in the run's event log).
 
 ## Floor messages (both paths)
 
@@ -64,6 +64,33 @@ read the open passage without a model turn; "read me Psalm 23" names a new refer
 model. Scripture is spoken in its own voice (`scripture_tts_voice`, default `am_michael`, through
 `ReaderKokoroTTSService` and `ScriptureSpeakFrame`); the assistant keeps `tts_voice` (`bm_george`).
 `talk/tools/pane_probe.py` checks the whole flow against a running tier.
+
+## Bug chip messages (both paths; `talk/bug_report.py`, `talk/floor.py`)
+
+The phone's Bug chip opens a bug report. While it is open the floor is in mode `bug`: every spoken
+output is dropped by the output gate (as in quiet), no transcript reaches the LLM and no phrase acts
+(an address, "quiet please", "read it" are words of the report), but the microphone and Cohere keep
+running. Each final transcript, and any `client_text` typed meanwhile, is a segment of the report.
+The second tap files it with the skill service (`POST /issues`, the intake issues log, see
+`intake-issues-log.md`), returns the floor to the mode before (prayer returns to available), keeps
+the Flows node, and resumes a Scripture reading the press interrupted from the verse after the last
+one fully heard. An assistant reply cut by the press is not replayed. A session that ends with a
+report open files it (`ended_by: "disconnect"`); a report the skill service cannot take is spooled
+under `~/.local/state/voice-talk/bug-spool/` and posted again every 60 s until it is accepted
+(`report_id` makes the post idempotent).
+
+| Direction | Message | Meaning |
+|---|---|---|
+| client → server | `{"type":"client_bug","action":"start","client":"ios","app_build","transport","audio_route","install_id"}` | Open a report. Flat string fields (the WebRTC data channel carries a string map); they travel as the ticket's `source`. A second `start` re-announces the open report. |
+| client → server | `{"type":"client_bug","action":"stop","device_segments":"line\nline"}` | File it. The floor first waits (up to 6 s) for an utterance still being spoken or transcribed. `device_segments` are the phone's own recognizer finals, kept beside the server transcript. |
+| client → server | `{"type":"client_bug","action":"cancel"}` | Drop the report unfiled. |
+| server → client | `{"type":"mode","mode":"bug","reason":"bug:client"}` / `{"mode":"available","reason":"bug:client"}` | The floor entered / left bug mode. `client_mode` received meanwhile only changes the mode the report returns to. |
+| server → client | `{"type":"bug_text","text","final","source":"voice\|typed","index"}` | A line of the report (interim lines have `final: false`). |
+| server → client | `{"type":"bug_report","state":"started\|finishing\|filing\|filed\|spooled\|triaged\|cancelled\|none","report_id","ticket_id","title","segments"}` | The report's progress. `filed` carries the ticket id and provisional title; `triaged` (seconds later, once the skill service's model call returns) adds `kind`, `component`, `severity`, `priority`, `disposition`; `spooled` carries the `error`; `none` answers a stop with no open report. |
+
+After a filed report the history gains "(I filed a bug report, bug-YYYYMMDD-NN, with the intake
+issues log.)" so the assistant can answer a question about it. `talk/tools/bug_probe.py` checks the
+flow against a running tier.
 
 ## Conversation states (Pipecat Flows, `talk/flows.py`)
 
@@ -126,6 +153,7 @@ asynchronously; the audio loop never waits on them.
 | `POST /admin/hold {"reason": "...", "hold_new": true}` | every live session (optionally `sessions: [...]` / `except: [...]`) goes quiet with `held` set, so the wake phrase cannot lift it; with `hold_new` sessions that connect later start held. A client that sends `{"type":"client_event","event":"benchmark_client"}` right after connecting lifts its own hold: that is the one session meant to talk during a benchmark. |
 | `POST /admin/release` | clears every hold; held sessions return to `available` (reason `release`) |
 | `POST /admin/sessions/{id}/mode {"mode": "available" \| "quiet" \| "prayer", "reason": "..."}` | set one session's floor mode (used to wake a phone whose own quiet was asserted on reconnect) |
+| `POST /admin/sessions/{id}/bug {"action": "start" \| "text" \| "stop" \| "cancel", "text": "..."}` | drive that session's bug report as the Bug chip would; `text` adds a typed segment; `stop` returns the `bug_report` message |
 
 `voicesim talk run --mode file|room` holds and releases around the run so the phone, which shares
 the room's air, stays silent; `--mode phone` never holds (the phone is the subject) and plays the
