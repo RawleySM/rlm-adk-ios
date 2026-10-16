@@ -69,8 +69,9 @@ struct UpdateInstall: Equatable {
 enum AppUpdate {
     /// The private install page's latest.json (Tailscale Serve on Spark-A).
     static let defaultURL = "https://rlm-adk-spark.tail0ec4a5.ts.net:8443/latest.json"
-    /// Seconds between checks while the app is in the foreground.
-    static let checkInterval: TimeInterval = 300
+    /// Seconds between checks while the app is in the foreground. latest.json is a few hundred bytes on
+    /// the tailnet, so a published build shows within half a minute (300 s left build 23 waiting).
+    static let checkInterval: TimeInterval = 30
 
     /// Args:
     ///   latest: The published latest build.

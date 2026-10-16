@@ -408,7 +408,7 @@ Installing on the phone (acceptance step, separate from the build):
   it writes `build<N>/` (IPA, manifest, page, sha256, receipt), then `latest.json` (atomically, last)
   and the root `index.html`.
 - Update banner (build 19 and later): the app reads that `latest.json` when it comes to the
-  foreground and every 5 minutes while open (`RLMADK/Model/AppUpdate.swift`; override with
+  foreground and every 30 seconds while open (`RLMADK/Model/AppUpdate.swift`; override with
   `RLMADK_UPDATE_URL`). A newer build for this bundle shows "Update available: build N" with Install
   (opens the `itms-services` link) and a dismiss; the device snapshot reports `update_offer`.
   The banner stays hidden while `latest.json` names the installed build, so a fresh install looks
