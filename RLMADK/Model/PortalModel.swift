@@ -62,6 +62,9 @@ final class PortalModel: ObservableObject {
     var urlOpener: (URL) -> Void = { UIApplication.shared.open($0) }
     private var updateTimer: Timer?
     private var lastUpdateCheckError: String?
+    /// The last update check's outcome, shown in Diagnostics and the snapshot: when it ran, the
+    /// published build and whether that is newer, or why the check failed.
+    @Published private(set) var updateCheckStatus: String = "not checked yet"
     /// The Bug chip's report (BugReport.swift); while it is open the phone keeps bot speech silent.
     @Published private(set) var bug = BugReportState() {
         didSet { if bug.silencesOutput != oldValue.silencesOutput { talk?.voice.gateOpen = speechGateOpen } }
@@ -1002,6 +1005,7 @@ final class PortalModel: ObservableObject {
             lastUpdateCheckError = nil
             let dismissed = UserDefaults.standard.object(forKey: "dismissedUpdateBuild") as? Int
             let offer = AppUpdate.offer(latest, currentBuild: PortalModel.appBuild, bundleId: Bundle.main.bundleIdentifier, dismissedBuild: dismissed)
+            updateCheckStatus = AppUpdate.statusLine(latest: latest.build, currentBuild: PortalModel.appBuild, offered: offer != nil, checkedAt: Date())
             if offer != updateOffer {
                 updateOffer = offer
                 logLine(offer.map { "update available: build \($0.build) (\(reason))" } ?? "no newer build (latest \(latest.build), this \(PortalModel.appBuild))")
@@ -1009,6 +1013,7 @@ final class PortalModel: ObservableObject {
             }
         } catch {
             let text = error.localizedDescription
+            updateCheckStatus = "check failed \(AppUpdate.clock(Date())): \(text)"
             if text != lastUpdateCheckError {
                 lastUpdateCheckError = text
                 logLine("update check failed (\(reason)): \(text)")
@@ -1084,6 +1089,7 @@ final class PortalModel: ObservableObject {
             policy_source: policySource,
             audio_tuning: AudioTuning.current.description,
             update_offer: updateOffer.map { "build \($0.build)" },
+            update_check: updateCheckStatus,
             bug_report: "\(bug.phase) lines \(bug.lines.count) device \(bug.deviceLines.count)\(bug.ticketId.map { " \($0)" } ?? "")\(bug.outcome.map { " — \($0)" } ?? "")"
         )
     }

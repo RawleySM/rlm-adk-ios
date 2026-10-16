@@ -52,6 +52,7 @@ final class AppUpdateTests: XCTestCase {
         model.urlOpener = { opened.append($0) }
         await model.checkForUpdate(reason: "test")
         XCTAssertEqual(model.updateOffer?.build, 99999)
+        XCTAssertTrue(model.updateCheckStatus.hasSuffix("latest build 99999 · build 99999 offered"), model.updateCheckStatus)
         model.installUpdate()
         XCTAssertEqual(opened.first?.scheme, "itms-services")
         model.dismissUpdate()
@@ -65,5 +66,14 @@ final class AppUpdateTests: XCTestCase {
         model.updateFetcher = { _ in throw URLError(.notConnectedToInternet) }
         await model.checkForUpdate(reason: "test")
         XCTAssertNil(model.updateOffer)
+        XCTAssertTrue(model.updateCheckStatus.hasPrefix("check failed "), model.updateCheckStatus)
+    }
+
+    func testStatusLine() {
+        let at = Date()
+        let clock = AppUpdate.clock(at)
+        XCTAssertEqual(AppUpdate.statusLine(latest: 19, currentBuild: "19", offered: false, checkedAt: at), "checked \(clock) · latest build 19 · up to date")
+        XCTAssertEqual(AppUpdate.statusLine(latest: 20, currentBuild: "19", offered: true, checkedAt: at), "checked \(clock) · latest build 20 · build 20 offered")
+        XCTAssertEqual(AppUpdate.statusLine(latest: 20, currentBuild: "19", offered: false, checkedAt: at), "checked \(clock) · latest build 20 · build 20 not offered (dismissed or another app)")
     }
 }

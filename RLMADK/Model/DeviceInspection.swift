@@ -46,6 +46,8 @@ struct DeviceSnapshot: Codable, Equatable {
     var audio_tuning: String? = nil
     /// The update banner's offer ("build 20"), if any.
     var update_offer: String? = nil
+    /// The last update check: published build and outcome, or the failure.
+    var update_check: String? = nil
     /// The Bug chip: phase, lines heard, ticket and outcome.
     var bug_report: String? = nil
 
