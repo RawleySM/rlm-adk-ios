@@ -14,6 +14,45 @@ struct LatestBuild: Codable, Equatable {
     var published_at: String?
 }
 
+/// The banner's install hand-off. iOS 26 queues an `itms-services` install opened from the running
+/// app and waits ("Waiting…" on the Home Screen icon) until that app leaves the foreground; iOS 18
+/// closed the app by itself. So when Apple's prompt closes, the app steps to the Home Screen, where
+/// the icon shows the install, and the new build says "Updated to build N" on its first launch.
+struct UpdateInstall: Equatable {
+    enum Phase: String, Equatable {
+        /// The install link was opened; Apple's prompt has not appeared yet.
+        case opening
+        /// Apple's prompt is showing (the app went inactive).
+        case prompt
+        /// The prompt closed; the app goes to the Home Screen shortly unless the user taps Stay.
+        case leaving
+        /// The app went to the Home Screen so iOS can replace it.
+        case suspended
+        /// The app came back to the foreground still on the old build.
+        case returned
+        /// No prompt appeared, or iOS refused the link.
+        case noPrompt
+        /// The app could not leave the foreground by itself.
+        case closeManually
+    }
+
+    var build: Int
+    var phase: Phase
+
+    /// The banner's line for this phase.
+    var message: String {
+        switch phase {
+        case .opening: return "Opening Apple's install prompt…"
+        case .prompt: return "Tap Install in Apple's prompt."
+        case .leaving: return "Installing: going to the Home Screen so iOS can finish."
+        case .suspended: return "Installing build \(build)…"
+        case .returned: return "Build \(build) has not installed yet. If its icon says Waiting, close RLM-ADK in the app switcher."
+        case .noPrompt: return "No install prompt appeared. Open the install page instead."
+        case .closeManually: return "Close RLM-ADK (swipe it away in the app switcher) so iOS can install build \(build)."
+        }
+    }
+}
+
 /// Decides whether the app offers an update (the update banner).
 ///
 /// The app reads `latest.json` from the private install page (Tailscale only) when it comes to the
@@ -60,6 +99,19 @@ enum AppUpdate {
             outcome = "up to date"
         }
         return "checked \(clock(checkedAt)) · latest build \(latest) · \(outcome)"
+    }
+
+    /// The first launch of a newer build: "Updated to build 21 (from 20)".
+    ///
+    /// Args:
+    ///   lastLaunchedBuild: The build that last launched on this phone (nil before build 21).
+    ///   currentBuild: This app's CFBundleVersion.
+    ///
+    /// Returns:
+    ///   The notice, or nil when the build did not go up.
+    static func updatedNotice(lastLaunchedBuild: Int?, currentBuild: String) -> String? {
+        guard let last = lastLaunchedBuild, let current = Int(currentBuild), current > last else { return nil }
+        return "Updated to build \(current) (from \(last))"
     }
 
     /// Local wall-clock time as HH:mm.

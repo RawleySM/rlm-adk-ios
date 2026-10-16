@@ -11,6 +11,7 @@ struct PortalView: View {
         NavigationStack {
             GeometryReader { geo in
                 VStack(spacing: 8) {
+                    if let notice = model.updatedNotice { updatedBanner(notice) }
                     if let offer = model.updateOffer { updateBanner(offer) }
                     statusHeader
                     // Scripture front and centre; the conversation below it.
@@ -125,14 +126,30 @@ struct PortalView: View {
             Image(systemName: "arrow.down.app.fill").font(.title3)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Update available: build \(offer.build)").font(.subheadline.weight(.semibold))
-                if let notes = offer.notes, !notes.isEmpty {
+                if let install = model.updateInstall {
+                    Text(install.message).font(.caption2).lineLimit(2)
+                        .accessibilityIdentifier("updateInstallMessage")
+                } else if let notes = offer.notes, !notes.isEmpty {
                     Text(notes).font(.caption2).lineLimit(1)
                 }
             }
             Spacer(minLength: 4)
-            Button("Install") { model.installUpdate() }
-                .buttonStyle(.bordered).tint(.white).controlSize(.small)
-                .accessibilityIdentifier("updateInstallButton")
+            switch model.updateInstall?.phase {
+            case .opening?, .prompt?, .suspended?:
+                ProgressView().tint(.white).controlSize(.small)
+            case .leaving?:
+                Button("Stay") { model.stayInsteadOfInstalling() }
+                    .buttonStyle(.bordered).tint(.white).controlSize(.small)
+                    .accessibilityIdentifier("updateStayButton")
+            case .noPrompt?:
+                Button("Open page") { Task { await model.openUpdatePage() } }
+                    .buttonStyle(.bordered).tint(.white).controlSize(.small)
+                    .accessibilityIdentifier("updatePageButton")
+            default:
+                Button("Install") { Task { await model.installUpdate() } }
+                    .buttonStyle(.bordered).tint(.white).controlSize(.small)
+                    .accessibilityIdentifier("updateInstallButton")
+            }
             Button { model.dismissUpdate() } label: { Image(systemName: "xmark") }
                 .buttonStyle(.borderless).controlSize(.small)
                 .accessibilityLabel("Dismiss update")
@@ -143,6 +160,29 @@ struct PortalView: View {
         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.blue))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("updateBanner")
+    }
+
+    /// The first launch of a newer build: confirms the update landed.
+    private func updatedBanner(_ notice: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.seal.fill").font(.title3)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(notice).font(.subheadline.weight(.semibold))
+                if let notes = model.updatedNotes, !notes.isEmpty {
+                    Text(notes).font(.caption2).lineLimit(2)
+                }
+            }
+            Spacer(minLength: 4)
+            Button { model.dismissUpdatedNotice() } label: { Image(systemName: "xmark") }
+                .buttonStyle(.borderless).controlSize(.small)
+                .accessibilityLabel("Dismiss update notice")
+                .accessibilityIdentifier("updatedDismissButton")
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.green))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("updatedBanner")
     }
 
     /// The report the Bug chip is collecting (live lines while reporting), then its ticket.

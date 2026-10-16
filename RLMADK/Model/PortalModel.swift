@@ -59,7 +59,17 @@ final class PortalModel: ObservableObject {
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
         return data
     }
-    var urlOpener: (URL) -> Void = { UIApplication.shared.open($0) }
+    var urlOpener: @MainActor (URL) async -> Bool = { await UIApplication.shared.open($0) }
+    /// The banner's install hand-off in progress (UpdateInstall in AppUpdate.swift), or nil.
+    @Published private(set) var updateInstall: UpdateInstall?
+    /// Shown on the first launch of a newer build ("Updated to build 21 (from 20)"), with its notes.
+    @Published private(set) var updatedNotice: String?
+    @Published private(set) var updatedNotes: String?
+    /// Test seams: how the app steps to the Home Screen (false when it cannot), how long it waits
+    /// for Apple's prompt, and how long Stay is offered before it leaves.
+    var appSuspender: @MainActor () -> Bool = { PortalModel.suspendToHomeScreen() }
+    var updatePromptTimeout: TimeInterval = 4
+    var updateLeaveDelay: TimeInterval = 2
     private var updateTimer: Timer?
     private var lastUpdateCheckError: String?
     /// The last update check's outcome, shown in Diagnostics and the snapshot: when it ran, the
@@ -215,6 +225,12 @@ final class PortalModel: ObservableObject {
             startFloorTimer()
         }
         logLine("launched; mode=\(mode.label) quiet=\(mode.quiet) prayer=\(mode.prayerCaptureId ?? "-") talk=\(talkTransportRaw) \(talkURLString) policy=\(policySource)")
+        let lastLaunchedBuild = UserDefaults.standard.object(forKey: "lastLaunchedBuild") as? Int
+        if let notice = AppUpdate.updatedNotice(lastLaunchedBuild: lastLaunchedBuild, currentBuild: PortalModel.appBuild) {
+            updatedNotice = notice
+            logLine(notice)
+        }
+        if let current = Int(PortalModel.appBuild) { UserDefaults.standard.set(current, forKey: "lastLaunchedBuild") }
     }
 
     // MARK: wiring
@@ -970,6 +986,7 @@ final class PortalModel: ObservableObject {
 
     func scenePhaseChanged(_ phase: ScenePhase) {
         scenePhaseLabel = "\(phase)"
+        updateInstallSceneChanged(phase)
         if phase == .active {
             if audio.state == .running, !audio.isRunning { audio.restartIfNeeded(reason: "foreground") }
             sendSnapshot(reason: "foreground")
@@ -1006,6 +1023,7 @@ final class PortalModel: ObservableObject {
             let dismissed = UserDefaults.standard.object(forKey: "dismissedUpdateBuild") as? Int
             let offer = AppUpdate.offer(latest, currentBuild: PortalModel.appBuild, bundleId: Bundle.main.bundleIdentifier, dismissedBuild: dismissed)
             updateCheckStatus = AppUpdate.statusLine(latest: latest.build, currentBuild: PortalModel.appBuild, offered: offer != nil, checkedAt: Date())
+            if updatedNotice != nil, latest.build == Int(PortalModel.appBuild) { updatedNotes = latest.notes }
             if offer != updateOffer {
                 updateOffer = offer
                 logLine(offer.map { "update available: build \($0.build) (\(reason))" } ?? "no newer build (latest \(latest.build), this \(PortalModel.appBuild))")
@@ -1021,11 +1039,66 @@ final class PortalModel: ObservableObject {
         }
     }
 
-    /// The banner's Install: opens the build's itms-services link (iOS shows its install prompt).
-    func installUpdate() {
+    /// The banner's Install: opens the build's itms-services link, then follows Apple's prompt
+    /// (updateInstallSceneChanged). No prompt within `updatePromptTimeout`, or a refused link,
+    /// offers the install page instead.
+    func installUpdate() async {
         guard let offer = updateOffer, let url = URL(string: offer.install_url) else { return }
-        logLine("update install opened for build \(offer.build)")
-        urlOpener(url)
+        let build = offer.build
+        updateInstall = UpdateInstall(build: build, phase: .opening)
+        logLine("update install opened for build \(build)")
+        sendSnapshot(reason: "update_install")
+        guard await urlOpener(url) else {
+            logLine("update install: iOS refused the install link for build \(build)")
+            setUpdateInstallPhase(.noPrompt)
+            return
+        }
+        try? await Task.sleep(nanoseconds: UInt64(updatePromptTimeout * 1_000_000_000))
+        if updateInstall == UpdateInstall(build: build, phase: .opening) { setUpdateInstallPhase(.noPrompt) }
+    }
+
+    /// Follows Apple's install prompt through scene changes: inactive while it shows, active when
+    /// it closes. Then, after `updateLeaveDelay` (Stay cancels), the app steps to the Home Screen
+    /// so iOS 26 can replace it; coming back on the old build reports that.
+    func updateInstallSceneChanged(_ phase: ScenePhase) {
+        guard let install = updateInstall else { return }
+        switch (install.phase, phase) {
+        case (.opening, .inactive):
+            setUpdateInstallPhase(.prompt)
+        case (.prompt, .active):
+            setUpdateInstallPhase(.leaving)
+            Task { [weak self] in
+                guard let self else { return }
+                try? await Task.sleep(nanoseconds: UInt64(self.updateLeaveDelay * 1_000_000_000))
+                guard self.updateInstall == UpdateInstall(build: install.build, phase: .leaving) else { return }
+                if self.appSuspender() {
+                    self.setUpdateInstallPhase(.suspended)
+                } else {
+                    self.setUpdateInstallPhase(.closeManually)
+                }
+            }
+        case (.leaving, .background):
+            setUpdateInstallPhase(.suspended)
+        case (.suspended, .active):
+            setUpdateInstallPhase(.returned)
+        default:
+            break
+        }
+    }
+
+    /// The banner's Stay: the user cancelled Apple's prompt, so the app does not leave.
+    func stayInsteadOfInstalling() {
+        guard let install = updateInstall, install.phase == .leaving else { return }
+        updateInstall = nil
+        logLine("update install: stayed; build \(install.build) not installed")
+    }
+
+    /// The banner's Open page: the build's install page in Safari (when no prompt appeared).
+    func openUpdatePage() async {
+        guard let offer = updateOffer, let page = offer.page_url.flatMap(URL.init(string:)) else { return }
+        updateInstall = nil
+        logLine("update install: opening the install page for build \(offer.build)")
+        _ = await urlOpener(page)
     }
 
     /// The banner's dismiss: this build is not offered again; a later one is.
@@ -1033,7 +1106,31 @@ final class PortalModel: ObservableObject {
         guard let offer = updateOffer else { return }
         UserDefaults.standard.set(offer.build, forKey: "dismissedUpdateBuild")
         updateOffer = nil
+        updateInstall = nil
         logLine("update to build \(offer.build) dismissed")
+    }
+
+    func dismissUpdatedNotice() {
+        updatedNotice = nil
+        updatedNotes = nil
+    }
+
+    private func setUpdateInstallPhase(_ phase: UpdateInstall.Phase) {
+        guard var install = updateInstall else { return }
+        install.phase = phase
+        updateInstall = install
+        logLine("update install: build \(install.build) \(phase.rawValue)")
+        sendSnapshot(reason: "update_install")
+    }
+
+    /// Sends the app to the Home Screen like the Home gesture; false when UIKit lacks it.
+    static func suspendToHomeScreen() -> Bool {
+        // No public API backgrounds an app, and iOS 26 will not install over a foreground one.
+        // `suspend` is UIKit's private selector; this personal Ad Hoc app never goes to App Review.
+        let selector = NSSelectorFromString("suspend")
+        guard UIApplication.shared.responds(to: selector) else { return false }
+        UIApplication.shared.perform(selector)
+        return true
     }
 
     private func startHeartbeat() {
@@ -1090,6 +1187,8 @@ final class PortalModel: ObservableObject {
             audio_tuning: AudioTuning.current.description,
             update_offer: updateOffer.map { "build \($0.build)" },
             update_check: updateCheckStatus,
+            update_install: updateInstall.map { "build \($0.build) \($0.phase.rawValue)" },
+            updated_notice: updatedNotice,
             bug_report: "\(bug.phase) lines \(bug.lines.count) device \(bug.deviceLines.count)\(bug.ticketId.map { " \($0)" } ?? "")\(bug.outcome.map { " — \($0)" } ?? "")"
         )
     }

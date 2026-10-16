@@ -49,11 +49,12 @@ final class AppUpdateTests: XCTestCase {
         let body = json.replacingOccurrences(of: #""build":20"#, with: #""build":99999"#).replacingOccurrences(of: #""bundle_id":"com.rawleystanhope.rlmadk","#, with: "")
         model.updateFetcher = { _ in Data(body.utf8) }
         var opened: [URL] = []
-        model.urlOpener = { opened.append($0) }
+        model.urlOpener = { opened.append($0); return true }
+        model.updatePromptTimeout = 0.01
         await model.checkForUpdate(reason: "test")
         XCTAssertEqual(model.updateOffer?.build, 99999)
         XCTAssertTrue(model.updateCheckStatus.hasSuffix("latest build 99999 · build 99999 offered"), model.updateCheckStatus)
-        model.installUpdate()
+        await model.installUpdate()
         XCTAssertEqual(opened.first?.scheme, "itms-services")
         model.dismissUpdate()
         XCTAssertNil(model.updateOffer)
@@ -67,6 +68,93 @@ final class AppUpdateTests: XCTestCase {
         await model.checkForUpdate(reason: "test")
         XCTAssertNil(model.updateOffer)
         XCTAssertTrue(model.updateCheckStatus.hasPrefix("check failed "), model.updateCheckStatus)
+    }
+
+    /// An offered model whose install link opens, with fast hand-off timings and a counted suspend.
+    private func makeOfferedModel(opens: Bool = true, canSuspend: Bool = true) async -> (PortalModel, () -> [URL], () -> Int) {
+        let model = makeModel()
+        let body = json.replacingOccurrences(of: #""build":20"#, with: #""build":99999"#).replacingOccurrences(of: #""bundle_id":"com.rawleystanhope.rlmadk","#, with: "")
+        model.updateFetcher = { _ in Data(body.utf8) }
+        var opened: [URL] = []
+        var suspended = 0
+        model.urlOpener = { opened.append($0); return opens }
+        model.appSuspender = { suspended += 1; return canSuspend }
+        model.updatePromptTimeout = 0.3
+        model.updateLeaveDelay = 0.05
+        await model.checkForUpdate(reason: "test")
+        return (model, { opened }, { suspended })
+    }
+
+    private func settle(_ seconds: Double = 0.1) async {
+        try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+    }
+
+    func testInstallFollowsApplesPromptThenLeavesForTheHomeScreen() async {
+        let (model, opened, suspended) = await makeOfferedModel()
+        let install = Task { await model.installUpdate() }
+        await settle(0.02)
+        XCTAssertEqual(model.updateInstall?.phase, .opening)
+        XCTAssertEqual(opened().first?.scheme, "itms-services")
+        model.updateInstallSceneChanged(.inactive)
+        XCTAssertEqual(model.updateInstall?.phase, .prompt)
+        model.updateInstallSceneChanged(.active)
+        XCTAssertEqual(model.updateInstall?.phase, .leaving)
+        await settle()
+        XCTAssertEqual(suspended(), 1)
+        XCTAssertEqual(model.updateInstall?.phase, .suspended)
+        await install.value
+        XCTAssertEqual(model.updateInstall?.phase, .suspended, "the prompt timeout does not override a shown prompt")
+        model.updateInstallSceneChanged(.active)
+        XCTAssertEqual(model.updateInstall?.phase, .returned, "back in the foreground on the old build")
+        XCTAssertEqual(model.updateInstall?.message.contains("Waiting"), true)
+    }
+
+    func testStayKeepsTheAppWhenThePromptWasCancelled() async {
+        let (model, _, suspended) = await makeOfferedModel()
+        let install = Task { await model.installUpdate() }
+        await settle(0.02)
+        model.updateInstallSceneChanged(.inactive)
+        model.updateInstallSceneChanged(.active)
+        model.stayInsteadOfInstalling()
+        await settle()
+        XCTAssertEqual(suspended(), 0)
+        XCTAssertNil(model.updateInstall)
+        await install.value
+        XCTAssertNil(model.updateInstall)
+    }
+
+    func testNoPromptOffersTheInstallPage() async {
+        let (model, opened, _) = await makeOfferedModel()
+        await model.installUpdate()
+        XCTAssertEqual(model.updateInstall?.phase, .noPrompt)
+        await model.openUpdatePage()
+        XCTAssertEqual(opened().last?.absoluteString, "https://host/build20/")
+        XCTAssertNil(model.updateInstall)
+    }
+
+    func testRefusedLinkOffersTheInstallPageAtOnce() async {
+        let (model, _, _) = await makeOfferedModel(opens: false)
+        await model.installUpdate()
+        XCTAssertEqual(model.updateInstall?.phase, .noPrompt)
+    }
+
+    func testAskToCloseWhenTheAppCannotLeave() async {
+        let (model, _, suspended) = await makeOfferedModel(canSuspend: false)
+        let install = Task { await model.installUpdate() }
+        await settle(0.02)
+        model.updateInstallSceneChanged(.inactive)
+        model.updateInstallSceneChanged(.active)
+        await settle()
+        XCTAssertEqual(suspended(), 1)
+        XCTAssertEqual(model.updateInstall?.phase, .closeManually)
+        await install.value
+    }
+
+    func testUpdatedNotice() {
+        XCTAssertEqual(AppUpdate.updatedNotice(lastLaunchedBuild: 20, currentBuild: "21"), "Updated to build 21 (from 20)")
+        XCTAssertNil(AppUpdate.updatedNotice(lastLaunchedBuild: 21, currentBuild: "21"))
+        XCTAssertNil(AppUpdate.updatedNotice(lastLaunchedBuild: nil, currentBuild: "21"), "no record before build 21")
+        XCTAssertNil(AppUpdate.updatedNotice(lastLaunchedBuild: 22, currentBuild: "21"))
     }
 
     func testStatusLine() {

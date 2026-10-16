@@ -38,6 +38,9 @@ struct DiagnosticsView: View {
                 .accessibilityIdentifier("appBuildLabel")
             Text("Updates: \(model.updateCheckStatus)").font(.caption2)
                 .accessibilityIdentifier("updateCheckStatus")
+            if let install = model.updateInstall {
+                Text("Install: build \(install.build) \(install.phase.rawValue)").font(.caption2)
+            }
         }
     }
 
