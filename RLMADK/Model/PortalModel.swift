@@ -68,10 +68,15 @@ final class PortalModel: ObservableObject {
     @Published private(set) var updatedNotice: String?
     @Published private(set) var updatedNotes: String?
     /// Test seams: how the app steps to the Home Screen (false when it cannot), how long it waits
-    /// for Apple's prompt, and how long Stay is offered before it leaves.
+    /// for Apple's prompt, and the pause that lets the banner show "Installing" before it leaves.
     var appSuspender: @MainActor () -> Bool = { PortalModel.suspendToHomeScreen() }
     var updatePromptTimeout: TimeInterval = 4
-    var updateLeaveDelay: TimeInterval = 2
+    var updateLeaveDelay: TimeInterval = 0.4
+    /// Test seams for closing after stepping aside: how capture is stopped (calls back when its
+    /// segment is closed) and how the process ends.
+    var captureStopperForInstall: (@MainActor (@escaping () -> Void) -> Void)?
+    var appTerminator: @MainActor () -> Void = { exit(0) }
+    private var installCloseDone = false
     private var updateTimer: Timer?
     private var lastUpdateCheckError: String?
     /// The last update check's outcome, shown in Diagnostics and the snapshot: when it ran, the
@@ -1060,8 +1065,8 @@ final class PortalModel: ObservableObject {
     }
 
     /// Follows Apple's install prompt through scene changes: inactive while it shows, active when
-    /// it closes. Then, after `updateLeaveDelay` (Stay cancels), the app steps to the Home Screen
-    /// so iOS 26 can replace it; coming back on the old build reports that.
+    /// it closes. Then, after `updateLeaveDelay`, the app steps to the Home Screen so iOS 26 can
+    /// replace it; coming back on the old build reports that (the prompt was cancelled).
     func updateInstallSceneChanged(_ phase: ScenePhase) {
         guard let install = updateInstall else { return }
         switch (install.phase, phase) {
@@ -1075,24 +1080,19 @@ final class PortalModel: ObservableObject {
                 guard self.updateInstall == UpdateInstall(build: install.build, phase: .leaving) else { return }
                 if self.appSuspender() {
                     self.setUpdateInstallPhase(.suspended)
+                    self.closeForInstall(build: install.build)
                 } else {
                     self.setUpdateInstallPhase(.closeManually)
                 }
             }
         case (.leaving, .background):
             setUpdateInstallPhase(.suspended)
+            closeForInstall(build: install.build)
         case (.suspended, .active):
             setUpdateInstallPhase(.returned)
         default:
             break
         }
-    }
-
-    /// The banner's Stay: the user cancelled Apple's prompt, so the app does not leave.
-    func stayInsteadOfInstalling() {
-        guard let install = updateInstall, install.phase == .leaving else { return }
-        updateInstall = nil
-        logLine("update install: stayed; build \(install.build) not installed")
     }
 
     /// The banner's Open page: the build's install page in Safari (when no prompt appeared).
@@ -1103,9 +1103,10 @@ final class PortalModel: ObservableObject {
         _ = await urlOpener(page)
     }
 
-    /// The banner's dismiss: this build is not offered again; a later one is.
+    /// The banner's dismiss: this build is not offered again; a later one is. Ignored during the
+    /// hand-off, when iOS may already have queued the install.
     func dismissUpdate() {
-        guard let offer = updateOffer else { return }
+        guard let offer = updateOffer, updateInstall?.inFlight != true else { return }
         UserDefaults.standard.set(offer.build, forKey: "dismissedUpdateBuild")
         updateOffer = nil
         updateInstall = nil
@@ -1123,6 +1124,27 @@ final class PortalModel: ObservableObject {
         updateInstall = install
         logLine("update install: build \(install.build) \(phase.rawValue)")
         sendSnapshot(reason: "update_install")
+    }
+
+    /// Ends the process once the app is on the Home Screen. iOS 26 replaces the app only when its
+    /// process is gone: a backgrounded app that keeps capturing audio stays alive and the install
+    /// waits (build 22 -> 23 on 2026-10-16: background from 16:13:24, still "Waiting" at 16:13:36;
+    /// the two installs that finished did so the moment the process died). Capture's segment is
+    /// closed and the log written first; the new build reopens the same capture on launch.
+    private func closeForInstall(build: Int) {
+        logLine("update install: closing so iOS can install build \(build)")
+        installCloseDone = false
+        let stopCapture = captureStopperForInstall ?? { [audio] done in audio.stop { _ in done() } }
+        stopCapture { Task { @MainActor [weak self] in self?.endProcessForInstall() } }
+        // A writer that never settles must not keep the install waiting.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { Task { @MainActor [weak self] in self?.endProcessForInstall() } }
+    }
+
+    private func endProcessForInstall() {
+        guard !installCloseDone else { return }
+        installCloseDone = true
+        store.flushLog()
+        appTerminator()
     }
 
     /// Sends the app to the Home Screen like the Home gesture; false when UIKit lacks it.
@@ -2134,6 +2156,11 @@ final class LocalStore {
     // Durable recent log: Documents/recent-log.txt, appended on a serial queue, bounded by rotation.
     private static let logQueue = DispatchQueue(label: "rlmadk.log", qos: .utility)
     private var logURL: URL { root.appendingPathComponent("recent-log.txt") }
+
+    /// Waits for pending log appends (before the process ends).
+    func flushLog() {
+        LocalStore.logQueue.sync {}
+    }
 
     func appendLog(_ line: String) {
         let url = logURL

@@ -408,7 +408,7 @@ Installing on the phone (acceptance step, separate from the build):
   it writes `build<N>/` (IPA, manifest, page, sha256, receipt), then `latest.json` (atomically, last)
   and the root `index.html`.
 - Update banner (build 19 and later): the app reads that `latest.json` when it comes to the
-  foreground and every 5 minutes while open (`RLMADK/Model/AppUpdate.swift`; override with
+  foreground and every 30 seconds while open (`RLMADK/Model/AppUpdate.swift`; override with
   `RLMADK_UPDATE_URL`). A newer build for this bundle shows "Update available: build N" with Install
   (opens the `itms-services` link) and a dismiss; the device snapshot reports `update_offer`.
   The banner stays hidden while `latest.json` names the installed build, so a fresh install looks
@@ -422,10 +422,13 @@ Installing on the phone (acceptance step, separate from the build):
 - Install hand-off (build 21 and later): iOS 26 queues an `itms-services` install opened from the
   running app and leaves it "Waiting…" until the app leaves the foreground (build 20 stalled this
   way on 2026-10-16: installcoordinationd waited for a termination assertion and installed the moment
-  the app process ended). So after Apple's prompt closes, the banner shows "Installing" with Stay for
-  2 s, then the app steps to the Home Screen (UIKit's private `suspend`), where the icon shows
-  progress. No prompt within 4 s offers the install page in Safari; coming back on the old build says
-  to close the app if its icon says Waiting. The first launch of a newer build shows a green
+  the app process ended). So once Apple's prompt closes, the banner shows "Installing" and the app
+  steps to the Home Screen at once (UIKit's private `suspend`), closes capture's segment and ends its
+  process (`exit(0)`; the background audio mode keeps a merely backgrounded app alive and the install
+  waits: build 22 -> 23 stayed "Waiting" in the background), and the icon shows progress. Nothing
+  on the banner is tappable meanwhile (build 22: a ✕ tapped one second after the prompt cancelled the
+  step aside and the install waited 25 minutes until the app was closed). No prompt within 4 s offers
+  the install page in Safari; coming back on the old build (prompt cancelled) offers Install again. The first launch of a newer build shows a green
   "Updated to build N (from M)" with the notes. Phases are logged (`update install: build N <phase>`)
   and reported in the snapshot as `update_install` / `updated_notice`.
 - First launch: the phone must be online for Apple's certificate check (PPQ); Developer Mode must

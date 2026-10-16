@@ -130,12 +130,9 @@ struct PortalView: View {
             }
             Spacer(minLength: 4)
             switch model.updateInstall?.phase {
-            case .opening?, .prompt?, .suspended?:
+            case .opening?, .prompt?, .leaving?, .suspended?:
                 ProgressView().tint(.white).controlSize(.small)
-            case .leaving?:
-                Button("Stay") { model.stayInsteadOfInstalling() }
-                    .buttonStyle(.bordered).tint(.white).controlSize(.small)
-                    .accessibilityIdentifier("updateStayButton")
+                    .accessibilityIdentifier("updateInstallProgress")
             case .noPrompt?:
                 Button("Open page") { Task { await model.openUpdatePage() } }
                     .buttonStyle(.bordered).tint(.white).controlSize(.small)
@@ -145,10 +142,12 @@ struct PortalView: View {
                     .buttonStyle(.bordered).tint(.white).controlSize(.small)
                     .accessibilityIdentifier("updateInstallButton")
             }
-            Button { model.dismissUpdate() } label: { Image(systemName: "xmark") }
-                .buttonStyle(.borderless).controlSize(.small)
-                .accessibilityLabel("Dismiss update")
-                .accessibilityIdentifier("updateDismissButton")
+            if model.updateInstall?.inFlight != true {
+                Button { model.dismissUpdate() } label: { Image(systemName: "xmark") }
+                    .buttonStyle(.borderless).controlSize(.small)
+                    .accessibilityLabel("Dismiss update")
+                    .accessibilityIdentifier("updateDismissButton")
+            }
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 10).padding(.vertical, 6)
