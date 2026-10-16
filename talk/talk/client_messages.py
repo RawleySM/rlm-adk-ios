@@ -48,6 +48,12 @@ class ClientMessages(FrameProcessor):
                     await self._floor.bug_typed(text)
                     return
 
+                verse = passage.verse_request(passage.norm(text)) if text and self._floor.reading_state.get("verses") else None
+                start = passage.index_of_verse(self._floor.reading_state, verse) if verse is not None else None
+                if start is not None:
+                    # "Start at verse 16" typed: read the pane's passage from there.
+                    await self._floor.read_active(user_text=text, reason="typed", from_index=start)
+                    return
                 if text and self._floor.reading_state.get("verses") and passage.read_request(passage.norm(text)):
                     # "Read it" typed: the same deterministic read of the pane's passage as when spoken.
                     await self._floor.read_active(restart=passage.read_request(passage.norm(text)) == "restart", user_text=text, reason="typed")
@@ -74,12 +80,17 @@ class ClientMessages(FrameProcessor):
                     await self._floor.select_passage(reference, f"client:{message.get('reason', 'select')}")
                 return
             if kind == "client_read":
-                # The scripture pane's Read / Pause button.
+                # The scripture pane's Read / Pause button, and a tapped verse number ("index": the verse's
+                # position in the pane's passage; a string over WebRTC).
                 action = message.get("action")
+                try:
+                    from_index = int(message["index"]) if message.get("index") not in (None, "") else None
+                except (TypeError, ValueError):
+                    from_index = None
                 if action == "pause":
                     await self._floor.pause_reading("client")
                 elif action in {"play", "restart"}:
-                    await self._floor.read_active(restart=action == "restart", user_text=None, reason="client")
+                    await self._floor.read_active(restart=action == "restart", user_text=None, reason="client" if from_index is None else f"client:index {from_index}", from_index=from_index)
                 return
             if kind == "client_bug":
                 # The Bug chip: start | stop | cancel a bug report (talk.bug_report).
