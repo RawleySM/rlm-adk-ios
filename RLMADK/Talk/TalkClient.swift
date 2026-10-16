@@ -50,6 +50,8 @@ enum TalkEvent: Equatable {
     case interruption
     /// The server's floor changed (`{"type":"mode",...}`).
     case floorMode(mode: String, from: String?, reason: String?)
+    /// Who answers (`{"type":"assistant","name":...}`, sent when the app syncs): labels replies.
+    case assistantName(String)
     /// Transcript text heard while praying (never sent to the LLM).
     case prayerText(text: String, final: Bool)
     /// The passage open in the scripture pane changed (`{"type":"passage",...}`).
@@ -203,6 +205,9 @@ enum TalkMessageParser {
         case "mode":
             guard let mode = message["mode"] as? String else { return [] }
             return [.floorMode(mode: mode, from: message["from"] as? String, reason: message["reason"] as? String)]
+        case "assistant":
+            guard let name = message["name"] as? String, !name.isEmpty else { return [] }
+            return [.assistantName(name)]
         case "prayer_text":
             guard let text = message["text"] as? String else { return [] }
             return [.prayerText(text: text, final: message["final"] as? Bool ?? true)]

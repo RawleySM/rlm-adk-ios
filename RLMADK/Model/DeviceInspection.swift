@@ -48,6 +48,10 @@ struct DeviceSnapshot: Codable, Equatable {
     var update_offer: String? = nil
     /// The last update check: published build and outcome, or the failure.
     var update_check: String? = nil
+    /// The banner's install hand-off ("build 21 suspended"), if one is in progress.
+    var update_install: String? = nil
+    /// "Updated to build 21 (from 20)" on the first launch of a newer build.
+    var updated_notice: String? = nil
     /// The Bug chip: phase, lines heard, ticket and outcome.
     var bug_report: String? = nil
 

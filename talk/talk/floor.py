@@ -139,6 +139,11 @@ class FloorProcessor(FrameProcessor):
             self.events.append({"t": time.time(), "node": current, "reason": reason})
             await self._tell_client({"type": "node", "node": current, "reason": reason, "t": time.time()})
 
+    @property
+    def assistant_name(self) -> str:
+        """Who answers, as the app labels replies (config ``llm_display_name``, else ``llm_model``)."""
+        return self._cfg.llm_display_name or self._cfg.llm_model
+
     async def _tell_client(self, message: dict) -> None:
         """Our bare JSON for the WebSocket client plus an RTVI server-message for the Pipecat SDK client."""
         await self.push_frame(OutputTransportMessageUrgentFrame(message=message))
@@ -547,6 +552,9 @@ class FloorProcessor(FrameProcessor):
             message = frame.message or {}
             kind = message.get("type")
             if kind == "client_mode":
+                if message.get("reason") == "sync":
+                    # The app syncs on every connect; tell it who answers so it can label replies.
+                    await self._tell_client({"type": "assistant", "name": self.assistant_name})
                 mode = message.get("mode")
                 if mode in {"prayer", "available", "quiet"}:
                     await self.set_mode(mode, f"client:{message.get('reason', 'request')}")

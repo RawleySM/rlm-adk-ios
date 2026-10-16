@@ -26,6 +26,8 @@ class TalkConfig:
     # reachable through the local forward on 28111 when Spark-A cannot admit a model.
     llm_base_url: str = "http://127.0.0.1:28080/v1"
     llm_model: str = "qwen-coding"
+    # The name the app shows before each reply ("Qwen3.8: ..."); empty shows llm_model.
+    llm_display_name: str = ""
     llm_api_key: str = "local"
     llm_max_tokens: int = 220
     llm_temperature: float = 0.4
