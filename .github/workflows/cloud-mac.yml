@@ -172,6 +172,13 @@ jobs:
             sleep 9
             xcrun simctl io "$UDID" screenshot "simulator-bug-$bug.png"
           done
+          # The update banner: latest.json from the fixture server names a build newer than this one.
+          xcrun simctl terminate "$UDID" com.rawleystanhope.rlmadk || true
+          SIMCTL_CHILD_RLMADK_UPDATE_URL=http://127.0.0.1:7860/latest.json SIMCTL_CHILD_RLMADK_BACKEND_URL=http://127.0.0.1:8765 SIMCTL_CHILD_RLMADK_TALK_URL=http://127.0.0.1:7860 SIMCTL_CHILD_RLMADK_SKIP_PERMISSION_PROMPTS=1 \
+            xcrun simctl launch "$UDID" com.rawleystanhope.rlmadk
+          sleep 8
+          xcrun simctl io "$UDID" screenshot simulator-update-banner.png
+          curl -s http://127.0.0.1:7860/log | python3 -c 'import json,sys; n=json.load(sys.stdin).get("latest_json_requests",0); print("latest.json requests:", n); sys.exit(0 if n else "UPDATE BANNER PROBLEM: the app never read latest.json")'
           curl -s http://127.0.0.1:7860/log | python3 -c '
           import json, sys
           actions = [m["message"].get("action") for m in json.load(sys.stdin)["text"] if m["message"].get("type") == "client_bug"]
@@ -203,6 +210,7 @@ jobs:
             simulator-read-mode.png
             simulator-bug-reporting.png
             simulator-bug-filed.png
+            simulator-update-banner.png
             simulator-after-turn.png
             simulator-work.png
             simulator-diagnostics.png

@@ -3,6 +3,7 @@ export method selection, export options, package inspection, receipt cross-check
 
 import datetime as dt
 import hashlib
+import json
 import importlib.util
 import io
 import plistlib
@@ -171,6 +172,31 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(sidecar, f"{hashlib.sha256(self.ipa.read_bytes()).hexdigest()}  RLMADK.ipa\n")
         self.assertIn(result["identity"]["sha256"], page)
         self.assertIn("Developer Mode", page)
+
+    def test_publish_places_the_build_then_points_latest_json_at_it(self):
+        root = self.dir / "delivery"
+        doc = di.publish(self.ipa, root, "https://portal.example.ts.net:8443/", notes="Adds the update banner.")
+        self.assertEqual(doc["schema"], "rlmadk.latest_build.v1")
+        self.assertEqual(doc["build"], 7)
+        self.assertEqual(doc["bundle_id"], di.BUNDLE)
+        self.assertEqual(doc["page_url"], "https://portal.example.ts.net:8443/build7/")
+        self.assertEqual(doc["install_url"], "itms-services://?action=download-manifest&url=https%3A%2F%2Fportal.example.ts.net%3A8443%2Fbuild7%2Fmanifest.plist")
+        self.assertEqual(doc["notes"], "Adds the update banner.")
+        self.assertEqual(json.loads((root / "latest.json").read_text()), doc)
+        for name in ("RLMADK.ipa", "RLMADK.ipa.sha256", "manifest.plist", "index.html", "latest.json"):
+            self.assertTrue((root / "build7" / name).is_file(), name)
+        self.assertIn('href="build7/"', (root / "index.html").read_text())
+        self.assertFalse((root / ".latest.json.tmp").exists())
+        again = di.publish(root / "build7" / "RLMADK.ipa", root, "https://portal.example.ts.net:8443")
+        self.assertEqual(again["build"], 7, "republishing the same bytes is allowed")
+
+    def test_publish_refuses_a_reused_build_number_with_different_bytes(self):
+        root = self.dir / "delivery"
+        di.publish(self.ipa, root, "https://portal.example.ts.net:8443")
+        (self.dir / "other").mkdir()
+        other = make_ipa(self.dir / "other" / "RLMADK.ipa", {**INFO, "Different": "bytes"})
+        with self.assertRaises(di.Rejected):
+            di.publish(other, root, "https://portal.example.ts.net:8443")
 
     def test_only_https_base_urls_are_accepted(self):
         for bad in ("http://portal.example/ios", "portal.example/ios", "https:///nohost", "ftp://x/y"):
