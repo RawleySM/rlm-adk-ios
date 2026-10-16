@@ -17,7 +17,9 @@ struct LatestBuild: Codable, Equatable {
 /// The banner's install hand-off. iOS 26 queues an `itms-services` install opened from the running
 /// app and waits ("Waiting…" on the Home Screen icon) until that app leaves the foreground; iOS 18
 /// closed the app by itself. So when Apple's prompt closes, the app steps to the Home Screen at once,
-/// where the icon shows the install, and the new build says "Updated to build N" on its first launch.
+/// closes capture and ends its process (a backgrounded app that keeps capturing stays alive and the
+/// install waits), the Home Screen icon shows the install, and the new build says "Updated to build N"
+/// on its first launch.
 /// Nothing on the banner can be tapped meanwhile: on build 22 a tap on its ✕ one second after the
 /// prompt closed cancelled the step aside and left the install queued for 25 minutes.
 struct UpdateInstall: Equatable {
@@ -28,7 +30,7 @@ struct UpdateInstall: Equatable {
         case prompt
         /// The prompt closed; the app is stepping to the Home Screen.
         case leaving
-        /// The app went to the Home Screen so iOS can replace it.
+        /// The app went to the Home Screen and is closing so iOS can replace it.
         case suspended
         /// The app came back to the foreground still on the old build (the prompt was cancelled).
         case returned

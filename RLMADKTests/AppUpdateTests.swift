@@ -7,6 +7,7 @@ import XCTest
 final class AppUpdateTests: XCTestCase {
     private let json = #"{"schema":"rlmadk.latest_build.v1","bundle_id":"com.rawleystanhope.rlmadk","version":"0.2.0","build":20,"install_url":"itms-services://?action=download-manifest&url=https%3A%2F%2Fhost%2Fbuild20%2Fmanifest.plist","page_url":"https://host/build20/","notes":"Adds X.","published_at":"2026-10-16T00:00:00+00:00"}"#
     private var roots: [URL] = []
+    private var terminated = 0
 
     override func tearDown() {
         UserDefaults.standard.removeObject(forKey: "dismissedUpdateBuild")
@@ -78,7 +79,10 @@ final class AppUpdateTests: XCTestCase {
         var opened: [URL] = []
         var suspended = 0
         model.urlOpener = { opened.append($0); return opens }
+        terminated = 0
         model.appSuspender = { suspended += 1; return canSuspend }
+        model.captureStopperForInstall = { done in done() }
+        model.appTerminator = { terminated += 1 }
         model.updatePromptTimeout = 0.3
         model.updateLeaveDelay = 0.05
         await model.checkForUpdate(reason: "test")
@@ -102,6 +106,7 @@ final class AppUpdateTests: XCTestCase {
         await settle()
         XCTAssertEqual(suspended(), 1)
         XCTAssertEqual(model.updateInstall?.phase, .suspended)
+        XCTAssertEqual(terminated, 1, "the process ends so iOS can replace the app")
         await install.value
         XCTAssertEqual(model.updateInstall?.phase, .suspended, "the prompt timeout does not override a shown prompt")
         model.updateInstallSceneChanged(.active)

@@ -423,7 +423,9 @@ Installing on the phone (acceptance step, separate from the build):
   running app and leaves it "Waiting…" until the app leaves the foreground (build 20 stalled this
   way on 2026-10-16: installcoordinationd waited for a termination assertion and installed the moment
   the app process ended). So once Apple's prompt closes, the banner shows "Installing" and the app
-  steps to the Home Screen at once (UIKit's private `suspend`), where the icon shows progress. Nothing
+  steps to the Home Screen at once (UIKit's private `suspend`), closes capture's segment and ends its
+  process (`exit(0)`; the background audio mode keeps a merely backgrounded app alive and the install
+  waits: build 22 -> 23 stayed "Waiting" in the background), and the icon shows progress. Nothing
   on the banner is tappable meanwhile (build 22: a ✕ tapped one second after the prompt cancelled the
   step aside and the install waited 25 minutes until the app was closed). No prompt within 4 s offers
   the install page in Safari; coming back on the old build (prompt cancelled) offers Install again. The first launch of a newer build shows a green

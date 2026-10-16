@@ -72,6 +72,11 @@ final class PortalModel: ObservableObject {
     var appSuspender: @MainActor () -> Bool = { PortalModel.suspendToHomeScreen() }
     var updatePromptTimeout: TimeInterval = 4
     var updateLeaveDelay: TimeInterval = 0.4
+    /// Test seams for closing after stepping aside: how capture is stopped (calls back when its
+    /// segment is closed) and how the process ends.
+    var captureStopperForInstall: (@MainActor (@escaping () -> Void) -> Void)?
+    var appTerminator: @MainActor () -> Void = { exit(0) }
+    private var installCloseDone = false
     private var updateTimer: Timer?
     private var lastUpdateCheckError: String?
     /// The last update check's outcome, shown in Diagnostics and the snapshot: when it ran, the
@@ -1075,12 +1080,14 @@ final class PortalModel: ObservableObject {
                 guard self.updateInstall == UpdateInstall(build: install.build, phase: .leaving) else { return }
                 if self.appSuspender() {
                     self.setUpdateInstallPhase(.suspended)
+                    self.closeForInstall(build: install.build)
                 } else {
                     self.setUpdateInstallPhase(.closeManually)
                 }
             }
         case (.leaving, .background):
             setUpdateInstallPhase(.suspended)
+            closeForInstall(build: install.build)
         case (.suspended, .active):
             setUpdateInstallPhase(.returned)
         default:
@@ -1117,6 +1124,27 @@ final class PortalModel: ObservableObject {
         updateInstall = install
         logLine("update install: build \(install.build) \(phase.rawValue)")
         sendSnapshot(reason: "update_install")
+    }
+
+    /// Ends the process once the app is on the Home Screen. iOS 26 replaces the app only when its
+    /// process is gone: a backgrounded app that keeps capturing audio stays alive and the install
+    /// waits (build 22 -> 23 on 2026-10-16: background from 16:13:24, still "Waiting" at 16:13:36;
+    /// the two installs that finished did so the moment the process died). Capture's segment is
+    /// closed and the log written first; the new build reopens the same capture on launch.
+    private func closeForInstall(build: Int) {
+        logLine("update install: closing so iOS can install build \(build)")
+        installCloseDone = false
+        let stopCapture = captureStopperForInstall ?? { [audio] done in audio.stop { _ in done() } }
+        stopCapture { Task { @MainActor [weak self] in self?.endProcessForInstall() } }
+        // A writer that never settles must not keep the install waiting.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { Task { @MainActor [weak self] in self?.endProcessForInstall() } }
+    }
+
+    private func endProcessForInstall() {
+        guard !installCloseDone else { return }
+        installCloseDone = true
+        store.flushLog()
+        appTerminator()
     }
 
     /// Sends the app to the Home Screen like the Home gesture; false when UIKit lacks it.
@@ -2128,6 +2156,11 @@ final class LocalStore {
     // Durable recent log: Documents/recent-log.txt, appended on a serial queue, bounded by rotation.
     private static let logQueue = DispatchQueue(label: "rlmadk.log", qos: .utility)
     private var logURL: URL { root.appendingPathComponent("recent-log.txt") }
+
+    /// Waits for pending log appends (before the process ends).
+    func flushLog() {
+        LocalStore.logQueue.sync {}
+    }
 
     func appendLog(_ line: String) {
         let url = logURL
