@@ -9,7 +9,8 @@ scripted bot turn: RTVI ``user-transcription``, ``bot-started-speaking``, ``bot-
 0.4 s of 24 kHz tone as tagged binary frames, ``bot-tts-text``, ``bot-stopped-speaking``. On
 ``client_mode`` it echoes the floor change as the real server does (``reason`` = ``client:<reason>``).
 The scripture pane: ``client_passage`` answers with a ``passage`` event (Psalm 23 of the World
-English Bible, whatever was asked), ``client_read`` ``play`` reads it from where it stopped with the
+English Bible, whatever was asked), ``client_read`` ``play`` reads it from where it stopped (or from
+a tapped verse's ``index``) with the
 real server's ``reading`` events (started, verse, verse_done every 2.6 s, finished) and ``pause``
 pauses it. The Bug chip: ``client_bug`` ``start`` enters ``bug`` mode and plays two scripted
 ``bug_text`` lines as if transcribed; ``stop`` answers finishing, filing, filed (``bug-ci-01``) and,
@@ -207,6 +208,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json({"type": "reading", "state": "paused", "reference": "Psalm 23", "spoken_count": PANE["spoken"]})
             else:
                 PANE["reading"] += 1
+                if str(message.get("index") or "").isdigit():
+                    # A tapped verse number: start at that verse, as the real server does.
+                    PANE["spoken"] = int(message["index"])
                 threading.Thread(target=self._read, args=(PANE["reading"],), daemon=True).start()
 
     def _bug(self, action: str) -> None:

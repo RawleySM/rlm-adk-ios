@@ -1858,6 +1858,18 @@ final class PortalModel: ObservableObject {
     }
 
     /// The pane's speaker button: read the open passage from where it stopped, or pause it.
+    /// A tapped verse number in the pane: read from that verse (its position in the passage) to the end.
+    func readFrom(index: Int) {
+        guard let passage, passage.verses.indices.contains(index) else { return }
+        guard talkState.isUp else {
+            lastError = "talk server not connected; reading not requested"
+            return
+        }
+        if mode.quiet { lastError = "The portal is quiet; wake it to hear the reading." }
+        logLine("pane: read from verse \(passage.verses[index].verse) (index \(index))")
+        talk?.send(.clientRead(action: "play", index: index))
+    }
+
     func toggleReading() {
         guard passage != nil else { return }
         if reading.isReading {

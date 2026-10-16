@@ -419,6 +419,12 @@ Installing on the phone (acceptance step, separate from the build):
   the transcript is labelled "You:". The talk server sends `{"type": "assistant", "name": ...}` when
   the app syncs (config `llm_display_name`, else `llm_model`); the app keeps the last name. The
   Devotional disclosure is gone from the pane.
+- Reading from a verse (build 26 and later): tap a verse's blue number in the scripture pane to read
+  from that verse to the end of the chapter (`client_read` `play` with `index`, its position in the
+  pane's passage). Saying or typing "start at verse 16" / "go back to verse 5" does the same without a
+  model turn (`passage.verse_request`), and the model's `continue_reading` takes `from_verse`.
+  "Read Matthew 25:14" opens Matthew 25 and reads from verse 14 on (a range still reads just the
+  range); "John 3:16" typed in the navigator opens John 3 positioned at verse 16, so Read starts there.
 - Install hand-off (build 21 and later): iOS 26 queues an `itms-services` install opened from the
   running app and leaves it "Waiting…" until the app leaves the foreground (build 20 stalled this
   way on 2026-10-16: installcoordinationd waited for a termination assertion and installed the moment

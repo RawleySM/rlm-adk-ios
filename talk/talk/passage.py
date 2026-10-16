@@ -95,6 +95,54 @@ def read_queue(state: dict[str, Any], restart: bool, indices: list[int] | None =
     return units
 
 
+def index_of_verse(state: dict[str, Any], verse: int) -> int | None:
+    """Position in the open passage's verse list of verse number ``verse`` (the first at or after it), or None."""
+    return next((i for i, v in enumerate(state.get("verses") or []) if int(v.get("verse") or 0) >= verse), None)
+
+
+_UNITS = {w: n for n, w in enumerate("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen".split())}
+_TENS = {w: 10 * n for n, w in enumerate("_ _ twenty thirty forty fifty sixty seventy eighty ninety".split()) if w != "_"}
+
+
+def spoken_number(words: list[str]) -> int | None:
+    """The number at the start of ``words``: "16", "sixteen", "twenty two", "one hundred nineteen"; None if none."""
+    if words and words[0].isdigit():
+        return int(words[0])
+    total, seen = 0, False
+    for word in words:
+        if word in _UNITS:
+            total += _UNITS[word]
+        elif word in _TENS:
+            total += _TENS[word]
+        elif word == "hundred" and seen:
+            total *= 100
+        elif word == "and" and seen:
+            continue
+        else:
+            break
+        seen = True
+    return total if seen else None
+
+
+_VERSE_LEADS = r"start|starting|read|reading|begin|beginning|continue|resume|play|pick up|go back|back up|go|jump|skip"
+_VERSE_REQUEST = re.compile(rf"\b(?:{_VERSE_LEADS})\b(?P<between>(?:\s+[a-z']+){{0,4}}?)\s+verse\s+(?P<number>[a-z0-9]+(?:\s+[a-z0-9]+){{0,3}})")
+
+
+def verse_request(text: str) -> int | None:
+    """The verse of the open passage that ``text`` (``norm``-ed) asks to read from, else None.
+
+    "Start at verse 16", "read from verse sixteen", "go back to verse 5", "continue from verse twelve".
+    A reference to another passage ("read Romans 8 verse 16", "chapter 3 verse 2") is not one: the
+    model opens that passage with read_scripture.
+    """
+    match = _VERSE_REQUEST.search(text)
+    if match is None:
+        return None
+    if "chapter" in text.split() or any(word.isdigit() for word in text[: match.start("number")].split()):
+        return None
+    return spoken_number(match.group("number").split())
+
+
 def pane_note(state: dict[str, Any], max_chars: int) -> str:
     """The system-instruction paragraph describing the open passage ('' when none)."""
     verses = state.get("verses") or []
@@ -122,7 +170,7 @@ def pane_note(state: dict[str, Any], max_chars: int) -> str:
         f"Scripture pane: Rawley's screen shows {state.get('reference')} ({state.get('edition') or 'World English Bible'}); {status}. "
         "When he says this passage, this chapter, this verse or the text, or asks about Scripture without naming another reference, "
         "he means this passage: answer from its verses below in two or three spoken sentences, quoting at most the verse it concerns. "
-        "If he asks to hear it read, call continue_reading (it reads the pane's passage).\n" + "\n".join(lines) + tail
+        "If he asks to hear it read, call continue_reading (it reads the pane's passage); to start at a verse of it, pass from_verse.\n" + "\n".join(lines) + tail
     )
 
 

@@ -95,7 +95,7 @@ struct ScripturePaneView: View {
     @ViewBuilder private var content: some View {
         if let passage = model.passage {
             TimelineView(.periodic(from: .now, by: model.reading.activeIndex == nil ? 3600 : 0.12)) { context in
-                ScriptureTextView(passage: passage, progress: model.reading, now: context.date, fontSize: CGFloat(model.scriptureFontSize + (readMode ? 3 : 0)))
+                ScriptureTextView(passage: passage, progress: model.reading, now: context.date, fontSize: CGFloat(model.scriptureFontSize + (readMode ? 3 : 0))) { model.readFrom(index: $0) }
             }
             .overlay(alignment: .bottom) {
                 if let requested = model.passageRequested {
@@ -123,6 +123,8 @@ struct ScriptureTextView: UIViewRepresentable {
     var progress: ReadingProgress
     var now: Date
     var fontSize: CGFloat
+    /// A tapped verse number: the verse's position in the passage (reading starts there).
+    var onVerseTap: ((Int) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -136,14 +138,40 @@ struct ScriptureTextView: UIViewRepresentable {
         view.alwaysBounceVertical = true
         view.delegate = context.coordinator
         view.accessibilityIdentifier = "scriptureText"
+        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped(_:)))
+        tap.delegate = context.coordinator
+        tap.cancelsTouchesInView = false
+        view.addGestureRecognizer(tap)
         return view
     }
 
     func updateUIView(_ view: UITextView, context: Context) {
+        context.coordinator.onVerseTap = onVerseTap
         context.coordinator.update(view, passage: passage, progress: progress, now: now, fontSize: fontSize)
     }
 
-    final class Coordinator: NSObject, UITextViewDelegate {
+    /// The verse whose number (the blue superscript) is at `point`, as its position in the passage.
+    /// The numbers are small, so a tap within about 14 pt of one counts; the nearest wins.
+    static func verseNumberHit(at point: CGPoint, in view: UITextView, numberRanges: [NSRange]) -> Int? {
+        guard let position = view.closestPosition(to: point) else { return nil }
+        let offset = view.offset(from: view.beginningOfDocument, to: position)
+        var best: (index: Int, distance: CGFloat)?
+        for i in numberRanges.indices where abs(numberRanges[i].location - offset) < 120 {
+            guard let start = view.position(from: view.beginningOfDocument, offset: numberRanges[i].location),
+                  let end = view.position(from: start, offset: numberRanges[i].length),
+                  let range = view.textRange(from: start, to: end) else { continue }
+            let rect = view.firstRect(for: range)
+            guard !rect.isNull, !rect.isInfinite, rect.insetBy(dx: -14, dy: -12).contains(point) else { continue }
+            let distance = hypot(point.x - rect.midX, point.y - rect.midY)
+            if best == nil || distance < best!.distance { best = (i, distance) }
+        }
+        return best?.index
+    }
+
+    final class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate {
+        var onVerseTap: ((Int) -> Void)?
+        /// Each verse's number run (label and its no-break space), outside `verseRanges`.
+        private(set) var numberRanges: [NSRange] = []
         private var key = ""
         private var verseRanges: [NSRange] = []
         private var wordRanges: [[NSRange]] = []
@@ -152,6 +180,15 @@ struct ScriptureTextView: UIViewRepresentable {
         private var userScrolledAt: Date?
 
         func scrollViewWillBeginDragging(_ scrollView: UIScrollView) { userScrolledAt = Date() }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+
+        @objc func tapped(_ gesture: UITapGestureRecognizer) {
+            guard gesture.state == .ended, let view = gesture.view as? UITextView,
+                  let index = ScriptureTextView.verseNumberHit(at: gesture.location(in: view), in: view, numberRanges: numberRanges) else { return }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            onVerseTap?(index)
+        }
 
         func update(_ view: UITextView, passage: ScripturePassage, progress: ReadingProgress, now: Date, fontSize: CGFloat) {
             let newKey = "\(passage.reference)|\(passage.verses.count)|\(fontSize)"
@@ -181,7 +218,7 @@ struct ScriptureTextView: UIViewRepresentable {
             return base.fontDescriptor.withDesign(.serif).map { UIFont(descriptor: $0, size: size) } ?? base
         }
 
-        private func build(_ passage: ScripturePassage, fontSize: CGFloat) -> NSAttributedString {
+        func build(_ passage: ScripturePassage, fontSize: CGFloat) -> NSAttributedString {
             let out = NSMutableAttributedString()
             let heading = NSMutableParagraphStyle()
             heading.paragraphSpacing = 2
@@ -197,6 +234,7 @@ struct ScriptureTextView: UIViewRepresentable {
             let textFont = serif(fontSize)
             let numberFont = UIFont.systemFont(ofSize: fontSize * 0.58, weight: .bold)
             verseRanges = Array(repeating: NSRange(location: 0, length: 0), count: passage.verses.count)
+            numberRanges = verseRanges
             wordRanges = Array(repeating: [], count: passage.verses.count)
             let chapters = Set(passage.verses.compactMap { $0.osis?.split(separator: ".").dropLast().joined(separator: ".") })
             for paragraph in ScriptureParagraphs.split(passage.verses) {
@@ -204,7 +242,9 @@ struct ScriptureTextView: UIViewRepresentable {
                     let verse = passage.verses[i]
                     // A passage spanning chapters labels each verse with its chapter ("8:28").
                     let label = chapters.count > 1 ? (verse.osis.map { $0.split(separator: ".").suffix(2).joined(separator: ":") } ?? "\(verse.verse)") : "\(verse.verse)"
+                    let numberStart = out.length + (position == 0 ? 0 : 1)
                     out.append(NSAttributedString(string: (position == 0 ? "" : " ") + label + "\u{00a0}", attributes: [.font: numberFont, .baselineOffset: fontSize * 0.38, .foregroundColor: ScriptureTheme.verseNumber, .paragraphStyle: body]))
+                    numberRanges[i] = NSRange(location: numberStart, length: out.length - numberStart)
                     let start = out.length
                     out.append(NSAttributedString(string: verse.text, attributes: [.font: textFont, .foregroundColor: ScriptureTheme.ink, .paragraphStyle: body]))
                     verseRanges[i] = NSRange(location: start, length: out.length - start)
