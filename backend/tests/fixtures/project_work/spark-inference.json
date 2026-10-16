@@ -1,91 +1,87 @@
 {
-  "accepted_results": [],
-  "active_branches": [],
-  "baseline": {
-    "described_at": "2026-10-11T12:58:17.001687+00:00",
-    "described_by": "Rawley Stanhope (Claude Fable cleanup session 2026-10-11)",
-    "history": {
-      "references": [],
-      "state": "unknown"
+  "consumers": [
+    {
+      "consumer": "data-pipelines prayer_ingest",
+      "evidence": "All 218 prayer_corpus_v1 rows carry asr_model_id cohere-transcribe-03-2026; a transcribe succeeded 2026-10-16 09:30 UTC (outside-infra review section 1).",
+      "observed_at": "2026-10-16",
+      "product_id": "prayer_corpus",
+      "status": "confirmed"
     },
-    "locations": [
-      {
-        "git_commit": null,
-        "host": "github",
-        "locator": "https://github.com/RawleySM/spark-inference",
-        "observed_at": "2026-10-11T12:58:16Z",
-        "role": "canonical_remote",
-        "runnable_on_allocator_host": null
-      },
-      {
-        "git_commit": "4da6f01627aa29feda8ebf2537555375301286ab",
-        "host": "spark-a",
-        "locator": "/home/rawleysm/spark-inference",
-        "observed_at": "2026-10-11T12:58:16Z",
-        "role": "working_checkout",
-        "runnable_on_allocator_host": false
-      },
-      {
-        "git_commit": "4da6f01627aa29feda8ebf2537555375301286ab",
-        "host": "spark-a",
-        "locator": "/home/rawleysm/.local/share/spark-inference/releases/4da6f01627aa29feda8ebf2537555375301286ab",
-        "note": "spark-inference.service (user rawleysm).",
-        "observed_at": "2026-10-11T12:58:16Z",
-        "role": "deployment",
-        "runnable_on_allocator_host": null
-      },
-      {
-        "git_commit": "4da6f01627aa29feda8ebf2537555375301286ab",
-        "host": "spark-b",
-        "locator": "/home/mediaops/.local/share/spark-inference/releases/4da6f01627aa29feda8ebf2537555375301286ab",
-        "note": "spark-inference.service (user mediaops); hand-built release, no uv.",
-        "observed_at": "2026-10-11T12:58:16Z",
-        "role": "deployment",
-        "runnable_on_allocator_host": null
-      }
-    ],
-    "summary": "Independent supervisor repository (RawleySM/spark-inference, extracted from rlm-adk by PR #1248). Release 4da6f01 serves on Spark-A (127.0.0.1:28080, qwen-coding) and Spark-B (127.0.0.1:18300, qwen-coding-b; tunnel spark-a:28111). On 2026-10-11 both qwen-coding circuits were reset after cancellation-induced startup_failed records and both engines loaded and answered; a fix so such circuits expire is in progress.",
-    "unknowns": []
+    {
+      "consumer": "rlm-adk-ios talk tier",
+      "evidence": "Cohere STT on Spark-A 28080 and the LLM on Spark-B through 28111 (outside-infra review section 1).",
+      "observed_at": "2026-10-16",
+      "product_id": null,
+      "status": "confirmed"
+    }
+  ],
+  "disposition": {
+    "decided_at": "2026-10-16",
+    "decided_by": "Rawley Stanhope (approved the portfolio review: \"Proceed\", 2026-10-16)",
+    "reason": "Inference infrastructure, outside the data-product value criterion. Keep it: prayer bronze has a hard dependency on its Cohere route.",
+    "review": {
+      "host": "spark-a",
+      "locator": "/home/rawleysm/.config/rlm-adk/launch/reports/project-portfolio-review-20261016/REPORT.md",
+      "section": "3.1"
+    },
+    "state": "outside",
+    "successors": []
   },
-  "current_plan": {
-    "artifact": null,
-    "evidence": [],
-    "objective": null,
-    "state": "unknown"
-  },
-  "enrollment": {
-    "note": "Selected existing work; no historical replay.",
-    "origin": "manual_baseline"
-  },
-  "host_identity": {
-    "evidence": [],
-    "observed_at": null,
-    "pointer_sha256": null,
-    "registry": null,
-    "state": "unknown"
-  },
-  "identity_evidence": [],
-  "outputs": [],
+  "evidence_basis": "Installed on both Sparks and the hard ASR dependency of prayer_corpus.",
+  "evidence_level": "consumed",
+  "host_pointer_ids": [],
+  "locations": [
+    {
+      "git_commit": "85e8fc3dcc0734a8d8d906252bb2563d3d7cbac4",
+      "host": "github",
+      "locator": "https://github.com/RawleySM/spark-inference",
+      "observed_at": "2026-10-16",
+      "role": "canonical_remote"
+    },
+    {
+      "git_commit": "85e8fc3dcc0734a8d8d906252bb2563d3d7cbac4",
+      "host": "spark-a",
+      "locator": "/home/rawleysm/.local/share/spark-inference/releases/85e8fc3dcc0734a8d8d906252bb2563d3d7cbac4",
+      "note": "spark-inference.service active",
+      "observed_at": "2026-10-16",
+      "role": "deployment"
+    },
+    {
+      "git_commit": "7e98c9d58fb5d8997dd35b1feae3450546148aa9",
+      "host": "spark-b",
+      "locator": "/home/mediaops/.local/share/spark-inference/releases/7e98c9d58fb5d8997dd35b1feae3450546148aa9",
+      "note": "spark-inference.service active; lacks PR #5 (phonellm)",
+      "observed_at": "2026-10-16",
+      "role": "deployment"
+    }
+  ],
+  "migrated_from": [
+    {
+      "project_id": "spark-inference",
+      "record_blob": "f5f7a1433b3fa23b2718f5eccd9177be79f45f65",
+      "record_revision": 1,
+      "register_commit": "ebc578f6944fab0eae9e17822135f08ebfeb2f1b",
+      "schema": "rlm-adk.project-work-record.v1"
+    }
+  ],
+  "need_source": [],
   "owner": {
     "kind": "operator",
     "name": "Rawley Stanhope",
     "resident_id": null
   },
-  "package_checkpoints": [],
+  "products": [],
   "project_id": "spark-inference",
   "record_revision": 1,
-  "runtime_applicability": {
-    "note": "Applicability entered by Rawley Stanhope (Claude Fable cleanup session 2026-10-11).",
-    "package": "not_applicable",
-    "session": "not_applicable"
-  },
-  "schema": "rlm-adk.project-work-record.v1",
-  "title": "spark-inference: DGX Spark single-owner inference supervisors (qwen-coding, spark-small, cohere-transcribe)",
+  "schema": "rlm-adk.project-work-record.v2",
+  "summary": "Docker and vLLM supervisor with per-model leases and memory admission, serving cohere-transcribe, qwen-coding, spark-small and phonellm on 127.0.0.1:28080. Spark-A runs release 85e8fc3d (GitHub main); Spark-B runs 7e98c9d5, one release behind. Every new prayer is transcribed through its Cohere route; there is no fallback ASR.",
+  "title": "spark-inference: single-owner model supervisors on the Sparks (Cohere ASR, Qwen)",
   "unresolved": [
-    "spark-small image is absent on Spark-B by decision (keep spark-small on Spark-A).",
-    "comfyui-media.service on Spark-B is disabled at boot; delegates start it per task."
+    "The need is recorded only as implied by prayer capture; no operator statement names this repository.",
+    "Spark-B runs 7e98c9d, one release behind main 85e8fc3.",
+    "Document the /status model_admission contract read by data-pipelines spark_capacity.py on both sides.",
+    "Cohere STT unload latency of about 90 s (intake ticket bug-20261015-04)."
   ],
-  "updated_at": "2026-10-11T12:58:18.217844+00:00",
-  "updated_by": "Rawley Stanhope (Claude Fable cleanup session 2026-10-11)",
-  "work_items": []
+  "updated_at": "2026-10-16T18:00:46Z",
+  "updated_by": "Rawley Stanhope (Claude portfolio-reset session 2026-10-16)"
 }

@@ -1,0 +1,94 @@
+{
+  "consumers": [
+    {
+      "consumer": "skill package steward_stwlab",
+      "evidence": "Reads runtime-improvement/research/resources; selected by the voice-intake-20261016 launch, which also grants resource_observations (verify-discard review section 1.1).",
+      "observed_at": "2026-10-16",
+      "product_id": "research-resources",
+      "status": "confirmed"
+    }
+  ],
+  "disposition": {
+    "decided_at": "2026-10-16",
+    "decided_by": "Rawley Stanhope (approved the portfolio review: \"Proceed\", 2026-10-16)",
+    "reason": "Research campaign scaffold, outside the data-product value criterion. The operator closed the held A/B campaign on 2026-10-16.",
+    "review": {
+      "host": "spark-a",
+      "locator": "/home/rawleysm/.config/rlm-adk/launch/reports/project-portfolio-review-20261016/REPORT.md",
+      "section": "3.1"
+    },
+    "state": "outside",
+    "successors": []
+  },
+  "evidence_basis": "Partial A/B preparation runs with resident outputs; no settled comparison.",
+  "evidence_level": "exercised",
+  "host_pointer_ids": [
+    "runtime-improvement"
+  ],
+  "locations": [
+    {
+      "git_commit": "e26fdfbfa97238b5678630528e0a812f735325ff",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/runtime-improvement",
+      "note": "No remote; bundled under the portfolio-reset archive.",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    },
+    {
+      "git_commit": null,
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014",
+      "note": "About 13 GB of A/B trial snapshots.",
+      "observed_at": "2026-10-16",
+      "role": "artifact_store"
+    }
+  ],
+  "migrated_from": [],
+  "need_source": [
+    {
+      "date": "2026-10-14",
+      "kind": "operator_statement",
+      "reference": {
+        "host": "desktop",
+        "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/runtime-improvement/research/bootstrap/AB_CAMPAIGN.md",
+        "section": "lines 1-20"
+      },
+      "statement": "Rawley's initial research direction: compare how resident topologies discover, select and propose projects from prayers."
+    },
+    {
+      "date": "2026-10-16",
+      "kind": "operator_decision",
+      "reference": {
+        "host": "spark-a",
+        "locator": "/home/rawleysm/.config/rlm-adk/launch/reports/project-portfolio-review-20261016/EXECUTION-BRIEF.md",
+        "section": "Operator decisions (2026-10-16)"
+      },
+      "statement": "The held A/B campaign is closed."
+    }
+  ],
+  "owner": {
+    "kind": "operator",
+    "name": "Rawley Stanhope",
+    "resident_id": null
+  },
+  "products": [
+    {
+      "catalog": "project",
+      "note": "research/resources GPU and resource snapshots (25 files).",
+      "product_id": "research-resources",
+      "relation": "produces"
+    }
+  ],
+  "project_id": "runtime-improvement",
+  "record_revision": 1,
+  "schema": "rlm-adk.project-work-record.v2",
+  "summary": "Desktop-only repository (no remote) holding Rawley's research charter (research/bootstrap/AB_CAMPAIGN.md) and the preparation for a two-topology A/B campaign that never settled. Its closing records and research/resources were committed at e26fdfbf on 2026-10-16.",
+  "title": "runtime-improvement: operator research charter and the closed A/B campaign",
+  "unresolved": [
+    "Host pointer retirement is pending: it is done at the next supervised launch, after the voice-intake-20261016 launch (and its resume draft) is re-authored (REPORT section 8.F). The current launch still requests runtime-improvement and grants research/resources.",
+    "The 13 GB snapshots are no longer held for the campaign; deleting them needs its own task after verifying retained copies.",
+    "No remote: the repository exists only on the desktop (plus its bundle)."
+  ],
+  "updated_at": "2026-10-16T18:00:46Z",
+  "updated_by": "Rawley Stanhope (Claude portfolio-reset session 2026-10-16)"
+}

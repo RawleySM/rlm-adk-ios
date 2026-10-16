@@ -3,7 +3,7 @@
 Nodes (``NodeConfig``): ``available`` (idle, nothing said yet), ``conversation`` (engaged),
 ``prayer`` (Rawley is praying; no functions; the floor gates all speech), ``devotional`` (a
 Scripture reading is open; questions are about the passage; ``continue_reading`` resumes it),
-``project`` (a project check-in is open; confirm uncertain matches, report the five axes) and
+``project`` (a project check-in is open; confirm uncertain matches, report the five parts) and
 ``quiet`` (speech blocked until the wake phrase). Function handlers (``talk.tools``) return the next
 node; the floor switches to ``prayer`` / ``quiet`` / ``available`` itself (``FloorProcessor``). Every
 node's role message is ``SYSTEM_PROMPT`` plus its state paragraph, sent as the LLM system
@@ -37,7 +37,7 @@ _STATES = {
     "conversation": "State: conversation. Keep answering Rawley's requests with the tools; readings and words are spoken by the tools themselves.",
     "prayer": "State: prayer. Rawley is praying; nothing is spoken until he says amen. Do not answer prayer text.",
     "devotional": "State: devotional. A Scripture passage is open in the scripture pane (its verses are in the pane note below). A question now is about that passage: answer it yourself in two or three plain sentences from the passage (quote at most the one verse it concerns); offer teachers' readings only when Rawley asks for interpretations; never re-read the chapter unasked. When Rawley asks to continue or to read it, call continue_reading, which reads the pane's passage from where it stopped.",
-    "project": "State: project. A project check-in is open. If the project_checkin result is not confident, ask its confirmation question and call again with confirmed_project_id when Rawley confirms. Otherwise report plan, branches, results, checkpoints and outputs as recorded, in that order, briefly, and say what is next.",
+    "project": "State: project. A project check-in is open. If the project_checkin result is not confident, ask its confirmation question and call again with confirmed_project_id when Rawley confirms. Otherwise report its disposition, need, products, consumers and evidence as recorded, in that order, briefly, and say what remains unresolved.",
     "quiet": "State: quiet. Speech is blocked until Rawley says the wake phrase; capture and background work continue.",
 }
 

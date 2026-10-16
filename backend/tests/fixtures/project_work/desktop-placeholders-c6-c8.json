@@ -1,0 +1,143 @@
+{
+  "consumers": [],
+  "disposition": {
+    "decided_at": "2026-10-16",
+    "decided_by": "Rawley Stanhope (approved the portfolio review: \"Proceed\", 2026-10-16)",
+    "reason": "Scaffolding and demonstrations with no consumer; discard after bundling. The bundles are preserved under the portfolio-reset archive.",
+    "review": {
+      "host": "spark-a",
+      "locator": "/home/rawleysm/.config/rlm-adk/launch/reports/project-portfolio-review-20261016/REPORT.md",
+      "section": "3.2, 3.4, 3.7, 8.F"
+    },
+    "state": "archived",
+    "successors": []
+  },
+  "evidence_basis": "Code exists with nominal tests at most; nothing ran on real data.",
+  "evidence_level": "implemented",
+  "host_pointer_ids": [
+    "fellowship-outreach-c6",
+    "media-studio-c6",
+    "open-project-1-c6",
+    "open-project-2-c6",
+    "open-project-3-c6",
+    "prayer-atlas-c6",
+    "scripture-overlay-c6",
+    "steward-workbench-c6",
+    "media-studio-c8",
+    "open-project-1-c8",
+    "open-project-2-c8"
+  ],
+  "locations": [
+    {
+      "git_commit": "16590716ba6879ea512bd0509fe2eae342e4d85d",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-6/fellowship-outreach-c6",
+      "note": "Bundled under the portfolio-reset archive (repo-bundles).",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    },
+    {
+      "git_commit": "dcd7f470deec66935dc1d6925dc54a00277b7a60",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-6/media-studio-c6",
+      "note": "Bundled under the portfolio-reset archive (repo-bundles).",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    },
+    {
+      "git_commit": "b9f0983711b77da74d3bcde3e5204b07692b5cbd",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-6/open-project-1-c6",
+      "note": "Bundled under the portfolio-reset archive (repo-bundles).",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    },
+    {
+      "git_commit": "f2c941d0075ce87cf1bf4f261e12058db2dc9d2f",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-6/open-project-2-c6",
+      "note": "Bundled under the portfolio-reset archive (repo-bundles).",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    },
+    {
+      "git_commit": "e61ecf85b7faef6e7fcd79111da1fa10f8b4f961",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-6/open-project-3-c6",
+      "note": "Bundled under the portfolio-reset archive (repo-bundles).",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    },
+    {
+      "git_commit": "3f1d34bbd25e6c10d497aa73c66cdea16459b780",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-6/prayer-atlas-c6",
+      "note": "Bundled under the portfolio-reset archive (repo-bundles).",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    },
+    {
+      "git_commit": "23a4cd25a823aa2b1ad9ea6846a8880b3ecad02a",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-6/scripture-overlay-c6",
+      "note": "Bundled under the portfolio-reset archive (repo-bundles).",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    },
+    {
+      "git_commit": "9183f4add24343db71ceed225c61c3c487b48837",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-6/steward-workbench-c6",
+      "note": "Bundled under the portfolio-reset archive (repo-bundles).",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    },
+    {
+      "git_commit": "8c81cc41af483521b7d45c992727ace9970df9f7",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-8/media-studio-c8",
+      "note": "Bundled under the portfolio-reset archive (repo-bundles).",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    },
+    {
+      "git_commit": "528f4547640dac3831d4b9677cd03c76956245c0",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-8/open-project-1-c8",
+      "note": "Bundled under the portfolio-reset archive (repo-bundles).",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    },
+    {
+      "git_commit": "ffd982141a3c5f0373ba2e3b820470d652e8f6a7",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-8/open-project-2-c8",
+      "note": "Bundled under the portfolio-reset archive (repo-bundles).",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    },
+    {
+      "git_commit": "8f4363dc7d7535d026750f90b3c146896e55a2d9",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-8/open-project-3-c8",
+      "note": "Bundled under the portfolio-reset archive (repo-bundles).",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    }
+  ],
+  "migrated_from": [],
+  "need_source": [],
+  "owner": null,
+  "products": [],
+  "project_id": "desktop-placeholders-c6-c8",
+  "record_revision": 1,
+  "schema": "rlm-adk.project-work-record.v2",
+  "summary": "Twelve desktop-only repositories without a remote: cycle 6 fellowship-outreach, media-studio, open-project-1 to 3, prayer-atlas, scripture-overlay and steward-workbench; cycle 8 media-studio and open-project-1 to 3 (open-project-3-c8 is a folder with no host pointer). Mostly fellowship scaffolding, README-only repositories, a hard-coded topic-to-passage table and DuckDB readers of Spark-A-only inputs.",
+  "title": "Desktop-only cycle 6 and cycle 8 placeholder repositories (one entry)",
+  "unresolved": [
+    "Host pointer retirement is pending: it is done at the next supervised launch, after the voice-intake-20261016 launch (and its resume draft) is re-authored (REPORT section 8.F).",
+    "The working checkouts are still present on the desktop; deleting them is a separate task."
+  ],
+  "updated_at": "2026-10-16T18:00:46Z",
+  "updated_by": "Rawley Stanhope (Claude portfolio-reset session 2026-10-16)"
+}

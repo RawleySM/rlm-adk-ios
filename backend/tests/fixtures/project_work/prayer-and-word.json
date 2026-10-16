@@ -1,0 +1,185 @@
+{
+  "consumers": [
+    {
+      "consumer": "rlm-adk-ios voice portal /tools/word",
+      "evidence": "The voice portal is repointed to read the published frozen pairings; confirm after the backend deploy.",
+      "observed_at": "2026-10-16",
+      "product_id": "scripture_pairings_frozen_20261008",
+      "status": "hypothetical"
+    },
+    {
+      "consumer": "rlm-adk-ios voice portal",
+      "evidence": "Planned reader of links, the teaching index and the devotional (REPORT section 6).",
+      "observed_at": "2026-10-16",
+      "product_id": null,
+      "status": "hypothetical"
+    }
+  ],
+  "disposition": {
+    "decided_at": "2026-10-16",
+    "decided_by": "Rawley Stanhope (approved the portfolio review: \"Proceed\", 2026-10-16)",
+    "reason": "The one new resident-owned project for prayer, Scripture and teaching silver and gold, built with acceptance tests (REPORT section 7).",
+    "review": {
+      "host": "spark-a",
+      "locator": "/home/rawleysm/.config/rlm-adk/launch/reports/project-portfolio-review-20261016/REPORT.md",
+      "section": "6, 8.E.1"
+    },
+    "state": "keep",
+    "successors": []
+  },
+  "evidence_basis": "The repository exists with no commits; no product is built yet.",
+  "evidence_level": "proposed",
+  "host_pointer_ids": [],
+  "locations": [
+    {
+      "git_commit": null,
+      "host": "github",
+      "locator": "https://github.com/RawleySM/prayer-and-word",
+      "note": "Created 2026-10-16 17:47 UTC; empty when observed.",
+      "observed_at": "2026-10-16",
+      "role": "canonical_remote"
+    },
+    {
+      "git_commit": null,
+      "host": "spark-a",
+      "locator": "/home/rawleysm/prayer-and-word",
+      "note": "No commits yet when observed.",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    },
+    {
+      "git_commit": null,
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/stores/prayer_and_word/published",
+      "note": "Published, manifest-backed outputs read by consumers.",
+      "observed_at": "2026-10-16",
+      "role": "artifact_store"
+    }
+  ],
+  "migrated_from": [],
+  "need_source": [
+    {
+      "date": "2026-09-30",
+      "kind": "operator_statement",
+      "reference": {
+        "host": "spark-a",
+        "locator": "/home/rawleysm/.claude/projects/-home-rawleysm-rlm-adk/memory/prayer-testimony-mining.md"
+      },
+      "statement": "Testimony building is a central role: mine the whole prayer corpus into a testimony ledger with Rawley's attribution and the inference in separate columns."
+    },
+    {
+      "date": "2026-10-07",
+      "kind": "operator_statement",
+      "reference": {
+        "host": "desktop",
+        "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle12/experiments/experience-h13/RAWLEY-FEEDBACK.md"
+      },
+      "statement": "After hearing H7 v2: 'much more powerful if every single prayer also had a scripture verse'; the mechanical text-to-speech was the biggest issue."
+    },
+    {
+      "date": "2026-10-12",
+      "kind": "operator_statement",
+      "reference": {
+        "host": "github",
+        "locator": "https://github.com/RawleySM/rlm-adk-ios/blob/main/docs/voice-portal/user-needs-and-requirements.md"
+      },
+      "statement": "Voice portal requirements from the 2026-10-12 conversation: a morning verse and devotional from Piper and Eleven22 teaching, Scripture applied to prayers, and the prayer corpus (SCRIPTURE-01 to 04, DATA-01)."
+    },
+    {
+      "date": "2026-10-16",
+      "kind": "operator_statement",
+      "reference": {
+        "host": "desktop",
+        "locator": "/home/rawley-stanhope/.local/rlm-adk/stores/intake/issues.jsonl",
+        "section": "bug-20261016-04"
+      },
+      "statement": "Tag parts of a prayer (for example repentance), track them over many cycles and link them to Scripture (intake ticket bug-20261016-04)."
+    },
+    {
+      "date": "2026-10-16",
+      "kind": "operator_decision",
+      "reference": {
+        "host": "spark-a",
+        "locator": "/home/rawleysm/.config/rlm-adk/launch/reports/project-portfolio-review-20261016/EXECUTION-BRIEF.md",
+        "section": "Operator decisions (2026-10-16)"
+      },
+      "statement": "Use the WEB edition (BSB acceptable as a second); devotional audio voice is H7 version 3 (Qwen3-TTS 'Aiden'); the parts map starts as a simple list."
+    }
+  ],
+  "owner": {
+    "kind": "unassigned",
+    "name": null,
+    "resident_id": null
+  },
+  "products": [
+    {
+      "catalog": "project",
+      "note": "The 615-row pairing ledger frozen as seed and grading data, published with a manifest.",
+      "product_id": "scripture_pairings_frozen_20261008",
+      "relation": "produces"
+    },
+    {
+      "catalog": "project",
+      "note": "Planned (REPORT section 6).",
+      "product_id": "reference-grammar",
+      "relation": "produces"
+    },
+    {
+      "catalog": "project",
+      "note": "Planned.",
+      "product_id": "prayer-scripture-links",
+      "relation": "produces"
+    },
+    {
+      "catalog": "project",
+      "note": "Planned.",
+      "product_id": "teaching-passage-index",
+      "relation": "produces"
+    },
+    {
+      "catalog": "project",
+      "note": "Planned.",
+      "product_id": "testimony-ledger",
+      "relation": "produces"
+    },
+    {
+      "catalog": "project",
+      "note": "Planned; first version is a simple list.",
+      "product_id": "prayer-parts-list",
+      "relation": "produces"
+    },
+    {
+      "catalog": "project",
+      "note": "Planned, with audio from H7 v3.",
+      "product_id": "morning-devotional",
+      "relation": "produces"
+    },
+    {
+      "catalog": "data-pipelines",
+      "product_id": "prayer_corpus",
+      "relation": "reads"
+    },
+    {
+      "catalog": "data-pipelines",
+      "product_id": "scripture_reference",
+      "relation": "reads"
+    },
+    {
+      "catalog": "data-pipelines",
+      "product_id": "youtube",
+      "relation": "reads"
+    }
+  ],
+  "project_id": "prayer-and-word",
+  "record_revision": 1,
+  "schema": "rlm-adk.project-work-record.v2",
+  "summary": "New repository created 2026-10-16 (GitHub RawleySM/prayer-and-word; Spark-A checkout ~/prayer-and-word with no commits when observed at 13:49 EDT). Planned products: a canonical reference grammar library, prayer-to-Scripture links per prayer revision, a teaching-to-passage index, a testimony ledger, a prayer parts list, and a morning devotional with audio. It is seeded from the scripture-enrichment-c15 library and salvage from the archived prayer, Scripture, sermon and Vision repositories; the frozen Scripture pairing ledger and prayer_enrichment ca54cafe are grading data.",
+  "title": "Prayer & Word: resident-owned silver and gold for prayer, Scripture and teaching",
+  "unresolved": [
+    "No host pointer yet; registration is pending the next supervised launch.",
+    "No resident owner assigned.",
+    "Salvage from the archived repositories is in progress elsewhere; this record does not verify it."
+  ],
+  "updated_at": "2026-10-16T18:00:46Z",
+  "updated_by": "Rawley Stanhope (Claude portfolio-reset session 2026-10-16)"
+}

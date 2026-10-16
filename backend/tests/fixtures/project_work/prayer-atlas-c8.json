@@ -1,0 +1,142 @@
+{
+  "consumers": [
+    {
+      "consumer": "rlm-adk-ios voice portal /tools/word",
+      "evidence": "Read ledgers/scripture_pairings.jsonl from the prayer-life-c12 working tree (config.py:53) until it was repointed to the Prayer & Word published copy on 2026-10-16; no row ever matched the newest prayer.",
+      "observed_at": "2026-10-16",
+      "product_id": "scripture-pairing-ledger",
+      "status": "confirmed"
+    },
+    {
+      "consumer": "installed skill head prayer_pryc11",
+      "evidence": "Reads prayer_enrichment; installed but not selected by the current launch (verify-discard review section 1.4).",
+      "observed_at": "2026-10-16",
+      "product_id": "prayer_enrichment",
+      "status": "hypothetical"
+    }
+  ],
+  "disposition": {
+    "decided_at": "2026-10-16",
+    "decided_by": "Rawley Stanhope (approved the portfolio review: \"Proceed\", 2026-10-16)",
+    "reason": "Salvage, then archive. The enrichment reader, pairing quote checks, coverage count and accepted-pairings logic, the embedding harness and receipts, the grading record and the frozen pairing ledger move to Prayer & Word; the c8 to c10 connectors are discarded after their four import repoints. prayer_enrichment ca54cafe and the ledger stay frozen as grading data.",
+    "review": {
+      "host": "spark-a",
+      "locator": "/home/rawleysm/.config/rlm-adk/launch/reports/project-portfolio-review-20261016/REPORT.md",
+      "section": "3.2, 4, 8.F"
+    },
+    "state": "archived",
+    "successors": [
+      "prayer-and-word"
+    ]
+  },
+  "evidence_basis": "prayer_enrichment was read by resident packages and the pairing ledger by the voice portal /tools/word.",
+  "evidence_level": "consumed",
+  "host_pointer_ids": [
+    "prayer-atlas-c8",
+    "prayer-atlas-c11",
+    "prayer-life-c12"
+  ],
+  "locations": [
+    {
+      "git_commit": "2542427a8b0980954258ac77bec2957a7da437fe",
+      "host": "github",
+      "locator": "https://github.com/RawleySM/prayer-atlas-c8",
+      "observed_at": "2026-10-16",
+      "role": "canonical_remote"
+    },
+    {
+      "git_commit": "2542427a8b0980954258ac77bec2957a7da437fe",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-12/prayer-life-c12",
+      "note": "Pointer prayer-life-c12.",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    },
+    {
+      "git_commit": "cf5448a7a96d7925497604bd93283abf71b4546f",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-11/prayer-atlas-c11",
+      "note": "Pointer prayer-atlas-c11.",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    },
+    {
+      "git_commit": "f3caeead9d0a7f193c2c30307176f0613cbaba93",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-8/prayer-atlas-c8",
+      "note": "Pointer prayer-atlas-c8.",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    },
+    {
+      "git_commit": null,
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/stores/life_context/sources/prayer_enrichment",
+      "note": "Frozen prayer_enrichment dataset ca54cafe (89 MB).",
+      "observed_at": "2026-10-16",
+      "role": "artifact_store"
+    }
+  ],
+  "migrated_from": [
+    {
+      "project_id": "prayer-life-c12",
+      "record_blob": "6a0ae28f53f3ec35fa788f7d2f040fbc621d9b74",
+      "record_revision": 1,
+      "register_commit": "ebc578f6944fab0eae9e17822135f08ebfeb2f1b",
+      "schema": "rlm-adk.project-work-record.v1"
+    }
+  ],
+  "need_source": [
+    {
+      "date": "2026-09-30",
+      "kind": "operator_statement",
+      "reference": {
+        "host": "spark-a",
+        "locator": "/home/rawleysm/.claude/projects/-home-rawleysm-rlm-adk/memory/prayer-testimony-mining.md"
+      },
+      "statement": "Testimony building is a central role: mine the whole prayer corpus into a testimony ledger with Rawley's attribution and the inference in separate columns."
+    },
+    {
+      "date": "2026-10-07",
+      "kind": "operator_statement",
+      "reference": {
+        "host": "desktop",
+        "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle12/experiments/experience-h13/RAWLEY-FEEDBACK.md"
+      },
+      "statement": "After hearing H7 v2: 'much more powerful if every single prayer also had a scripture verse'; the mechanical text-to-speech was the biggest issue."
+    }
+  ],
+  "owner": null,
+  "products": [
+    {
+      "catalog": "project",
+      "note": "ledgers/scripture_pairings.jsonl, 615 rows over 206 prayers; frozen and republished by Prayer & Word as scripture_pairings_frozen_20261008.",
+      "product_id": "scripture-pairing-ledger",
+      "relation": "produces"
+    },
+    {
+      "catalog": "project",
+      "note": "Frozen dataset ca54cafe: 2,813 annotations, 1,479 exact slices.",
+      "product_id": "prayer_enrichment",
+      "relation": "produces"
+    },
+    {
+      "catalog": "data-pipelines",
+      "product_id": "prayer_corpus",
+      "relation": "reads"
+    }
+  ],
+  "project_id": "prayer-atlas-c8",
+  "record_revision": 1,
+  "schema": "rlm-adk.project-work-record.v2",
+  "summary": "One GitHub repository behind three host pointers: prayer-atlas-c8 (desktop f3caeea), prayer-atlas-c11 (cf5448a plus two worktrees) and prayer-life-c12 (main 2542427). Mostly c8 to c10 rule-based connectors with hard-coded desktop paths; also the prayer_enrichment reader, the 615-row Scripture pairing ledger (last changed 2026-10-08), pairing quote checks, the embedding harness and a testimony skeleton.",
+  "title": "prayer-atlas-c8: prayer lineage c8 to c12 (prayer-life-c12), pairing ledger and enrichment reader",
+  "unresolved": [
+    "Host pointer retirement is pending: it is done at the next supervised launch, after the voice-intake-20261016 launch (and its resume draft) is re-authored (REPORT section 8.F).",
+    "The GitHub repository is not archived (isArchived=false, observed 2026-10-16).",
+    "The current launch voice-intake-20261016 still requests prayer-life-c12.",
+    "Salvage into prayer-and-word is not verified by this record."
+  ],
+  "updated_at": "2026-10-16T18:00:46Z",
+  "updated_by": "Rawley Stanhope (Claude portfolio-reset session 2026-10-16)"
+}

@@ -49,9 +49,11 @@ class Config:
         default_factory=lambda: ["PSA.23", "JHN.15", "ROM.8", "PSA.121", "MAT.6", "ISA.40", "PHP.4"]
     )
     # Skill-service tool sources (desktop paths; verified 2026-10-13). All read-only.
-    # Prayer-to-Scripture pairings ledger written by the Prayer resident (cycle 12).
-    scripture_pairings_ledger: str = str(Path.home() / ".local/rlm-adk/projects/cycle-12/prayer-life-c12/ledgers/scripture_pairings.jsonl")
-    # Project work register records (one JSON file per project; schema.json beside the directory).
+    # Prayer-to-Scripture pairing ledger: the Prayer & Word published product (frozen 615 rows, coverage
+    # to 2026-10-08), read only when its manifest.json lists the file's SHA-256 and row count.
+    scripture_pairings_ledger: str = str(Path.home() / ".local/rlm-adk/stores/prayer_and_word/published/scripture_pairings_frozen_20261008/pairings.jsonl")
+    # Project work register records (register v2: one JSON record per repository; schema.json beside the
+    # directory).
     project_register_records: str = str(Path.home() / ".local/rlm-adk/projects/project-work-registry/project/registry/project-work/records")
     # scripture_reference sources projected into the teaching family by `import reference_teaching`.
     reference_teaching_sources: list[str] = field(default_factory=lambda: ["ccel:edwards", "bibleproject:transcript"])

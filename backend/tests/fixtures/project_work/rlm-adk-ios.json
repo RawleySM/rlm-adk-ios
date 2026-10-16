@@ -1,0 +1,156 @@
+{
+  "consumers": [
+    {
+      "consumer": "Rawley through the phone app",
+      "evidence": "130 voice sessions 2026-10-13 to 10-16; 13 /devotional calls on 2026-10-16; five genuine phone prayers published (REPORT section 3.1).",
+      "observed_at": "2026-10-16",
+      "product_id": null,
+      "status": "confirmed"
+    },
+    {
+      "consumer": "data-pipelines prayer_ingest",
+      "evidence": "Seven phone captures published into prayer_corpus_v1 2026-10-13 to 10-16 (outside-infra review section 2a).",
+      "observed_at": "2026-10-16",
+      "product_id": "prayer_corpus",
+      "status": "confirmed"
+    }
+  ],
+  "disposition": {
+    "decided_at": "2026-10-16",
+    "decided_by": "Rawley Stanhope (approved the portfolio review: \"Proceed\", 2026-10-16)",
+    "reason": "A prayer capture route and the only end-user delivery surface. It reads published, manifest-backed products, not resident working trees; retire its private reference grammar once the shared Prayer & Word grammar exists.",
+    "review": {
+      "host": "spark-a",
+      "locator": "/home/rawleysm/.config/rlm-adk/launch/reports/project-portfolio-review-20261016/REPORT.md",
+      "section": "1, 3.1, 8.D.4"
+    },
+    "state": "keep",
+    "successors": []
+  },
+  "evidence_basis": "Installed backend and talk tier used by the operator; phone captures reach prayer_corpus.",
+  "evidence_level": "consumed",
+  "host_pointer_ids": [
+    "rlm-adk-ios"
+  ],
+  "locations": [
+    {
+      "git_commit": "17949b1e7a6679415d2c86b3b4cb0d98e58dae7c",
+      "host": "github",
+      "locator": "https://github.com/RawleySM/rlm-adk-ios",
+      "observed_at": "2026-10-16",
+      "role": "canonical_remote"
+    },
+    {
+      "git_commit": "1475785baab733d864ceb2423c1b4543aeec1169",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/rlm-adk-ios",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    },
+    {
+      "git_commit": "28ea38d9ccb1da0635b1265d66041dc3a3f63328",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/srv/voice-portal/backend",
+      "note": "SOURCE_COMMIT; python3 -m voice_portal serve on 0.0.0.0:8765 (no unit).",
+      "observed_at": "2026-10-16",
+      "role": "deployment"
+    },
+    {
+      "git_commit": null,
+      "host": "spark-a",
+      "locator": "/home/rawleysm/srv/voice-talk",
+      "note": "voice-talk.service; rsync-deployed, no SOURCE_COMMIT.",
+      "observed_at": "2026-10-16",
+      "role": "deployment"
+    }
+  ],
+  "migrated_from": [],
+  "need_source": [
+    {
+      "date": "2026-10-12",
+      "kind": "operator_statement",
+      "reference": {
+        "host": "github",
+        "locator": "https://github.com/RawleySM/rlm-adk-ios/blob/main/docs/voice-portal/user-needs-and-requirements.md"
+      },
+      "statement": "Voice portal requirements from the 2026-10-12 conversation: a morning verse and devotional from Piper and Eleven22 teaching, Scripture applied to prayers, and the prayer corpus (SCRIPTURE-01 to 04, DATA-01)."
+    },
+    {
+      "date": "2026-10-13",
+      "kind": "operator_statement",
+      "reference": {
+        "host": "spark-a",
+        "locator": "/home/rawleysm/.claude/projects/-home-rawleysm-rlm-adk/memory/voice-portal-pipecat-rebuild.md"
+      },
+      "statement": "Rebuild the voice portal on Pipecat, proven live through voicesim."
+    },
+    {
+      "date": "2026-10-16",
+      "kind": "operator_statement",
+      "reference": {
+        "host": "spark-a",
+        "locator": "/home/rawleysm/.claude/projects/-home-rawleysm-rlm-adk/memory/ios-ship-fast-from-branch.md"
+      },
+      "statement": "Get app changes onto the phone in minutes, not after a 25-minute CI run."
+    }
+  ],
+  "owner": {
+    "kind": "operator",
+    "name": "Rawley Stanhope",
+    "resident_id": null
+  },
+  "products": [
+    {
+      "catalog": "data-pipelines",
+      "note": "Phone capture route: prayer_ingest /capture-segments and /capture-finalize, recording_sources.source_kind tailnet_pwa.",
+      "product_id": "prayer_corpus",
+      "relation": "contributes"
+    },
+    {
+      "catalog": "data-pipelines",
+      "product_id": "prayer_corpus",
+      "relation": "reads"
+    },
+    {
+      "catalog": "data-pipelines",
+      "product_id": "youtube",
+      "relation": "reads"
+    },
+    {
+      "catalog": "data-pipelines",
+      "product_id": "scripture_reference",
+      "relation": "reads"
+    },
+    {
+      "catalog": "data-pipelines",
+      "note": "Pinned copy at data-pipelines 4e8a5d93 (vendor/PIN.txt).",
+      "product_id": "scripture_reference_readers",
+      "relation": "reads"
+    },
+    {
+      "catalog": "project",
+      "note": "Prayer & Word published frozen pairing ledger, read by /tools/word.",
+      "product_id": "scripture_pairings_frozen_20261008",
+      "relation": "reads"
+    },
+    {
+      "catalog": "project",
+      "note": "Read by /tools/project.",
+      "product_id": "project-work-register",
+      "relation": "reads"
+    }
+  ],
+  "project_id": "rlm-adk-ios",
+  "record_revision": 1,
+  "schema": "rlm-adk.project-work-record.v2",
+  "summary": "Private SwiftUI iPhone app with the voice-portal backend (desktop ~/srv/voice-portal, skill service on port 8765) and the Pipecat talk tier (Spark-A ~/srv/voice-talk). The backend relays phone prayer captures to prayer_ingest with hash-verified receipts, and answers devotional, Scripture, teaching, word and project tools over imported data-pipelines products and published project products.",
+  "title": "rlm-adk-ios: iPhone voice portal (prayer capture route, skill service, talk tier, app)",
+  "unresolved": [
+    "The backend runs under setsid/nohup with no systemd unit.",
+    "The projection is refreshed only by the manual import CLI (211 of 218 prayers at review time).",
+    "The talk tier on Spark-A is rsync-deployed without a SOURCE_COMMIT.",
+    "The real-versus-harness split of talk-tier use is unknown."
+  ],
+  "updated_at": "2026-10-16T18:00:46Z",
+  "updated_by": "Rawley Stanhope (Claude portfolio-reset session 2026-10-16)"
+}

@@ -1,130 +1,88 @@
 {
-  "accepted_results": [],
-  "active_branches": [
+  "consumers": [
     {
-      "dirty": false,
-      "evidence": [
-        {
-          "claim": "Observed main at cleanup; working tree clean and pushed.",
-          "kind": "git",
-          "observed_at": "2026-10-11T12:58:16Z",
-          "reference": null
-        }
-      ],
-      "git_ref": "main",
-      "observed_at": "2026-10-11T12:58:16Z",
-      "observed_commit": "23d3de0ca897e2f3f76b02708be5f184e37ad1f1",
-      "repository": {
-        "git_commit": "23d3de0ca897e2f3f76b02708be5f184e37ad1f1",
-        "host": "desktop",
-        "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/project-work-registry"
-      },
-      "work_id": "maintain-register"
+      "consumer": "rlm-adk-ios voice portal /tools/project",
+      "evidence": "tools/project.py reads records/*.json from the desktop checkout; 22 GET /tools/project calls on 2026-10-14, all harness-like (outside-infra review section 3).",
+      "observed_at": "2026-10-16",
+      "product_id": "project-work-register",
+      "status": "confirmed"
     }
   ],
-  "baseline": {
-    "described_at": "2026-10-11T12:58:16.993419+00:00",
-    "described_by": "Rawley Stanhope (Claude Fable cleanup session 2026-10-11)",
-    "history": {
-      "references": [],
-      "state": "unknown"
+  "disposition": {
+    "decided_at": "2026-10-16",
+    "decided_by": "Rawley Stanhope (approved the portfolio review: \"Proceed\", 2026-10-16)",
+    "reason": "Simplified to one record per repository with need, product, consumer, evidence and disposition fields; product facts stay in the data-pipelines catalog; the native-lineage modules were retired.",
+    "review": {
+      "host": "spark-a",
+      "locator": "/home/rawleysm/.config/rlm-adk/launch/reports/project-portfolio-review-20261016/REPORT.md",
+      "section": "8.E.3"
     },
-    "locations": [
-      {
-        "git_commit": null,
-        "host": "github",
-        "locator": "https://github.com/RawleySM/project-work-registry",
-        "observed_at": "2026-10-11T12:58:16Z",
-        "role": "canonical_remote",
-        "runnable_on_allocator_host": null
+    "state": "keep",
+    "successors": []
+  },
+  "evidence_basis": "Read by the voice portal /tools/project; the observed calls were harness-like, so consumption is weak.",
+  "evidence_level": "consumed",
+  "host_pointer_ids": [],
+  "locations": [
+    {
+      "git_commit": null,
+      "host": "github",
+      "locator": "https://github.com/RawleySM/project-work-registry",
+      "note": "Main carries register v2 from the portfolio-reset merge.",
+      "observed_at": "2026-10-16",
+      "role": "canonical_remote"
+    },
+    {
+      "git_commit": null,
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/project-work-registry",
+      "note": "Read by the voice portal /tools/project; fast-forwarded to main after each merge.",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    }
+  ],
+  "migrated_from": [
+    {
+      "project_id": "project-work-registry",
+      "record_blob": "7eff4e0f1de36713e66c93f0313912ff162ec436",
+      "record_revision": 1,
+      "register_commit": "ebc578f6944fab0eae9e17822135f08ebfeb2f1b",
+      "schema": "rlm-adk.project-work-record.v1"
+    }
+  ],
+  "need_source": [
+    {
+      "date": "2026-10-16",
+      "kind": "operator_decision",
+      "reference": {
+        "host": "spark-a",
+        "locator": "/home/rawleysm/.config/rlm-adk/launch/reports/project-portfolio-review-20261016/EXECUTION-BRIEF.md"
       },
-      {
-        "git_commit": "23d3de0ca897e2f3f76b02708be5f184e37ad1f1",
-        "host": "desktop",
-        "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/project-work-registry",
-        "note": "Clean desktop checkout bound by the launch.",
-        "observed_at": "2026-10-11T12:58:16Z",
-        "role": "working_checkout",
-        "runnable_on_allocator_host": true
-      }
-    ],
-    "summary": "Neutral authored register: schema, revision-checked writer, progressive native inspection reader (commit joins and producer ancestry, PR #2), launch authoring notes. Selected through resident.project_work_register for the stwref capacity controller in the Cycle 15 launch.",
-    "unknowns": []
-  },
-  "current_plan": {
-    "artifact": null,
-    "evidence": [],
-    "objective": null,
-    "state": "unknown"
-  },
-  "enrollment": {
-    "note": "Selected existing work; no historical replay.",
-    "origin": "manual_baseline"
-  },
-  "host_identity": {
-    "evidence": [],
-    "observed_at": null,
-    "pointer_sha256": null,
-    "registry": null,
-    "state": "unknown"
-  },
-  "identity_evidence": [],
-  "outputs": [],
+      "statement": "Approved the portfolio review ('Proceed'), which simplifies the register to one record per repository with need, product, consumer, evidence and disposition fields."
+    }
+  ],
   "owner": {
-    "kind": "resident",
-    "name": "Steward",
-    "resident_id": "stwref"
+    "kind": "operator",
+    "name": "Rawley Stanhope",
+    "resident_id": null
   },
-  "package_checkpoints": [],
+  "products": [
+    {
+      "catalog": "project",
+      "note": "records/*.json, index.json, schema.json",
+      "product_id": "project-work-register",
+      "relation": "produces"
+    }
+  ],
   "project_id": "project-work-registry",
   "record_revision": 1,
-  "runtime_applicability": {
-    "note": "Applicability entered by Rawley Stanhope (Claude Fable cleanup session 2026-10-11).",
-    "package": "not_applicable",
-    "session": "not_applicable"
-  },
-  "schema": "rlm-adk.project-work-record.v1",
-  "title": "Project work register (this register)",
+  "schema": "rlm-adk.project-work-record.v2",
+  "summary": "Authored portfolio register (RawleySM/project-work-registry): schema v2 records with need, products, consumers, evidence level and disposition for each repository, a JSON-schema validator, a Git-committing compare-and-swap writer and a CLI. Simplified on 2026-10-16 from the v1 per-pointer records and the native-lineage reader, which were retired. It is project code, not a host registry.",
+  "title": "Project work register: one authored record per repository",
   "unresolved": [
-    "Only the entered baseline is known; empty arrays are not proven absence."
+    "No host pointer: the generic host binding (resident.project_work_register) refuses until a launch registers and grants this repository.",
+    "rlm-adk rlm_adk_docs/projects/README.md still describes the retired v1 reader (pinned to dcead03)."
   ],
-  "updated_at": "2026-10-11T12:58:17.833226+00:00",
-  "updated_by": "Rawley Stanhope (Claude Fable cleanup session 2026-10-11)",
-  "work_items": [
-    {
-      "evidence": [
-        {
-          "claim": "Nine records enrolled on 2026-10-11 as manual baselines by the cleanup session.",
-          "kind": "operator_statement",
-          "observed_at": "2026-10-11T12:58:16Z",
-          "reference": null
-        }
-      ],
-      "next_action": "Each Steward turn: inspect, then write changed records with the revision-checked writer.",
-      "plan": {
-        "artifact": {
-          "git_commit": null,
-          "host": "desktop",
-          "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/project-work-registry/project/registry/project-work/README.md"
-        },
-        "evidence": [
-          {
-            "claim": "Plan document inspected during the 2026-10-11 cleanup.",
-            "kind": "file",
-            "observed_at": "2026-10-11T12:58:16Z",
-            "reference": {
-              "git_commit": null,
-              "host": "desktop",
-              "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/project-work-registry/project/registry/project-work/README.md"
-            }
-          }
-        ],
-        "objective": "Refresh plans, branches, results, checkpoints, outputs and unknowns as facts change.",
-        "state": "recorded"
-      },
-      "status": "running",
-      "title": "Maintain records for every registered and outside project",
-      "work_id": "maintain-register"
-    }
-  ]
+  "updated_at": "2026-10-16T18:00:46Z",
+  "updated_by": "Rawley Stanhope (Claude portfolio-reset session 2026-10-16)"
 }

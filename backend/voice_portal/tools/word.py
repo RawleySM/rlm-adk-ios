@@ -11,8 +11,10 @@
    `inference_extra_body`) returns strict JSON: 3 to 6 themes, each a short label, a one-sentence
    petition and 2 to 5 search words. Cached per (model, prayer text hash, prompt version). When the
    owner fails, keyword themes from the prayer's own words are used and labelled `fallback_keywords`.
-3. Passages. Candidates come from (a) the Prayer resident's pairings ledger rows for this prayer (by
-   prayer id or text SHA-256; cited before echoed before editorial), (b) Scripture FTS on each theme's
+3. Passages. Candidates come from (a) the published pairing ledger's rows for this prayer (by prayer
+   id or text SHA-256; cited before echoed before editorial; config `scripture_pairings_ledger`, a
+   Prayer & Word published product whose `manifest.json` beside it must list the file with a matching
+   SHA-256 and row count, else no ledger row is used), (b) Scripture FTS on each theme's
    words, narrowed to the best-matching verses inside the hit chunk, and (c) for `devotional`, today's
    chapter. Two to four passages are chosen (pairings first, then one per theme without overlap),
    capped at five verses each, and read verbatim from the retained edition with their citations.
@@ -23,6 +25,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import math
 import os
@@ -84,7 +87,7 @@ THEME_SCHEMA = {
 }
 
 ECHO_WINDOW_LIMIT = 800
-_LEDGER_CACHE: dict[str, tuple[tuple[float, int], list[dict]]] = {}
+_LEDGER_CACHE: dict[str, tuple[tuple, tuple[list[dict], dict]]] = {}
 _IDF_CACHE: dict[tuple[int, str], float] = {}
 _LEDGER_LOCK = threading.Lock()
 
@@ -254,27 +257,68 @@ def extract_themes(conn: sqlite3.Connection, cfg: Config, prayer: dict, *, refre
 
 # ----- 3. passages -----
 
-def load_ledger(path: str | os.PathLike) -> list[dict]:
-    """Rows of the pairings ledger (JSONL), cached by file mtime and size; [] when absent."""
+def load_ledger(path: str | os.PathLike) -> tuple[list[dict], dict]:
+    """Rows of the published pairing ledger (JSONL) and its manifest check, cached by file signatures.
+
+    The ledger is a published product: `manifest.json` in the same directory must list the file under
+    `files.<name>` with its `sha256` and `rows`. Rows are returned only when both match; otherwise the
+    rows are `[]` and the report says why (`absent`, `no_manifest`, `unreadable` or `mismatch`).
+
+    Returns:
+        `(rows, report)` where report is `{state, ledger, manifest, product_id, status, coverage_ends,
+        published_at, sha256, rows, problems}`.
+    """
     file = Path(path).expanduser()
+    manifest_path = file.parent / "manifest.json"
+    report: dict = {"ledger": str(file), "manifest": str(manifest_path), "product_id": None, "status": None, "coverage_ends": None, "published_at": None, "sha256": None, "rows": 0, "problems": []}
     try:
         stat = file.stat()
     except OSError:
-        return []
-    signature = (stat.st_mtime, stat.st_size)
+        return [], {**report, "state": "absent"}
+    try:
+        manifest_stat = manifest_path.stat()
+    except OSError:
+        return [], {**report, "state": "no_manifest"}
+    signature = (stat.st_mtime, stat.st_size, manifest_stat.st_mtime, manifest_stat.st_size)
     with _LEDGER_LOCK:
         cached = _LEDGER_CACHE.get(str(file))
         if cached and cached[0] == signature:
             return cached[1]
+        try:
+            raw = file.read_bytes()
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            return [], {**report, "state": "unreadable", "problems": [str(exc)[:200]]}
         rows = []
-        for line in file.read_text(encoding="utf-8").splitlines():
+        for line in raw.decode("utf-8").splitlines():
             if line.strip():
                 try:
                     rows.append(json.loads(line))
                 except ValueError:
                     continue
-        _LEDGER_CACHE[str(file)] = (signature, rows)
-        return rows
+        digest = hashlib.sha256(raw).hexdigest()
+        listed = ((manifest.get("files") or {}) if isinstance(manifest, dict) else {}).get(file.name)
+        problems = []
+        if not isinstance(listed, dict):
+            problems.append(f"{file.name} not listed in manifest files")
+        else:
+            if listed.get("sha256") != digest:
+                problems.append("sha256 differs from manifest")
+            if listed.get("rows") != len(rows):
+                problems.append(f"{len(rows)} rows, manifest lists {listed.get('rows')}")
+        report.update(
+            state="mismatch" if problems else "verified",
+            product_id=manifest.get("product_id"),
+            status=manifest.get("status"),
+            coverage_ends=manifest.get("coverage_ends"),
+            published_at=manifest.get("published_at"),
+            sha256=digest,
+            rows=len(rows),
+            problems=problems,
+        )
+        result = ([] if problems else rows, report)
+        _LEDGER_CACHE[str(file)] = (signature, result)
+        return result
 
 
 def ledger_rows_for(rows: list[dict], prayer: dict) -> list[dict]:
@@ -491,9 +535,9 @@ def _entities(conn: sqlite3.Connection, verses: list[dict]) -> dict | None:
 def choose_passages(conn: sqlite3.Connection, cfg: Config, prayer: dict, themes: list[dict], *, which: str, day: dt.date) -> tuple[list[dict], dict]:
     """Two to four passages for the prayer (step 3 of the module docstring) with candidate counts."""
     chosen: list[dict] = []
-    ledger = load_ledger(cfg.scripture_pairings_ledger)
+    ledger, ledger_report = load_ledger(cfg.scripture_pairings_ledger)
     rows = ledger_rows_for(ledger, prayer)
-    stats = {"ledger_rows_total": len(ledger), "ledger_rows_for_prayer": len(rows), "retrieval_candidates": 0, "devotional_candidates": 0}
+    stats = {"ledger_rows_total": len(ledger), "ledger_rows_for_prayer": len(rows), "ledger_manifest": ledger_report, "retrieval_candidates": 0, "devotional_candidates": 0}
     for row in rows:
         if len([p for p in chosen if p["source"] == "pairings"]) >= 2:
             break

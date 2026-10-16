@@ -308,7 +308,7 @@ SCHEMAS: dict[str, FlowsFunctionSchema] = {
     ),
     "project_checkin": FlowsFunctionSchema(
         name="project_checkin",
-        description="Identify a project from a vague description and report its plan, branches, results, checkpoints and outputs from the project work register. If the result is not confident, ask the confirmation question it gives; call again with confirmed_project_id after Rawley confirms.",
+        description="Identify a project from a vague description and report its disposition, need, products, consumers and evidence from the project work register (one record per repository). If the result is not confident, ask the confirmation question it gives; call again with confirmed_project_id after Rawley confirms.",
         properties={"description": {"type": "string"}, "confirmed_project_id": {"type": "string"}},
         required=["description"],
         handler=project_checkin,

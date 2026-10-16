@@ -1,0 +1,50 @@
+{
+  "consumers": [],
+  "disposition": {
+    "decided_at": "2026-10-16",
+    "decided_by": "Rawley Stanhope (approved the portfolio review: \"Proceed\", 2026-10-16)",
+    "reason": "No operator statement, launch or consumer asks for it; GitHub has everything.",
+    "review": {
+      "host": "spark-a",
+      "locator": "/home/rawleysm/.config/rlm-adk/launch/reports/project-portfolio-review-20261016/REPORT.md",
+      "section": "3.5, 8.F"
+    },
+    "state": "archived",
+    "successors": []
+  },
+  "evidence_basis": "104 tests pass; never installed.",
+  "evidence_level": "tested",
+  "host_pointer_ids": [],
+  "locations": [
+    {
+      "git_commit": "bb8d902e79065225306e931a789dbef39e263b4d",
+      "host": "github",
+      "locator": "https://github.com/RawleySM/Sermons-Across-GR",
+      "note": "Default branch codex/nemotron-summary-layer.",
+      "observed_at": "2026-10-16",
+      "role": "canonical_remote"
+    },
+    {
+      "git_commit": null,
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/stores/projects/Sermons-Across-GR",
+      "note": "Not a host pointer; bundled under the portfolio-reset archive.",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    }
+  ],
+  "migrated_from": [],
+  "need_source": [],
+  "owner": null,
+  "products": [],
+  "project_id": "sermons-across-gr",
+  "record_revision": 1,
+  "schema": "rlm-adk.project-work-record.v2",
+  "summary": "Grand Rapids sermon scraper and 'spiritual climate' briefs over 65 sermons, built in August 2026; tested and never installed. Desktop ~/.local/rlm-adk/stores/projects/Sermons-Across-GR with seven worktrees; GitHub default branch codex/nemotron-summary-layer.",
+  "title": "Sermons-Across-GR: Grand Rapids sermon scraper and spiritual-climate briefs",
+  "unresolved": [
+    "The GitHub repository is not archived (isArchived=false, observed 2026-10-16)."
+  ],
+  "updated_at": "2026-10-16T18:00:46Z",
+  "updated_by": "Rawley Stanhope (Claude portfolio-reset session 2026-10-16)"
+}

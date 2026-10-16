@@ -1,100 +1,240 @@
 {
-  "accepted_results": [],
-  "active_branches": [],
-  "baseline": {
-    "described_at": "2026-10-11T12:58:16.999582+00:00",
-    "described_by": "Rawley Stanhope (Claude Fable cleanup session 2026-10-11)",
-    "history": {
-      "references": [],
-      "state": "unknown"
+  "consumers": [
+    {
+      "consumer": "rlm-adk-ios voice portal",
+      "evidence": "import_receipts: 211 prayers imported 2026-10-13 from the canonical store; /tools/word reads the live store (outside-infra review section 2b).",
+      "observed_at": "2026-10-16",
+      "product_id": "prayer_corpus",
+      "status": "confirmed"
     },
-    "locations": [
-      {
-        "git_commit": null,
-        "host": "github",
-        "locator": "https://github.com/RawleySM/data-pipelines",
-        "observed_at": "2026-10-11T12:58:16Z",
-        "role": "canonical_remote",
-        "runnable_on_allocator_host": null
-      },
-      {
-        "git_commit": "797bb074956d6f345994a6494453d8e55a5dc118",
+    {
+      "consumer": "rlm-adk-ios voice portal",
+      "evidence": "import_receipts: 100 Eleven22 and Desiring God teaching documents from source_document_current_v1.",
+      "observed_at": "2026-10-16",
+      "product_id": "youtube",
+      "status": "confirmed"
+    },
+    {
+      "consumer": "rlm-adk-ios voice portal",
+      "evidence": "import_receipts: 1,189 WEB chapters, Edwards and BibleProject teaching through the pinned scripture_reference_readers (4e8a5d93).",
+      "observed_at": "2026-10-16",
+      "product_id": "scripture_reference",
+      "status": "confirmed"
+    },
+    {
+      "consumer": "steward-reference",
+      "evidence": "Steward reference reads finances bronze (REPORT section 3.1).",
+      "observed_at": "2026-10-16",
+      "product_id": "finances",
+      "status": "confirmed"
+    },
+    {
+      "consumer": "steward-reference sampler",
+      "evidence": "Reads the Apple gateway events (REPORT section 3.1).",
+      "observed_at": "2026-10-16",
+      "product_id": "apple_gateway",
+      "status": "confirmed"
+    },
+    {
+      "consumer": "data-pipelines youtube_ingest channel ranking",
+      "evidence": "Ranks channels from Chrome history (REPORT section 3.1).",
+      "observed_at": "2026-10-16",
+      "product_id": "chrome_history",
+      "status": "confirmed"
+    },
+    {
+      "consumer": "prayer-and-word",
+      "evidence": "Planned reader of prayer_corpus, scripture_reference and youtube (REPORT section 6).",
+      "observed_at": "2026-10-16",
+      "product_id": null,
+      "status": "hypothetical"
+    }
+  ],
+  "disposition": {
+    "decided_at": "2026-10-16",
+    "decided_by": "Rawley Stanhope (approved the portfolio review: \"Proceed\", 2026-10-16)",
+    "reason": "The only installed, tested and fresh body of work with real consumers. It needs targeted repairs, not replacement: prayer test-row retractions and the phone capture route in the prayer contract, the youtube part-join word split, Chrome coverage, the store_retention special-file failure and apple_normalized generation pruning.",
+    "review": {
+      "host": "spark-a",
+      "locator": "/home/rawleysm/.config/rlm-adk/launch/reports/project-portfolio-review-20261016/REPORT.md",
+      "section": "1, 3.1, 8.C"
+    },
+    "state": "keep",
+    "successors": []
+  },
+  "evidence_basis": "Installed desktop units observed 2026-10-16 and confirmed readers: the voice portal imports prayer_corpus, youtube and scripture_reference; steward-reference reads finances.",
+  "evidence_level": "consumed",
+  "host_pointer_ids": [],
+  "locations": [
+    {
+      "git_commit": "17a1f3ae6ce7cad8609d97cbd171d34e3982d224",
+      "host": "github",
+      "locator": "https://github.com/RawleySM/data-pipelines",
+      "observed_at": "2026-10-16",
+      "role": "canonical_remote"
+    },
+    {
+      "git_commit": "e1b34e07a04376bc78ef5be546d41a4eaf7484e2",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/dev/data-pipelines",
+      "note": "Behind origin/main by the prayer retract commit, which is already installed.",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    },
+    {
+      "git_commit": "e1b34e07a04376bc78ef5be546d41a4eaf7484e2",
+      "host": "spark-a",
+      "locator": "/home/rawleysm/data-pipelines",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    },
+    {
+      "git_commit": "17a1f3ae6ce7cad8609d97cbd171d34e3982d224",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/srv/prayer-ingest/releases/17a1f3ae6ce7cad8609d97cbd171d34e3982d224",
+      "note": "rlm-prayer-ingest.service",
+      "observed_at": "2026-10-16",
+      "role": "deployment"
+    },
+    {
+      "git_commit": "e2782d3b03d17ecf1636fcca0d6935724e18fa5f",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/share/apple-ingestion-gateway/releases/e2782d3b03d17ecf1636fcca0d6935724e18fa5f",
+      "note": "apple-ingestion-gateway.service",
+      "observed_at": "2026-10-16",
+      "role": "deployment"
+    },
+    {
+      "git_commit": "17a1f3ae6ce7cad8609d97cbd171d34e3982d224",
+      "host": "github",
+      "locator": "https://github.com/RawleySM/data-pipelines/blob/main/catalog/products.json",
+      "note": "Product facts (location, layer, status) live in this catalog, not in the register.",
+      "observed_at": "2026-10-16",
+      "role": "documentation"
+    }
+  ],
+  "migrated_from": [
+    {
+      "project_id": "data-pipelines",
+      "record_blob": "a7f9064d8e7eb86bd1e8a3db2850a17f7e2465c4",
+      "record_revision": 1,
+      "register_commit": "ebc578f6944fab0eae9e17822135f08ebfeb2f1b",
+      "schema": "rlm-adk.project-work-record.v1"
+    }
+  ],
+  "need_source": [
+    {
+      "date": "2026-09-29",
+      "kind": "operator_statement",
+      "reference": {
         "host": "spark-a",
-        "locator": "/home/rawleysm/data-pipelines",
-        "note": "Deploy source on Spark-A; nine feature worktrees beside it.",
-        "observed_at": "2026-10-11T12:58:16Z",
-        "role": "working_checkout",
-        "runnable_on_allocator_host": false
+        "locator": "/home/rawleysm/.claude/projects/-home-rawleysm-rlm-adk/memory/gateway-bronze-products-plan.md"
       },
-      {
-        "git_commit": "797bb074956d6f345994a6494453d8e55a5dc118",
-        "host": "desktop",
-        "locator": "/home/rawley-stanhope/dev/data-pipelines",
-        "note": "Readers imported by path (scripture_reference_readers).",
-        "observed_at": "2026-10-11T12:58:16Z",
-        "role": "working_checkout",
-        "runnable_on_allocator_host": true
-      },
-      {
-        "git_commit": "8e0e8df07442f80c5f51504702bc16cf6e7d4d03",
+      "statement": "Make the Apple gateway sources data products; bronze is the existing append-only event feed."
+    },
+    {
+      "date": "2026-09-30",
+      "kind": "operator_statement",
+      "reference": {
         "host": "spark-a",
-        "locator": "/home/rawleysm/srv/prayer-ingest/releases/8e0e8df07442f80c5f51504702bc16cf6e7d4d03",
-        "note": "rlm-prayer-ingest.service; no prayer_ingest changes on main since this commit.",
-        "observed_at": "2026-10-11T12:58:16Z",
-        "role": "deployment",
-        "runnable_on_allocator_host": null
+        "locator": "/home/rawleysm/.claude/projects/-home-rawleysm-rlm-adk/memory/prayer-testimony-mining.md"
       },
-      {
-        "git_commit": null,
-        "host": "desktop",
-        "locator": "/home/rawley-stanhope/.local/rlm-adk/mirrors/prayer/prayer_ingest.sqlite3",
-        "note": "Read-only mirror of the canonical prayer database.",
-        "observed_at": "2026-10-11T12:58:16Z",
-        "role": "artifact_store",
-        "runnable_on_allocator_host": null
-      }
-    ],
-    "summary": "Source-owner pipelines repository (RawleySM/data-pipelines, PR #37 merged 2026-10-11). Runs on Spark-A as user units (apple-ingestion-gateway, rlm-prayer-ingest release 8e0e8df, apple-gateway-* timers, mac-storage-retention, finances-ingest). The desktop mirrors its stores every five minutes (rlm-life-data-mirror) and holds packages/scripture_reference_readers used by scripture-enrichment-c15.",
-    "unknowns": []
-  },
-  "current_plan": {
-    "artifact": null,
-    "evidence": [],
-    "objective": null,
-    "state": "unknown"
-  },
-  "enrollment": {
-    "note": "Selected existing work; no historical replay.",
-    "origin": "manual_baseline"
-  },
-  "host_identity": {
-    "evidence": [],
-    "observed_at": null,
-    "pointer_sha256": null,
-    "registry": null,
-    "state": "unknown"
-  },
-  "identity_evidence": [],
-  "outputs": [],
+      "statement": "Testimony building is a central role: mine the whole prayer corpus into a testimony ledger with Rawley's attribution and the inference in separate columns."
+    },
+    {
+      "date": "2026-10-01",
+      "kind": "operator_statement",
+      "reference": {
+        "host": "spark-a",
+        "locator": "/home/rawleysm/.config/rlm-adk/launch/reports/project-portfolio-review-20261016/evidence/reviews/data-pipelines.md",
+        "section": "youtube_ingest, Need"
+      },
+      "statement": "Eleven22 and Desiring God named as the sermon and teaching sources (youtube_ingest registry rows)."
+    },
+    {
+      "date": "2026-10-07",
+      "kind": "operator_statement",
+      "reference": {
+        "host": "spark-a",
+        "locator": "/home/rawleysm/.claude/projects/-home-rawleysm-rlm-adk/memory/steward-bare-minimum-standard.md"
+      },
+      "statement": "Every resource must be accounted for: financial, compute, subscriptions, tech assets and time; idle Sparks and subscriptions are defects with a reason or an assignment."
+    }
+  ],
   "owner": {
     "kind": "operator",
     "name": "Rawley Stanhope",
     "resident_id": null
   },
-  "package_checkpoints": [],
+  "products": [
+    {
+      "catalog": "data-pipelines",
+      "product_id": "apple_gateway",
+      "relation": "produces"
+    },
+    {
+      "catalog": "data-pipelines",
+      "product_id": "apple_normalized",
+      "relation": "produces"
+    },
+    {
+      "catalog": "data-pipelines",
+      "product_id": "prayer_corpus",
+      "relation": "produces"
+    },
+    {
+      "catalog": "data-pipelines",
+      "product_id": "scripture_reference",
+      "relation": "produces"
+    },
+    {
+      "catalog": "data-pipelines",
+      "product_id": "scripture_reference_readers",
+      "relation": "produces"
+    },
+    {
+      "catalog": "data-pipelines",
+      "product_id": "life_source_readers",
+      "relation": "produces"
+    },
+    {
+      "catalog": "data-pipelines",
+      "product_id": "finances",
+      "relation": "produces"
+    },
+    {
+      "catalog": "data-pipelines",
+      "product_id": "youtube",
+      "relation": "produces"
+    },
+    {
+      "catalog": "data-pipelines",
+      "product_id": "chrome_history",
+      "relation": "produces"
+    },
+    {
+      "catalog": "data-pipelines",
+      "product_id": "store_retention",
+      "relation": "produces"
+    },
+    {
+      "catalog": "data-pipelines",
+      "note": "Ownership mirror retired; the rlm-sermon-mirror rclone transfer remains active.",
+      "product_id": "store_mirror",
+      "relation": "produces"
+    }
+  ],
   "project_id": "data-pipelines",
   "record_revision": 1,
-  "runtime_applicability": {
-    "note": "Applicability entered by Rawley Stanhope (Claude Fable cleanup session 2026-10-11).",
-    "package": "not_applicable",
-    "session": "not_applicable"
-  },
-  "schema": "rlm-adk.project-work-record.v1",
-  "title": "data-pipelines: Apple ingestion gateway, prayer ingest, Mac actions, scripture reference readers, finances",
+  "schema": "rlm-adk.project-work-record.v2",
+  "summary": "Source owner for acquisition, source and bronze contracts, reader packages and retention (RawleySM/data-pipelines). Since the 2026-10-13 cutover the desktop runs every active writer as user units: rlm-prayer-ingest release 17a1f3ae, apple-ingestion-gateway release e2782d3b, finances-ingest 22dbcc40, youtube-ingest f09cf88f, store-retention 493535b9, and the apple-gateway and chrome-history-merge timers. Spark-A keeps a working checkout and runs no pipeline timers. Silver and gold belong to resident-owned repositories, not here.",
+  "title": "data-pipelines: source and bronze owner (Apple gateway, prayer ingest, Scripture reference, finances, YouTube, Chrome, retention)",
   "unresolved": [
-    "Outside project: no RLM package or session applies; residents consume its stores through pointers and may commission delegates to change it through its own PR flow."
+    "The repairs in REPORT section 8.C are tracked in data-pipelines; this record does not observe their state.",
+    "Planned additions resource_utilization (from steward-reference) and a sermon_archive contract are not catalog products yet (catalog at 17a1f3ae lists 12 products).",
+    "apple_normalized has no confirmed reader.",
+    "The prayer contract does not list the phone capture route (rlm-adk-ios) or its consumers yet."
   ],
-  "updated_at": "2026-10-11T12:58:18.020412+00:00",
-  "updated_by": "Rawley Stanhope (Claude Fable cleanup session 2026-10-11)",
-  "work_items": []
+  "updated_at": "2026-10-16T18:00:46Z",
+  "updated_by": "Rawley Stanhope (Claude portfolio-reset session 2026-10-16)"
 }

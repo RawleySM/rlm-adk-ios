@@ -1,0 +1,63 @@
+{
+  "consumers": [],
+  "disposition": {
+    "decided_at": "2026-10-16",
+    "decided_by": "Rawley Stanhope (approved the portfolio review: \"Proceed\", 2026-10-16)",
+    "reason": "data-pipelines gateway, normalized, Chrome and readers are strictly stronger. The person-resolution rules and two CDC test cases are salvaged as specifications. Keep the GitHub repository readable: data-pipelines cites d0a762a.",
+    "review": {
+      "host": "spark-a",
+      "locator": "/home/rawleysm/.config/rlm-adk/launch/reports/project-portfolio-review-20261016/REPORT.md",
+      "section": "3.3, 4"
+    },
+    "state": "archived",
+    "successors": [
+      "data-pipelines"
+    ]
+  },
+  "evidence_basis": "One real run of each stage; no scheduled reader.",
+  "evidence_level": "exercised",
+  "host_pointer_ids": [
+    "life-context-feed-c8"
+  ],
+  "locations": [
+    {
+      "git_commit": "490509e12b3c92263384c7018ee8f062a9905f89",
+      "host": "github",
+      "locator": "https://github.com/RawleySM/life-context-feed-c8",
+      "observed_at": "2026-10-16",
+      "role": "canonical_remote"
+    },
+    {
+      "git_commit": "490509e12b3c92263384c7018ee8f062a9905f89",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-8/life-context-feed-c8",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    }
+  ],
+  "migrated_from": [],
+  "need_source": [
+    {
+      "date": "2026-09-30",
+      "kind": "operator_statement",
+      "reference": {
+        "host": "spark-a",
+        "locator": "/home/rawleysm/.claude/projects/-home-rawleysm-rlm-adk/memory/prayer-testimony-mining.md"
+      },
+      "statement": "Testimony building is a central role: mine the whole prayer corpus into a testimony ledger with Rawley's attribution and the inference in separate columns."
+    }
+  ],
+  "owner": null,
+  "products": [],
+  "project_id": "life-context-feed-c8",
+  "record_revision": 1,
+  "schema": "rlm-adk.project-work-record.v2",
+  "summary": "Gateway and Chrome snapshot bronze, roster-person silver (6.1 percent person resolution) and unscheduled CDC copies (main 490509e), stale since 2026-10-02 with its cursor far behind the gateway.",
+  "title": "life-context-feed-c8: resident gateway and Chrome snapshot bronze and CDC copies",
+  "unresolved": [
+    "Host pointer retirement is pending: it is done at the next supervised launch, after the voice-intake-20261016 launch (and its resume draft) is re-authored (REPORT section 8.F).",
+    "The GitHub repository is not archived (isArchived=false, observed 2026-10-16)."
+  ],
+  "updated_at": "2026-10-16T18:00:46Z",
+  "updated_by": "Rawley Stanhope (Claude portfolio-reset session 2026-10-16)"
+}

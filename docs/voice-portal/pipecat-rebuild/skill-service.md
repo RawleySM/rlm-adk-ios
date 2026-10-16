@@ -61,9 +61,10 @@ chapter not retained, or invalid verse: `available: false`, `reason`, and a spok
    from the prayer's own richest sentences (`themes_source: fallback_keywords`, with the error kept in
    `themes_detail.errors`). Successful results are cached in `tool_cache` per model, prayer text
    SHA-256 and prompt version; `refresh=1` bypasses the cache.
-3. **Passages.** In order: up to two rows of the pairings ledger for this prayer (joined by
+3. **Passages.** In order: up to two rows of the published pairing ledger for this prayer (joined by
    `prayer_id` or `text_sha256`; `cited` before `echoed` before `editorial`; whole-chapter refs
-   skipped); then live echoes (retained verses that share at least two exact four-word windows with
+   skipped; rows are used only when the `manifest.json` beside the ledger lists the file with a
+   matching SHA-256 and row count, reported as `candidates.ledger_manifest`); then live echoes (retained verses that share at least two exact four-word windows with
    the prayer, the same signal the ledger records as an echo, with parallel passages that echo the
    same words skipped); then one passage per theme from Scripture FTS, narrowed inside the hit chunk
    to the 1 to 3 verses with the highest IDF-weighted overlap of distinct theme words (two shared
@@ -110,26 +111,28 @@ attributed excerpt per voice, then the personal context).
 
 ### `GET /tools/project?description=...[&confirm=<project_id>]`
 
-Indexes every record of the project work register in an in-memory SQLite FTS5 table (porter
-stemming; fields and BM25 weights: project id 2.0 with `cN` also indexed as "cycle N", title 3.0,
-baseline summary/plan objective/owner 1.5, work item titles/objectives/next actions 1.5, branch refs
-0.5, unresolved/unknowns/outputs/results/checkpoints 1.0) and ranks it against the description's
-content words (spoken numbers become digits; request words such as "project", "the one where",
-"check" are dropped).
+Reads the project work register v2 (`rlm-adk.project-work-record.v2`: one record per repository;
+records of any other schema are skipped) and indexes every record in an in-memory SQLite FTS5 table
+(porter stemming; fields and BM25 weights: project id 2.0 with `cN` also indexed as "cycle N", title
+3.0, summary and owner 1.5, products and consumers 1.5, host pointer ids and successors 0.5,
+unresolved, disposition reason, evidence basis and need statements 1.0). It ranks the records
+against the description's content words (spoken numbers become digits; request words such as
+"project", "the one where", "check" are dropped). Host pointer ids are indexed, so an old pointer
+name ("the prayer life project from cycle twelve") finds the repository it points at.
 
 Returns `candidates: [{project_id, title, score}]` (top 3), `confident`, `confirmed`, `ratio`,
-`terms`, and when confident or confirmed a `report {project_id, title, updated_at, record_revision,
-owner, axes {plan, branches, results, checkpoints, outputs}, unresolved, record_path}`. Confident
-means the top score is above 0.01 and at least `thresholds.project_confidence_ratio` (policy, 1.5)
-times the runner-up's, or the only match. `spoken` for a report: title and record date, then plan,
-branches, results, checkpoints and outputs in that order, one brief sentence each. Not confident:
-`spoken` is "Do you mean <best>? The next closest is <second>." and `confirm_project_id` names the
-best candidate for the follow-up call.
+`terms`, and when confident or confirmed a `report {project_id, title, summary, updated_at,
+record_revision, owner, host_pointer_ids, axes {disposition, need, products, consumers, evidence},
+unresolved, record_path}`. Confident means the top score is above 0.01 and at least
+`thresholds.project_confidence_ratio` (policy, 1.5) times the runner-up's, or the only match.
+`spoken` for a report: title and record date, then disposition (with successors and the reason's
+first sentence), need (count and the latest operator statement), products (grouped as produces,
+contributes to, reads), consumers (confirmed and hypothetical) and evidence (level and basis), in
+that order. Not confident: `spoken` is "Do you mean <best>? The next closest is <second>." and
+`confirm_project_id` names the best candidate for the follow-up call.
 
-Held-out check (written from the records before the scorer ran, `tests/test_skill_tools.py`): 4 of
-5 top-1 correct. The miss, "the prayer project that matched a Bible verse to each of my prayers"
-(expected `prayer-life-c12`), ranks `scripture-c12` first: "prayer" occurs in most records, so
-FTS5's BM25 gives it no weight, and "verse" occurs only in `scripture-c12`'s summary.
+Held-out check (written from the v2 records before the scorer ran, `tests/test_skill_tools.py`):
+5 of 5 top-1 correct on the fixture copy of the register at bd5c217.
 
 ### `POST /tools/work` `{request_text, kind?, operation_id?}`
 
@@ -177,8 +180,8 @@ applied; an unreadable file serves the defaults with `source.error` set.
 | Portal projection (FTS5 over prayers, teaching, WEB chapters; Theographic) | `~/.local/rlm-adk/voice_portal/voice_portal.sqlite3` | all tools |
 | Prayer store (production, opened `mode=ro`) | `~/.local/rlm-adk/stores/prayer_pipeline/prayer_ingest.sqlite3` (`config.prayer_store`), view `prayer_corpus_v1`, table `publications` | word |
 | Relay capture ledger | `prayer_captures` in the portal projection | word |
-| Prayer-to-Scripture pairings (Prayer resident, cycle 12; 615 rows over 206 prayers) | `~/.local/rlm-adk/projects/cycle-12/prayer-life-c12/ledgers/scripture_pairings.jsonl` (`config.scripture_pairings_ledger`) | word |
-| Project work register records (schema `rlm-adk.project-work-record.v1`) | `~/.local/rlm-adk/projects/project-work-registry/project/registry/project-work/records/*.json` (`config.project_register_records`) | project |
+| Prayer-to-Scripture pairings (Prayer & Word published product `scripture_pairings_frozen_20261008`: 615 rows over 206 prayers, frozen, coverage to 2026-10-08; checked against its `manifest.json`) | `~/.local/rlm-adk/stores/prayer_and_word/published/scripture_pairings_frozen_20261008/pairings.jsonl` (`config.scripture_pairings_ledger`) | word |
+| Project work register records (schema `rlm-adk.project-work-record.v2`, one per repository) | `~/.local/rlm-adk/projects/project-work-registry/project/registry/project-work/records/*.json` (`config.project_register_records`) | project |
 | Teaching: Desiring God, Eleven22 | `~/.local/rlm-adk/stores/life_context/sources/youtube/catalog.sqlite3`, `source_document_current_v1` | interpretations |
 | Teaching: Jonathan Edwards (CCEL ThML), BibleProject transcripts (PDF) | `~/.local/rlm-adk/stores/life_context/sources/scripture_reference/` through the pinned `scripture_reference_readers` (`~/srv/voice-portal/vendor`) | interpretations |
 | Inference owner (themes) | `config.inference_base_url` (desktop forward `127.0.0.1:28111` to Spark-B, model `qwen-coding-b`) | word |
@@ -219,8 +222,8 @@ overridden from the environment like the other types.
 ## Left out, and known limits
 
 - **Judge endpoint**: not built (`POST /tools/judge` was ruled out of scope).
-- **Project scorer**: lexical only, 4 of 5 held-out descriptions correct. A description that shares
-  no rare word with the intended record can be confidently wrong (the held-out miss above).
+- **Project scorer**: lexical only. A description that shares no rare word with the intended record
+  can be confidently wrong.
 - **Edwards excerpts**: when Edwards quotes the passage, the King James wording often differs from
   the WEB enough that quote detection misses it, so an Edwards voice can be his quotation of the
   passage rather than his comment on it.
@@ -229,8 +232,8 @@ overridden from the environment like the other types.
 - **Word**: the first call after the owner has been idle includes a cold model start (about four
   minutes observed); later calls for the same prayer revision use the cached themes (about 0.2 s).
   A `503` from the owner (`insufficient_memory_for_envelope` was seen once on 2026-10-13) yields
-  keyword themes, which are weaker. The pairings ledger is the cycle-12 snapshot (observed
-  2026-10-11); newer prayers get live echoes and theme retrieval instead of ledger rows.
+  keyword themes, which are weaker. The pairing ledger is frozen (coverage ends 2026-10-08);
+  newer prayers get live echoes and theme retrieval instead of ledger rows.
 - **Teaching retrieval in conversation turns**: Edwards and BibleProject are now part of the
   teaching family, so `/turns` and `/devotional` teaching evidence can come from them too.
 - **Interpretations** use the first reference in the request only; other life-context products
