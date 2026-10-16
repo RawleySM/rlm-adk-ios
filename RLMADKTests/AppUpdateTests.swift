@@ -106,21 +106,26 @@ final class AppUpdateTests: XCTestCase {
         XCTAssertEqual(model.updateInstall?.phase, .suspended, "the prompt timeout does not override a shown prompt")
         model.updateInstallSceneChanged(.active)
         XCTAssertEqual(model.updateInstall?.phase, .returned, "back in the foreground on the old build")
-        XCTAssertEqual(model.updateInstall?.message.contains("Waiting"), true)
+        XCTAssertEqual(model.updateInstall?.message, "Build 99999 did not install. Tap Install to try again.")
     }
 
-    func testStayKeepsTheAppWhenThePromptWasCancelled() async {
+    func testDismissCannotCancelTheHandOff() async {
         let (model, _, suspended) = await makeOfferedModel()
         let install = Task { await model.installUpdate() }
         await settle(0.02)
         model.updateInstallSceneChanged(.inactive)
         model.updateInstallSceneChanged(.active)
-        model.stayInsteadOfInstalling()
+        XCTAssertEqual(model.updateInstall?.inFlight, true)
+        model.dismissUpdate()
+        XCTAssertEqual(model.updateOffer?.build, 99999, "a dismiss during the hand-off is ignored")
         await settle()
-        XCTAssertEqual(suspended(), 0)
-        XCTAssertNil(model.updateInstall)
+        XCTAssertEqual(suspended(), 1, "the app still steps aside so iOS can install")
         await install.value
-        XCTAssertNil(model.updateInstall)
+        model.updateInstallSceneChanged(.active)
+        XCTAssertEqual(model.updateInstall?.phase, .returned)
+        XCTAssertEqual(model.updateInstall?.inFlight, false)
+        model.dismissUpdate()
+        XCTAssertNil(model.updateOffer, "after coming back, dismiss works again")
     }
 
     func testNoPromptOffersTheInstallPage() async {

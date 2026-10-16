@@ -16,19 +16,21 @@ struct LatestBuild: Codable, Equatable {
 
 /// The banner's install hand-off. iOS 26 queues an `itms-services` install opened from the running
 /// app and waits ("Waiting…" on the Home Screen icon) until that app leaves the foreground; iOS 18
-/// closed the app by itself. So when Apple's prompt closes, the app steps to the Home Screen, where
-/// the icon shows the install, and the new build says "Updated to build N" on its first launch.
+/// closed the app by itself. So when Apple's prompt closes, the app steps to the Home Screen at once,
+/// where the icon shows the install, and the new build says "Updated to build N" on its first launch.
+/// Nothing on the banner can be tapped meanwhile: on build 22 a tap on its ✕ one second after the
+/// prompt closed cancelled the step aside and left the install queued for 25 minutes.
 struct UpdateInstall: Equatable {
     enum Phase: String, Equatable {
         /// The install link was opened; Apple's prompt has not appeared yet.
         case opening
         /// Apple's prompt is showing (the app went inactive).
         case prompt
-        /// The prompt closed; the app goes to the Home Screen shortly unless the user taps Stay.
+        /// The prompt closed; the app is stepping to the Home Screen.
         case leaving
         /// The app went to the Home Screen so iOS can replace it.
         case suspended
-        /// The app came back to the foreground still on the old build.
+        /// The app came back to the foreground still on the old build (the prompt was cancelled).
         case returned
         /// No prompt appeared, or iOS refused the link.
         case noPrompt
@@ -39,14 +41,17 @@ struct UpdateInstall: Equatable {
     var build: Int
     var phase: Phase
 
+    /// While true the banner shows only progress: no Install, no dismiss.
+    var inFlight: Bool { [.opening, .prompt, .leaving, .suspended].contains(phase) }
+
     /// The banner's line for this phase.
     var message: String {
         switch phase {
         case .opening: return "Opening Apple's install prompt…"
         case .prompt: return "Tap Install in Apple's prompt."
-        case .leaving: return "Installing: going to the Home Screen so iOS can finish."
+        case .leaving: return "Installing: RLM-ADK steps aside so iOS can finish."
         case .suspended: return "Installing build \(build)…"
-        case .returned: return "Build \(build) has not installed yet. If its icon says Waiting, close RLM-ADK in the app switcher."
+        case .returned: return "Build \(build) did not install. Tap Install to try again."
         case .noPrompt: return "No install prompt appeared. Open the install page instead."
         case .closeManually: return "Close RLM-ADK (swipe it away in the app switcher) so iOS can install build \(build)."
         }

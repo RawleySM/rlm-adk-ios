@@ -68,10 +68,10 @@ final class PortalModel: ObservableObject {
     @Published private(set) var updatedNotice: String?
     @Published private(set) var updatedNotes: String?
     /// Test seams: how the app steps to the Home Screen (false when it cannot), how long it waits
-    /// for Apple's prompt, and how long Stay is offered before it leaves.
+    /// for Apple's prompt, and the pause that lets the banner show "Installing" before it leaves.
     var appSuspender: @MainActor () -> Bool = { PortalModel.suspendToHomeScreen() }
     var updatePromptTimeout: TimeInterval = 4
-    var updateLeaveDelay: TimeInterval = 2
+    var updateLeaveDelay: TimeInterval = 0.4
     private var updateTimer: Timer?
     private var lastUpdateCheckError: String?
     /// The last update check's outcome, shown in Diagnostics and the snapshot: when it ran, the
@@ -1060,8 +1060,8 @@ final class PortalModel: ObservableObject {
     }
 
     /// Follows Apple's install prompt through scene changes: inactive while it shows, active when
-    /// it closes. Then, after `updateLeaveDelay` (Stay cancels), the app steps to the Home Screen
-    /// so iOS 26 can replace it; coming back on the old build reports that.
+    /// it closes. Then, after `updateLeaveDelay`, the app steps to the Home Screen so iOS 26 can
+    /// replace it; coming back on the old build reports that (the prompt was cancelled).
     func updateInstallSceneChanged(_ phase: ScenePhase) {
         guard let install = updateInstall else { return }
         switch (install.phase, phase) {
@@ -1088,13 +1088,6 @@ final class PortalModel: ObservableObject {
         }
     }
 
-    /// The banner's Stay: the user cancelled Apple's prompt, so the app does not leave.
-    func stayInsteadOfInstalling() {
-        guard let install = updateInstall, install.phase == .leaving else { return }
-        updateInstall = nil
-        logLine("update install: stayed; build \(install.build) not installed")
-    }
-
     /// The banner's Open page: the build's install page in Safari (when no prompt appeared).
     func openUpdatePage() async {
         guard let offer = updateOffer, let page = offer.page_url.flatMap(URL.init(string:)) else { return }
@@ -1103,9 +1096,10 @@ final class PortalModel: ObservableObject {
         _ = await urlOpener(page)
     }
 
-    /// The banner's dismiss: this build is not offered again; a later one is.
+    /// The banner's dismiss: this build is not offered again; a later one is. Ignored during the
+    /// hand-off, when iOS may already have queued the install.
     func dismissUpdate() {
-        guard let offer = updateOffer else { return }
+        guard let offer = updateOffer, updateInstall?.inFlight != true else { return }
         UserDefaults.standard.set(offer.build, forKey: "dismissedUpdateBuild")
         updateOffer = nil
         updateInstall = nil
