@@ -13,7 +13,8 @@ English Bible, whatever was asked), ``client_read`` ``play`` reads it from where
 real server's ``reading`` events (started, verse, verse_done every 2.6 s, finished) and ``pause``
 pauses it. The Bug chip: ``client_bug`` ``start`` enters ``bug`` mode and plays two scripted
 ``bug_text`` lines as if transcribed; ``stop`` answers finishing, filing, filed (``bug-ci-01``) and,
-a second later, triaged; ``cancel`` answers cancelled.
+a second later, triaged; ``cancel`` answers cancelled. ``GET /latest.json`` serves a build 9999 for
+the update banner screenshot.
 
 ``GET /log`` returns everything recorded, for the CI assertions. Not the real pipeline: no STT,
 LLM or TTS; this proves the app's wire protocol and its silence keepalive only.
@@ -87,6 +88,13 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/log":
             with LOCK:
                 return self._json(200, dict(LOG))
+        if self.path == "/latest.json":
+            # The update banner's source (scripts/direct_install.py publish): a build newer than any CI build.
+            with LOCK:
+                LOG["latest_json_requests"] = LOG.get("latest_json_requests", 0) + 1
+            return self._json(200, {"schema": "rlmadk.latest_build.v1", "bundle_id": "com.rawleystanhope.rlmadk", "version": "0.2.0", "build": 9999,
+                                    "install_url": "itms-services://?action=download-manifest&url=https%3A%2F%2Fexample.invalid%2Fbuild9999%2Fmanifest.plist",
+                                    "page_url": "https://example.invalid/build9999/", "notes": "Fixture build for the update banner screenshot.", "published_at": "2026-10-16T00:00:00+00:00"})
         if self.path.startswith("/ws-client") and self.headers.get("Upgrade", "").lower() == "websocket":
             return self._websocket()
         self._json(404, {"error": "not_found"})

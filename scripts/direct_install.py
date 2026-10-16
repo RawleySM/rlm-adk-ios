@@ -26,8 +26,10 @@ import datetime as dt
 import hashlib
 import html
 import json
+import os
 import plistlib
 import re
+import shutil
 import sys
 import urllib.parse
 import zipfile
@@ -254,6 +256,86 @@ def package(ipa: Path, base_url: str, out: Path, *, title: str | None = None) ->
     return {"ipa_url": ipa_url, "manifest_url": manifest_url, "install_link": link, "identity": identity, "files": ["manifest.plist", "index.html", f"{ipa_name}.sha256"]}
 
 
+LATEST_SCHEMA = "rlmadk.latest_build.v1"
+
+
+def latest_document(result: dict, *, page_url: str, notes: str | None = None, published_at: str | None = None) -> dict:
+    """The ``latest.json`` the app reads to offer an update (its update banner).
+
+    Args:
+        result: ``package`` result for the build being published.
+        page_url: The build's install page (``<root>/build<N>/``).
+        notes: One line on what the build changes, shown under the banner.
+        published_at: ISO time; now by default.
+
+    Returns:
+        ``{"schema", "bundle_id", "version", "build" (int), "install_url", "manifest_url",
+        "page_url", "sha256", "notes", "published_at"}``.
+    """
+    identity = result["identity"]
+    return {
+        "schema": LATEST_SCHEMA,
+        "bundle_id": identity["bundle_id"],
+        "version": str(identity["version"]),
+        "build": int(identity["build"]),
+        "install_url": result["install_link"],
+        "manifest_url": result["manifest_url"],
+        "page_url": page_url,
+        "sha256": identity["sha256"],
+        "notes": notes or "",
+        "published_at": published_at or dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+    }
+
+
+def publish(ipa: Path, root: Path, root_url: str, *, notes: str | None = None, receipt: Path | None = None, title: str | None = None) -> dict:
+    """Publish a signed build to the private delivery folder and make it the latest.
+
+    Writes ``<root>/build<N>/`` (IPA, sha256, manifest, page, receipt), then ``<root>/latest.json``
+    (atomically, last, so the app never reads a latest.json whose build is not yet in place) and
+    ``<root>/index.html`` linking to the newest build.
+
+    Args:
+        ipa: Signed IPA (the direct-install artifact).
+        root: Delivery folder served over HTTPS (Tailscale Serve on Spark-A).
+        root_url: HTTPS URL of ``root``.
+        notes: One line shown under the app's update banner.
+        receipt: The build's ``direct-install-receipt.json``, copied beside it.
+        title: Page title (default: the package's display name).
+
+    Returns:
+        The ``latest.json`` document.
+
+    Raises:
+        Rejected: Not https, or a build of that number already published with different bytes.
+    """
+    identity = inspect_ipa(ipa)
+    build = int(identity["build"])
+    base = root_url.rstrip("/")
+    build_dir = root / f"build{build}"
+    if (build_dir / ipa.name).exists() and inspect_ipa(build_dir / ipa.name)["sha256"] != identity["sha256"]:
+        raise Rejected(f"build {build} is already published with different bytes; build numbers are never reused")
+    build_dir.mkdir(parents=True, exist_ok=True)
+    if not (build_dir / ipa.name).exists() or build_dir.joinpath(ipa.name).resolve() != ipa.resolve():
+        shutil.copyfile(ipa, build_dir / ipa.name)
+    if receipt is not None:
+        shutil.copyfile(receipt, build_dir / receipt.name)
+    result = package(build_dir / ipa.name, f"{base}/build{build}", build_dir, title=title)
+    document = latest_document(result, page_url=f"{base}/build{build}/", notes=notes)
+    (build_dir / "latest.json").write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    tmp = root / ".latest.json.tmp"
+    tmp.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, root / "latest.json")
+    title = title or identity["display_name"] or identity["bundle_id"]
+    (root / "index.html").write_text(f"""<!doctype html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{html.escape(title)} builds</title>
+<h1>{html.escape(title)}</h1>
+<p style="font-size:1.4em"><a href="build{build}/">Latest: build {build}</a>{(" — " + html.escape(notes)) if notes else ""}</p>
+<p><a href="latest.json">latest.json</a> (what the app's update banner reads)</p>
+""", encoding="utf-8")
+    return document
+
+
 # ----- CLI -----
 
 def main(argv: list[str] | None = None) -> int:
@@ -267,6 +349,7 @@ def main(argv: list[str] | None = None) -> int:
     for flag in ("--ipa", "--profile-json", "--embedded-profile-json", "--codesign-text", "--entitlements-plist", "--commit", "--method", "--build-number", "--out"):
         a.add_argument(flag, required=True)
     a = sub.add_parser("package"); a.add_argument("--ipa", required=True); a.add_argument("--base-url", required=True); a.add_argument("--out", required=True); a.add_argument("--title")
+    a = sub.add_parser("publish"); a.add_argument("--ipa", required=True); a.add_argument("--root", required=True); a.add_argument("--root-url", required=True); a.add_argument("--notes"); a.add_argument("--receipt"); a.add_argument("--title")
     args = p.parse_args(argv)
     try:
         if args.cmd == "validate-profile":
@@ -292,6 +375,9 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd == "package":
             result = package(Path(args.ipa), args.base_url, Path(args.out), title=args.title)
             print(json.dumps(result, indent=2))
+        elif args.cmd == "publish":
+            document = publish(Path(args.ipa), Path(args.root), args.root_url, notes=args.notes, receipt=Path(args.receipt) if args.receipt else None, title=args.title)
+            print(json.dumps(document, indent=2))
     except Rejected as exc:
         print(f"REJECTED: {exc}", file=sys.stderr)
         return 1

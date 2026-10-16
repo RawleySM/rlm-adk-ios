@@ -11,6 +11,7 @@ struct PortalView: View {
         NavigationStack {
             GeometryReader { geo in
                 VStack(spacing: 8) {
+                    if let offer = model.updateOffer { updateBanner(offer) }
                     statusHeader
                     // Scripture front and centre; the conversation below it.
                     ScripturePaneView(readMode: false) { typedFocused = false; readMode = true }
@@ -116,6 +117,32 @@ struct PortalView: View {
         .scrollDismissesKeyboard(.interactively)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("conversationPane")
+    }
+
+    /// A newer private build is published: Install opens Apple's install prompt for it.
+    private func updateBanner(_ offer: LatestBuild) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.down.app.fill").font(.title3)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Update available: build \(offer.build)").font(.subheadline.weight(.semibold))
+                if let notes = offer.notes, !notes.isEmpty {
+                    Text(notes).font(.caption2).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 4)
+            Button("Install") { model.installUpdate() }
+                .buttonStyle(.bordered).tint(.white).controlSize(.small)
+                .accessibilityIdentifier("updateInstallButton")
+            Button { model.dismissUpdate() } label: { Image(systemName: "xmark") }
+                .buttonStyle(.borderless).controlSize(.small)
+                .accessibilityLabel("Dismiss update")
+                .accessibilityIdentifier("updateDismissButton")
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.blue))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("updateBanner")
     }
 
     /// The report the Bug chip is collecting (live lines while reporting), then its ticket.

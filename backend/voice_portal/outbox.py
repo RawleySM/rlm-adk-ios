@@ -21,6 +21,8 @@ from .db import now
 from .retrieval import search
 
 POSTED_RE = re.compile(r"posted\s+message_id=(\S+)\s+run=(\S+)\s+target=(\S+)")
+# The instance-mailbox CLI (`inbox post --to`) prints `posted message_id=<id> to=<recipients>`.
+POSTED_TO_RE = re.compile(r"posted\s+message_id=(\S+)\s+to=(\S+)")
 LIST_RE = re.compile(r"message_id=(\S+)\s+run=(\S+)\s+target=(\S+)\s+delivered=(\S+)\s+cleared=(\S+)\s+text=(.*)$")
 RETRYABLE = {"queued_locally", "backend_unavailable"}
 DIRECTIVE_PREFIX = "voice-portal operation_id="
@@ -92,6 +94,9 @@ def _classify_post(returncode: int | None, stdout: str, stderr: str, outcome: st
     match = POSTED_RE.search(stdout)
     if returncode == 0 and match:
         return "directive_posted", {"message_id": match.group(1), "run_id": match.group(2), "target": match.group(3)}
+    match = POSTED_TO_RE.search(stdout)
+    if returncode == 0 and match:
+        return "directive_posted", {"message_id": match.group(1), "run_id": None, "target": match.group(2)}
     if "no live run" in combined or "ServiceControlRefused" in combined:
         return "backend_unavailable", {"reason": "no_live_run", "observed": combined.strip()[:500]}
     if returncode == 0:
@@ -153,7 +158,7 @@ def dispatch(conn: sqlite3.Connection, cfg: Config, operation_id: str) -> dict:
             conn.execute("ROLLBACK")
         raise
     path = directive_dir / f"{operation_id}-attempt{attempt_id}.txt"
-    cmd = [cfg.allocatorctl, "inbox", "post", "--file", str(path)]
+    cmd = [cfg.allocatorctl, "inbox", "post", *(["--to", cfg.work_recipient] if cfg.work_recipient else []), "--file", str(path)]
     try:
         path.write_text(directive_text(op), encoding="utf-8")
         with conn:

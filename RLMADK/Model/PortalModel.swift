@@ -48,6 +48,20 @@ final class PortalModel: ObservableObject {
     @Published private(set) var reading = ReadingProgress()
     /// A passage requested from the pane and not yet answered by the server.
     @Published private(set) var passageRequested: String?
+    /// A newer private build to offer (the update banner; AppUpdate.swift), or nil.
+    @Published private(set) var updateOffer: LatestBuild?
+    /// Where latest.json is read from: `RLMADK_UPDATE_URL`, else the private install page.
+    let updateURLString = ProcessInfo.processInfo.environment["RLMADK_UPDATE_URL"] ?? AppUpdate.defaultURL
+    /// Test seams: how latest.json is fetched and how an install link is opened.
+    var updateFetcher: (URL) async throws -> Data = { url in
+        let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+        return data
+    }
+    var urlOpener: (URL) -> Void = { UIApplication.shared.open($0) }
+    private var updateTimer: Timer?
+    private var lastUpdateCheckError: String?
     /// The Bug chip's report (BugReport.swift); while it is open the phone keeps bot speech silent.
     @Published private(set) var bug = BugReportState() {
         didSet { if bug.silencesOutput != oldValue.silencesOutput { talk?.voice.gateOpen = speechGateOpen } }
@@ -957,13 +971,64 @@ final class PortalModel: ObservableObject {
             if audio.state == .running, !audio.isRunning { audio.restartIfNeeded(reason: "foreground") }
             sendSnapshot(reason: "foreground")
             startHeartbeat()
+            startUpdateChecks()
         } else {
             heartbeat?.invalidate()
             heartbeat = nil
+            updateTimer?.invalidate()
+            updateTimer = nil
             // Tell the backend the app left the foreground while the socket may still carry it;
             // afterwards it shows connected_background / offline, never live.
             sendSnapshot(reason: scenePhaseLabel)
         }
+    }
+
+    // MARK: update banner
+
+    private func startUpdateChecks() {
+        Task { await checkForUpdate(reason: "foreground") }
+        updateTimer?.invalidate()
+        updateTimer = Timer.scheduledTimer(withTimeInterval: AppUpdate.checkInterval, repeats: true) { [weak self] _ in
+            Task { await self?.checkForUpdate(reason: "timer") }
+        }
+    }
+
+    /// Reads latest.json and offers a newer build. Failures (off the tailnet, page down) keep the
+    /// current offer and are logged once per distinct error.
+    func checkForUpdate(reason: String) async {
+        guard let url = URL(string: updateURLString) else { return }
+        do {
+            let latest = try AppUpdate.decode(try await updateFetcher(url))
+            lastUpdateCheckError = nil
+            let dismissed = UserDefaults.standard.object(forKey: "dismissedUpdateBuild") as? Int
+            let offer = AppUpdate.offer(latest, currentBuild: PortalModel.appBuild, bundleId: Bundle.main.bundleIdentifier, dismissedBuild: dismissed)
+            if offer != updateOffer {
+                updateOffer = offer
+                logLine(offer.map { "update available: build \($0.build) (\(reason))" } ?? "no newer build (latest \(latest.build), this \(PortalModel.appBuild))")
+                sendSnapshot(reason: "update")
+            }
+        } catch {
+            let text = error.localizedDescription
+            if text != lastUpdateCheckError {
+                lastUpdateCheckError = text
+                logLine("update check failed (\(reason)): \(text)")
+            }
+        }
+    }
+
+    /// The banner's Install: opens the build's itms-services link (iOS shows its install prompt).
+    func installUpdate() {
+        guard let offer = updateOffer, let url = URL(string: offer.install_url) else { return }
+        logLine("update install opened for build \(offer.build)")
+        urlOpener(url)
+    }
+
+    /// The banner's dismiss: this build is not offered again; a later one is.
+    func dismissUpdate() {
+        guard let offer = updateOffer else { return }
+        UserDefaults.standard.set(offer.build, forKey: "dismissedUpdateBuild")
+        updateOffer = nil
+        logLine("update to build \(offer.build) dismissed")
     }
 
     private func startHeartbeat() {
@@ -1018,6 +1083,7 @@ final class PortalModel: ObservableObject {
             webrtc_spike: webrtcSpike,
             policy_source: policySource,
             audio_tuning: AudioTuning.current.description,
+            update_offer: updateOffer.map { "build \($0.build)" },
             bug_report: "\(bug.phase) lines \(bug.lines.count) device \(bug.deviceLines.count)\(bug.ticketId.map { " \($0)" } ?? "")\(bug.outcome.map { " — \($0)" } ?? "")"
         )
     }

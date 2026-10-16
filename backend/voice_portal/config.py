@@ -62,6 +62,18 @@ class Config:
     # means <state root>/intake/issues.jsonl; production sets ~/.local/rlm-adk/stores/intake/issues.jsonl.
     issues_log: str = ""
     issue_triage_max_tokens: int = 700
+    # Resident that triaged tickets are mailed to (`allocatorctl inbox post --to`); empty keeps
+    # tickets in the log only. Production: the launch's Intake resident (intk01).
+    intake_recipient: str = ""
+    # "stage" (default) writes each ticket's mail and the post command beside the log and records a
+    # `mail_staged` event without touching the allocator; "post" delivers it with `inbox post`.
+    intake_mail_mode: str = "stage"
+    intake_mail_dispositions: list[str] = field(default_factory=lambda: ["ready", "request", "needs_detail"])
+    # Seconds between polls of the Intake resident's replies (`inbox list --to-operator --json`).
+    intake_poll_s: int = 60
+    # Recipient of `request_work` directives (the work outbox); empty posts without --to, which
+    # the installed allocatorctl refuses.
+    work_recipient: str = ""
     source_commit: str = ""
 
     @property

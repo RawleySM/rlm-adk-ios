@@ -94,6 +94,8 @@ class PortalService:
         pending = issues.resume_pending(cfg)
         if pending:
             log.info("issues still pending triage, triaging again: %s", pending)
+        if issues.start_reply_poller(cfg):
+            log.info("intake replies polled every %ss for %s", cfg.intake_poll_s, cfg.intake_recipient)
 
     def conn(self) -> sqlite3.Connection:
         conn = getattr(self._local, "conn", None)
@@ -366,6 +368,18 @@ class Handler(BaseHTTPRequestHandler):
                 if method == "GET" and len(parts) == 2:
                     ticket = issues.read_tickets(issues.log_path(cfg)).get(parts[1])
                     return self._json(200 if ticket else 404, ticket or {"error": "not_found"})
+                if method == "POST" and parts[2:] == ["mail"]:
+                    payload = self._read_json() if int(self.headers.get("Content-Length") or 0) else {}
+                    result = issues.mail_ticket(cfg, parts[1], note=payload.get("note"), force=bool(payload.get("force")))
+                    return self._json(200 if result.get("mailed") or result.get("staged") else (404 if result.get("reason") == "not_found" else 409), result)
+                if method == "POST" and parts[2:] == ["status"]:
+                    payload = self._read_json()
+                    if not payload.get("status"):
+                        return self._json(400, {"error": "status is required"})
+                    event = issues.record_status(cfg, parts[1], str(payload["status"]), text=str(payload.get("text") or ""), artifact=payload.get("artifact"), by=str(payload.get("by") or "operator-session"))
+                    return self._json(201 if event else 404, event or {"error": "not_found"})
+                if method == "POST" and parts == ["issues", "replies"]:
+                    return self._json(200, {"recorded": issues.poll_replies(cfg)})
             return self._json(404, {"error": "not_found", "path": url.path})
         except (ValueError, KeyError, json.JSONDecodeError) as exc:
             return self._json(400, {"error": str(exc)})

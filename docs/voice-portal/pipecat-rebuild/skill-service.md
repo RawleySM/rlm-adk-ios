@@ -154,6 +154,9 @@ answers `200` with `created: false` and writes nothing) and triages it on a back
 strict-JSON reasoning call, keyword rules on failure), appending a `triaged` event. `GET /issues`
 lists tickets newest first (`status`, `limit`); `GET /issues/<id>` returns the folded ticket. The log
 is the one write this service makes outside its own SQLite besides the work outbox.
+`POST /issues/<id>/mail` stages (default) or sends the ticket's mail to `intake_recipient`;
+`POST /issues/<id>/status` appends a status written by someone other than the resident;
+`POST /issues/replies` polls the resident's replies now (see intake-issues-log.md).
 
 ### `GET /policy`
 

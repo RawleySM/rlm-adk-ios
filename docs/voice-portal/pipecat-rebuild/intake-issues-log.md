@@ -6,9 +6,9 @@ While the chip is on, the assistant says nothing and answers nothing, but his vo
 and transcribed. The talk tier (Spark-A) posts what it heard, with the context of the moment, to
 the skill service on the desktop. The skill service records it as a ticket in this log and triages it.
 
-A resident will later watch this log: the planned Intake resident (`intake-resident-proposal.md`), or
-the Researcher resident. That is not built yet. Nothing posts mail to a resident and nothing wakes
-one; the log only accumulates tickets.
+The Intake resident (`intake-resident-proposal.md`, `intake-delegation-plan.md`) is meant to act on
+these tickets. Until its runtime is started, the mail to it is **staged, not delivered**: see
+"Mail to the Intake resident" below.
 
 ## Where it is
 
@@ -18,7 +18,7 @@ one; the log only accumulates tickets.
 | Lock | `issues.jsonl.lock` beside it (advisory `flock`, held for each scan-and-append) |
 | Writer | the skill service, `backend/voice_portal/issues.py` |
 | Read API | `GET /issues[?status=open&limit=50]` (newest first), `GET /issues/<ticket_id>` (the folded ticket) |
-| Write API | `POST /issues` (the talk tier; idempotent on `report_id`) |
+| Write API | `POST /issues` (the talk tier; idempotent on `report_id`); `POST /issues/<id>/mail {note?, force?}` (stage or send the ticket's mail); `POST /issues/<id>/status {status, text?, artifact?, by?}` (a status written by someone other than the resident); `POST /issues/replies` (poll the resident's replies now) |
 
 ## Format
 
@@ -30,7 +30,9 @@ a torn or unknown line is skipped.
 |---|---|---|
 | `reported` | at once, when the talk tier posts the report | `report_id`, `ticket` (the whole ticket below, with `triage.state: "pending"` and a provisional keyword triage) |
 | `triaged` | when the model call returns (seconds; a cold owner takes minutes), or from the keyword rules when it fails | `triage` (replaces the ticket's triage; `state: "done"`) |
-| `status` | reserved for the consumer | `status` (`open` → whatever the consumer defines, e.g. `claimed`, `resolved`) |
+| `mail_staged` | after triage when mail is staged (`intake_mail_mode: "stage"`, the default) | `recipient`, `body` (the mail file), `command` (the exact `allocatorctl inbox post --to ... --file ...` that "post" mode would run), `note` |
+| `mailed` | after triage when mail is sent (`intake_mail_mode: "post"`) | `message_id`, `recipient`, `note` |
+| `status` | a reply from the resident (polled every `intake_poll_s`), or `POST /issues/<id>/status` | `status` (the reply's leading `status: <word>`: accepted, answered, escalated, failed, needs_detail, done, declined), `text`, `reply_message_id`/`in_reply_to` or `from`, `artifact` |
 
 A consumer appends its own events under the same `ticket_id` (and takes the lock); it never
 rewrites lines.
@@ -93,3 +95,20 @@ derives, deterministically:
 
 When the owner is down the keyword rules triage the ticket (`source: fallback_keywords`, the error
 in `errors`). A ticket still pending when the skill service starts is triaged again.
+
+## Mail to the Intake resident
+
+With `intake_recipient` set (production: `intk01`), a triaged ticket whose disposition is in
+`intake_mail_dispositions` (`ready`, `request`, `needs_detail`) gets a plain-text mail
+(`issues.mail_text`): a first line `voice-portal ticket_id=... kind=... priority=... disposition=...
+component=...`, his words, the triage, open questions, the context and how to reply
+(`send_message("operator", "status: <word> ...", in_reply_to=<the message id>)`). Plain text on
+purpose: a JSON body shaped `{"kind": "job_request"}` is read by the host as cloud-job demand.
+
+- `intake_mail_mode: "stage"` (default while the runtime is not running): the mail is written under
+  `<state root>/outbox/issues/` and a `mail_staged` event records it and the exact post command.
+  Nothing reaches the allocator, and no replies are polled.
+- `intake_mail_mode: "post"`: the command runs (`allocatorctl inbox post --to <recipient> --file
+  <mail>`, receipt `posted message_id=<id> to=<recipient>`), a `mailed` event records the id, and a
+  background thread reads replies every `intake_poll_s` with `allocatorctl inbox list --to-operator
+  --json --in-reply-to <id>` (rlm-adk #1352), one `status` event per new reply.
