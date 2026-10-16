@@ -1,9 +1,0 @@
-{
-  "at": 1792014855.088033,
-  "original_measurement": "/home/rawley-stanhope/.local/share/rlm-adk/native-supervision-20261014/qualification-10/measurement.json",
-  "verified_timings": {
-    "P_seconds": 128.9789171819575,
-    "R_seconds": 129.07889066496864
-  },
-  "max_required_scopes": 4
-}
