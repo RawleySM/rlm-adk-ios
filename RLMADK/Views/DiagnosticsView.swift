@@ -10,6 +10,7 @@ struct DiagnosticsView: View {
     var body: some View {
         NavigationStack {
             List {
+                appSection
                 backendSection
                 talkSection
                 policySection
@@ -28,6 +29,15 @@ struct DiagnosticsView: View {
             .onChange(of: model.keyboardDismissToken) { _, _ in focused = nil }
             .onChange(of: focused) { _, field in model.focusChanged(DiagnosticsView.focusName(field)) }
             .onAppear { url = model.backendURLString; talkURL = model.talkURLString }
+        }
+    }
+
+    private var appSection: some View {
+        Section("App") {
+            Text("RLM-ADK \(PortalModel.appVersion) build \(PortalModel.appBuild)").font(.caption)
+                .accessibilityIdentifier("appBuildLabel")
+            Text("Updates: \(model.updateCheckStatus)").font(.caption2)
+                .accessibilityIdentifier("updateCheckStatus")
         }
     }
 

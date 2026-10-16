@@ -411,6 +411,10 @@ Installing on the phone (acceptance step, separate from the build):
   foreground and every 5 minutes while open (`RLMADK/Model/AppUpdate.swift`; override with
   `RLMADK_UPDATE_URL`). A newer build for this bundle shows "Update available: build N" with Install
   (opens the `itms-services` link) and a dismiss; the device snapshot reports `update_offer`.
+  The banner stays hidden while `latest.json` names the installed build, so a fresh install looks
+  unchanged. From build 20, Diagnostics → App shows the installed build and the last check
+  ("checked 08:34 · latest build 19 · up to date", or why it failed); the snapshot reports it
+  as `update_check`.
 - First launch: the phone must be online for Apple's certificate check (PPQ); Developer Mode must
   be on. Then verify retention, not assume it: before installing, run `sync_manifest` and note the
   captures' bytes and sha256 from `GET /devices/<id>/manifest`; after installing and launching,

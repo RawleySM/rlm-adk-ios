@@ -42,6 +42,33 @@ enum AppUpdate {
         return latest
     }
 
+    /// The Diagnostics line for one successful check.
+    ///
+    /// Args:
+    ///   latest: The published build number.
+    ///   currentBuild: This app's CFBundleVersion.
+    ///   offered: Whether the banner now offers that build.
+    ///   checkedAt: When the check finished.
+    ///
+    /// Returns:
+    ///   For example "checked 08:34 · latest build 19 · up to date".
+    static func statusLine(latest: Int, currentBuild: String, offered: Bool, checkedAt: Date) -> String {
+        let outcome: String
+        if let current = Int(currentBuild), latest > current {
+            outcome = offered ? "build \(latest) offered" : "build \(latest) not offered (dismissed or another app)"
+        } else {
+            outcome = "up to date"
+        }
+        return "checked \(clock(checkedAt)) · latest build \(latest) · \(outcome)"
+    }
+
+    /// Local wall-clock time as HH:mm.
+    static func clock(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
+    }
+
     static func decode(_ data: Data) throws -> LatestBuild {
         try JSONDecoder().decode(LatestBuild.self, from: data)
     }
