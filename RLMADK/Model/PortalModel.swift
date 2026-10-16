@@ -60,6 +60,8 @@ final class PortalModel: ObservableObject {
         return data
     }
     var urlOpener: @MainActor (URL) async -> Bool = { await UIApplication.shared.open($0) }
+    /// Who answers, as the talk server names it; labels replies in the conversation ("Qwen3.8: ...").
+    @Published private(set) var assistantName: String = UserDefaults.standard.string(forKey: "assistantName") ?? "Assistant"
     /// The banner's install hand-off in progress (UpdateInstall in AppUpdate.swift), or nil.
     @Published private(set) var updateInstall: UpdateInstall?
     /// Shown on the first launch of a newer build ("Updated to build 21 (from 20)"), with its notes.
@@ -1655,6 +1657,12 @@ final class PortalModel: ObservableObject {
             devotionalInterrupted(reason: "interruption")
         case .floorMode(let serverMode, _, let reason):
             applyServerFloor(serverMode, reason: reason ?? "server")
+        case .assistantName(let name):
+            if name != assistantName {
+                assistantName = name
+                UserDefaults.standard.set(name, forKey: "assistantName")
+                logLine("talk assistant: \(name)")
+            }
         case .prayerText(let text, let final):
             journalTalkPrayerText(text, final: final)
         case .passage(let p):

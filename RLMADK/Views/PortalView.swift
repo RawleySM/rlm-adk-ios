@@ -2,9 +2,7 @@ import SwiftUI
 
 struct PortalView: View {
     @EnvironmentObject var model: PortalModel
-    @State private var showCitation: CitationDetail?
     @State private var readMode = ProcessInfo.processInfo.environment["RLMADK_CI_READ_MODE"] == "1"
-    @State private var showDevotional = false
     @FocusState private var typedFocused: Bool
 
     var body: some View {
@@ -33,9 +31,6 @@ struct PortalView: View {
             // Remote or programmatic dismissal (tab change, mode buttons, backend command) clears focus.
             .onChange(of: model.keyboardDismissToken) { _, _ in typedFocused = false }
             .onChange(of: typedFocused) { _, focused in model.focusChanged(focused ? "typedInput" : nil) }
-            .sheet(item: Binding(get: { showCitation.map { IdentifiedCitation(detail: $0) } }, set: { showCitation = $0?.detail })) { item in
-                CitationSheet(detail: item.detail)
-            }
             .fullScreenCover(isPresented: $readMode) {
                 ScripturePaneView(readMode: true) { readMode = false }
                     .environmentObject(model)
@@ -89,7 +84,8 @@ struct PortalView: View {
         .accessibilityIdentifier("statusHeader")
     }
 
-    /// The conversation under the scripture: what was said and heard, the reply, and the devotional.
+    /// The conversation under the scripture: what was said and heard, and the reply, each labelled
+    /// with its speaker ("You:" and the talk model's name).
     private var conversationPane: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 6) {
@@ -104,12 +100,11 @@ struct PortalView: View {
                     Text("Heard: \(model.serverHeard)").font(.caption2).foregroundStyle(.secondary)
                         .accessibilityIdentifier("serverHeard")
                 }
-                Text(model.assistantText.isEmpty ? "—" : model.assistantText).font(.body)
-                    .accessibilityIdentifier("assistantText")
+                if !model.assistantText.isEmpty {
+                    Text("\(model.assistantName): \(model.assistantText)").font(.body)
+                        .accessibilityIdentifier("assistantText")
+                }
                 if let err = model.lastError { Text(err).font(.caption2).foregroundStyle(.red) }
-                DisclosureGroup("Devotional", isExpanded: $showDevotional) { devotionalCard }
-                    .font(.caption)
-                    .padding(.top, 6)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(10)
@@ -236,36 +231,6 @@ struct PortalView: View {
         .disabled(model.bug.phase == .filing || model.mode.isPraying)
         .accessibilityIdentifier("bugButton")
         .accessibilityValue(model.bug.outcome ?? model.bug.chipLabel)
-    }
-
-    private var devotionalCard: some View {
-        VStack(alignment: .leading) {
-            if let d = model.devotional, d.available {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(d.title ?? d.passage).font(.subheadline.bold())
-                    Text("revision \(d.revision_hash?.prefix(12) ?? "?") · position \(model.mode.devotionalPosition + 1)/\(d.segments?.count ?? 0) · teaching \(d.teaching_found == true ? "found" : "none")")
-                        .font(.caption2).foregroundStyle(.secondary)
-                    HStack {
-                        Button(model.devotionalPlaying ? "Pause" : "Play") { model.devotionalPlaying ? model.pauseDevotional() : model.playDevotional() }.buttonStyle(.bordered)
-                        Button("Reload") { Task { await model.loadDevotional() } }.buttonStyle(.bordered)
-                    }
-                    ForEach((d.segments ?? []).prefix(6)) { seg in
-                        Button {
-                            Task { showCitation = await model.citation(seg.cite_id) }
-                        } label: {
-                            HStack(alignment: .top) {
-                                Text(seg.kind == "scripture" ? (seg.osis ?? "v") : "Teaching").font(.caption2).frame(width: 64, alignment: .leading)
-                                Text(seg.text).font(.caption).lineLimit(3).multilineTextAlignment(.leading)
-                            }
-                        }.buttonStyle(.plain)
-                    }
-                }
-            } else if let d = model.devotional {
-                Text("Unavailable: \(d.reason ?? "?") (\(d.passage))").font(.caption).foregroundStyle(.orange)
-            } else {
-                HStack { Text("Not loaded").font(.caption); Button("Load") { Task { await model.loadDevotional() } } }
-            }
-        }
     }
 
     private var typedInput: some View {

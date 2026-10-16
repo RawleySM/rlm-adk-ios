@@ -27,6 +27,11 @@ class FloorRules(unittest.TestCase):
         self.assertTrue(self.floor._ends_with_amen("In Jesus' name, amen"))
         self.assertFalse(self.floor._ends_with_amen("Some would say amen to that, but I am not finished."))
 
+    def test_assistant_name_prefers_the_display_name(self):
+        self.assertEqual(self.floor.assistant_name, TalkConfig().llm_model)
+        named = FloorProcessor(TalkConfig(llm_model="qwen-coding-b", llm_display_name="Qwen3.8"))
+        self.assertEqual(named.assistant_name, "Qwen3.8")
+
     def test_norm(self):
         self.assertEqual(_norm("Lord,  thank You!"), "lord thank you")
 

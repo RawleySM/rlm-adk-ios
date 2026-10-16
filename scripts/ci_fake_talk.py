@@ -186,6 +186,8 @@ class Handler(BaseHTTPRequestHandler):
             LOG["text"].append({"t": time.time(), "message": message})
         kind = message.get("type")
         if kind == "client_mode":
+            if message.get("reason") == "sync":
+                self._send_json({"type": "assistant", "name": "Qwen3.8"})
             mode = message.get("mode")
             if mode in {"prayer", "available", "quiet"} and mode != FLOOR["mode"]:
                 previous, FLOOR["mode"] = FLOOR["mode"], mode

@@ -415,6 +415,10 @@ Installing on the phone (acceptance step, separate from the build):
   unchanged. From build 20, Diagnostics → App shows the installed build and the last check
   ("checked 08:34 · latest build 19 · up to date", or why it failed); the snapshot reports it
   as `update_check`.
+- Conversation pane (build 21 and later): the reply is labelled with the talk model's name, the way
+  the transcript is labelled "You:". The talk server sends `{"type": "assistant", "name": ...}` when
+  the app syncs (config `llm_display_name`, else `llm_model`); the app keeps the last name. The
+  Devotional disclosure is gone from the pane.
 - Install hand-off (build 21 and later): iOS 26 queues an `itms-services` install opened from the
   running app and leaves it "Waiting…" until the app leaves the foreground (build 20 stalled this
   way on 2026-10-16: installcoordinationd waited for a termination assertion and installed the moment

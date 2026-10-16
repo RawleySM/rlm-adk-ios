@@ -29,6 +29,13 @@ final class TalkProtocolTests: XCTestCase {
         XCTAssertEqual(TalkMessageParser.events(fromText: wrapped), [.floorMode(mode: "available", from: "prayer", reason: "amen")])
     }
 
+    func testAssistantNameLabelsReplies() {
+        XCTAssertEqual(TalkMessageParser.events(fromText: #"{"type":"assistant","name":"Qwen3.8"}"#), [.assistantName("Qwen3.8")])
+        let wrapped = #"{"label":"rtvi-ai","type":"server-message","data":{"type":"assistant","name":"Qwen3.8"}}"#
+        XCTAssertEqual(TalkMessageParser.events(fromText: wrapped), [.assistantName("Qwen3.8")])
+        XCTAssertEqual(TalkMessageParser.events(fromText: #"{"type":"assistant","name":""}"#), [])
+    }
+
     func testClientMessagesOnTheWire() throws {
         let mode = TalkClientMessage.clientMode(.prayer, reason: "address:lord").json
         XCTAssertEqual(mode["type"] as? String, "client_mode")
