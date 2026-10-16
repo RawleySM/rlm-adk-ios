@@ -60,6 +60,9 @@ class ClientMessages(FrameProcessor):
                     await self.push_frame(LLMMessagesAppendFrame(messages=[{"role": "user", "content": text}], run_llm=True))
                 return
             if kind == "client_mode":
+                if message.get("reason") == "sync":
+                    # The app syncs on every connect: tell it who answers so it can label replies.
+                    await self._floor.announce_assistant()
                 mode = message.get("mode")
                 if mode in {"prayer", "available", "quiet"}:
                     await self._floor.set_mode(mode, f"client:{message.get('reason', 'request')}")
