@@ -21,10 +21,10 @@ import urllib.request
 
 PSALM_23_WEB_OPENING = "Yahweh is my shepherd"
 HELD_OUT_PROJECTS = [
-    ("the one where we built the work ledger and the child tasks for enriching scripture with teaching and prayer", "scripture-enrichment-c15"),
-    ("the register of all our projects with the five axes, plan, branches, results, checkpoints and outputs", "project-work-registry"),
+    ("the library with the reference grammar and resolver for enriching scripture with prayer and teaching", "scripture-enrichment-c15"),
+    ("the register of all our repositories with need, products, consumers, evidence and disposition", "project-work-registry"),
     ("the inference owner on the sparks that serves qwen and cohere with circuits and admission", "spark-inference"),
-    ("the testimony and story corpus for the discipleship vision videos", "discipleship-vision-c12"),
+    ("the story corpus and the h7 audio devotional for the discipleship vision", "discipleship-vision-c12"),
     ("the pipelines repo with the apple ingestion gateway and the prayer ingest", "data-pipelines"),
 ]
 
@@ -114,9 +114,9 @@ def main() -> int:
     check("5", "project_top1_4_of_5", hits >= 4, hits=hits)
     status, vague, _ = get(base, "/tools/project", {"description": "the scripture project"})
     check("5", "project_uncertain_asks", vague.get("confident") is False and "?" in (vague.get("spoken") or ""), spoken=(vague.get("spoken") or "")[:120])
-    status, confirmed, _ = get(base, "/tools/project", {"description": "the scripture project", "confirm": "scripture-c12"})
+    status, confirmed, _ = get(base, "/tools/project", {"description": "the scripture project", "confirm": "scripture-overlay-c8"})
     rep = (confirmed.get("spoken") or "").lower()
-    check("5", "project_report_axes", confirmed.get("report") is not None and all(w in rep for w in ("plan", "branch", "result", "checkpoint", "output")), spoken=(confirmed.get("spoken") or "")[:160])
+    check("5", "project_report_axes", confirmed.get("report") is not None and all(w in rep for w in ("disposition:", "need:", "products:", "consumers:", "evidence:")), spoken=(confirmed.get("spoken") or "")[:160])
 
     # 6. Work request (optional real post)
     if args.post_work:

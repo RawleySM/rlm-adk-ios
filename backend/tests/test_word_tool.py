@@ -48,6 +48,23 @@ THEMES = {"themes": [
 ]}
 
 
+def publish_ledger(ledger: Path, rows: list[dict]) -> None:
+    """Write the ledger and a manifest.json beside it, as the Prayer & Word publisher does."""
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    raw = ("\n".join(json.dumps(r) for r in rows) + "\n").encode("utf-8")
+    ledger.write_bytes(raw)
+    manifest = {
+        "schema_version": 1,
+        "product_id": "scripture_pairings_frozen_test",
+        "status": "frozen",
+        "coverage_ends": "2026-10-08",
+        "published_at": "2026-10-16T17:47:37Z",
+        "files": {ledger.name: {"sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw), "rows": len(rows), "format": "jsonl"}},
+        "row_count": len(rows),
+    }
+    (ledger.parent / "manifest.json").write_text(json.dumps(manifest))
+
+
 def local_ts(hour: int, day: int = 13) -> float:
     return dt.datetime(2026, 10, day, hour, 0).astimezone().timestamp()
 
@@ -66,13 +83,13 @@ class WordToolTests(unittest.TestCase):
         write_prayer_store(Path(self.cfg.prayer_store), [("p-old", OLD_PRAYER, local_ts(20, 11)), ("p-new", NEW_PRAYER, local_ts(7, 13))])
         records, selection = read_prayers(self.cfg.prayer_store)
         import_family(self.conn, "prayer", records, selection=selection, source_path=self.cfg.prayer_store)
-        self.ledger = root / "scripture_pairings.jsonl"
+        self.ledger = root / "published" / "scripture_pairings_frozen_test" / "pairings.jsonl"
         rows = [
             {"annotation_id": "a-chapter", "basis": "cited", "prayer_id": "p-new", "scripture_refs": ["Psalm 23"], "text_sha256": sha(NEW_PRAYER), "usable": 1, "phrase_in_current_text": "exact", "record_key": "k0"},
             {"annotation_id": "a-echo", "basis": "echoed", "prayer_id": "p-new", "scripture_refs": ["Matthew 11:28-29 (rest for your souls)"], "text_sha256": sha(NEW_PRAYER), "usable": 1, "phrase_in_current_text": "exact", "record_key": "k1"},
             {"annotation_id": "a-other", "basis": "cited", "prayer_id": "p-old", "scripture_refs": ["Psalm 23:1"], "text_sha256": sha(OLD_PRAYER), "usable": 1, "phrase_in_current_text": "exact", "record_key": "k2"},
         ]
-        self.ledger.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+        publish_ledger(self.ledger, rows)
         self.cfg.scripture_pairings_ledger = str(self.ledger)
         self.store_path = Path(self.cfg.prayer_store)
         self.store_hash = hashlib.sha256(self.store_path.read_bytes()).hexdigest()
@@ -115,6 +132,24 @@ class WordToolTests(unittest.TestCase):
         self.assertEqual(request["chat_template_kwargs"], {"enable_thinking": False})
         self.assertEqual(request["response_format"]["type"], "json_schema")
         self.assertIn(NEW_PRAYER, request["messages"][1]["content"])
+
+    def test_ledger_rows_need_a_matching_manifest(self):
+        out = word.word_tool(self.conn, self.cfg, "latest", today=dt.date(2026, 10, 13))
+        report = out["candidates"]["ledger_manifest"]
+        self.assertEqual((report["state"], report["product_id"], report["rows"]), ("verified", "scripture_pairings_frozen_test", 3))
+        self.assertEqual(out["candidates"]["ledger_rows_total"], 3)
+        manifest_path = self.ledger.parent / "manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["files"]["pairings.jsonl"]["sha256"] = "0" * 64
+        manifest_path.write_text(json.dumps(manifest, indent=1))
+        tampered = word.word_tool(self.conn, self.cfg, "latest", today=dt.date(2026, 10, 13))
+        self.assertEqual(tampered["candidates"]["ledger_manifest"]["state"], "mismatch")
+        self.assertEqual(tampered["candidates"]["ledger_rows_total"], 0)
+        self.assertNotIn("pairings", [p["source"] for p in tampered["passages"]])
+        manifest_path.unlink()
+        missing = word.word_tool(self.conn, self.cfg, "latest", today=dt.date(2026, 10, 13))
+        self.assertEqual(missing["candidates"]["ledger_manifest"]["state"], "no_manifest")
+        self.assertEqual(missing["candidates"]["ledger_rows_total"], 0)
 
     def test_themes_are_cached_per_prayer_revision(self):
         word.word_tool(self.conn, self.cfg)

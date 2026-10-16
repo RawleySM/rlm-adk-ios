@@ -16,6 +16,8 @@ def make_config(tmp: Path) -> Config:
     cfg.youtube_store = str(tmp / "catalog.sqlite3")
     cfg.allocatorctl = str(tmp / "allocatorctl")
     cfg.allocatorctl_timeout_s = 3
+    # Never the operator's published ledger; tests that need one publish it under tmp.
+    cfg.scripture_pairings_ledger = str(tmp / "published" / "pairings.jsonl")
     cfg.ensure_dirs()
     return cfg
 

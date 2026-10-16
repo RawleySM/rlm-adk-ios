@@ -41,13 +41,13 @@ ROMANS_8 = numbered("Romans 8", 39, {
 })
 JOHN_3 = numbered("John 3", 36, {16: "For God so loved the world, that he gave his only born Son, that whoever believes in him should not perish, but have eternal life."})
 
-# Held-out project descriptions, written from the register records before the scorer was run.
+# Held-out project descriptions, written from the register v2 records before the scorer was run.
 HELD_OUT = [
-    ("the one where we built the work ledger and child tasks for enriching scripture", "scripture-enrichment-c15"),
+    ("the scripture enrichment foundation with the reference grammar and the concordance", "scripture-enrichment-c15"),
     ("check on the steward thing that tracks idle sparks and cost", "steward-reference"),
-    ("where are we with the vision stories and the testimony pictures", "discipleship-vision-c12"),
-    ("the prayer project that matched a Bible verse to each of my prayers", "prayer-life-c12"),
+    ("the prayer life project from cycle twelve with the pairing ledger", "prayer-atlas-c8"),
     ("the inference supervisors that run qwen on the two sparks", "spark-inference"),
+    ("the voice portal on my iPhone", "rlm-adk-ios"),
 ]
 
 
@@ -183,24 +183,41 @@ class ProjectToolTests(unittest.TestCase):
 
     def test_held_out_descriptions_top1_at_least_four_of_five(self):
         records = load_records(FIXTURE_RECORDS)
-        self.assertEqual(len(records), 9)
+        self.assertEqual(len(records), 16)
         tops = [(rank(records, text) or [{"project_id": None}])[0]["project_id"] for text, _ in HELD_OUT]
         correct = sum(top == want for top, (_, want) in zip(tops, HELD_OUT))
         self.assertGreaterEqual(correct, 4, list(zip(tops, [w for _, w in HELD_OUT])))
 
-    def test_confident_report_names_the_five_axes_in_order(self):
+    def test_only_v2_records_are_read(self):
+        directory = Path(self.tmp.name) / "mixed"
+        directory.mkdir()
+        (directory / "old.json").write_text(json.dumps({"schema": "rlm-adk.project-work-record.v1", "project_id": "old", "title": "Old"}))
+        (directory / "new.json").write_text((FIXTURE_RECORDS / "rlm-adk-ios.json").read_text())
+        self.assertEqual([r["project_id"] for r in load_records(directory)], ["rlm-adk-ios"])
+
+    def test_confident_report_names_the_five_parts_in_order(self):
         out = project_tool(self.cfg, HELD_OUT[0][0])
         self.assertTrue(out["confident"])
         self.assertEqual(out["candidates"][0]["project_id"], "scripture-enrichment-c15")
         self.assertLessEqual(len(out["candidates"]), 3)
         spoken = out["spoken"]
-        positions = [spoken.index(word) for word in ("Plan:", "Branches:", "Results:", "Checkpoints:", "Outputs:")]
+        positions = [spoken.index(word) for word in ("Disposition:", "Need:", "Products:", "Consumers:", "Evidence:")]
         self.assertEqual(positions, sorted(positions))
-        self.assertIn("E1 whole-prayer organization", spoken)
-        self.assertIn("Results: none recorded.", spoken)
-        self.assertEqual(set(out["report"]["axes"]), {"plan", "branches", "results", "checkpoints", "outputs"})
-        self.assertEqual(len(out["report"]["axes"]["plan"]["work_items"]), 6)
+        self.assertIn("Disposition: consolidate, into prayer and word.", spoken)
+        self.assertIn("Consumers: none recorded.", spoken)
+        self.assertIn("Evidence: tested.", spoken)
+        self.assertEqual(set(out["report"]["axes"]), {"disposition", "need", "products", "consumers", "evidence"})
+        self.assertEqual(out["report"]["axes"]["disposition"]["successors"], ["prayer-and-word"])
         no_markup(self, spoken)
+
+    def test_archived_repository_found_by_an_old_pointer_name(self):
+        out = project_tool(self.cfg, "", confirm="prayer-atlas-c8")
+        report = out["report"]
+        self.assertIn("prayer-life-c12", report["host_pointer_ids"])
+        self.assertTrue(report["spoken"].startswith("prayer-atlas-c8: prayer lineage c8 to c12"))
+        self.assertIn("Disposition: archived, into prayer and word.", report["spoken"])
+        self.assertIn("Consumers: 1 confirmed, rlm adk ios voice portal tools word; 1 hypothetical", report["spoken"])
+        self.assertIn("Products: produces scripture pairing ledger and prayer enrichment; reads prayer corpus.", report["spoken"])
 
     def test_unclear_match_asks_to_confirm_then_confirm_reports(self):
         out = project_tool(self.cfg, "the scripture project")
@@ -213,7 +230,7 @@ class ProjectToolTests(unittest.TestCase):
         confirmed = project_tool(self.cfg, "the scripture project", confirm=best)
         self.assertTrue(confirmed["confirmed"])
         self.assertEqual(confirmed["report"]["project_id"], best)
-        self.assertIn("Plan:", confirmed["spoken"])
+        self.assertIn("Disposition:", confirmed["spoken"])
         self.assertIn("do not have a project", project_tool(self.cfg, "x", confirm="no-such-project")["spoken"])
 
     def test_ratio_comes_from_policy_and_missing_register(self):

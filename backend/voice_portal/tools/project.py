@@ -1,13 +1,15 @@
 """`GET /tools/project`: resolve a vague spoken description to a project work register record and
-report its five axes (plan, active branches, accepted results, package checkpoints, outputs).
+report it in five parts: disposition, need, products, consumers and evidence.
 
-The register is read-only: one JSON record per project under `config.project_register_records`
-(schema `rlm-adk.project-work-record.v1`, README beside the records). Each call indexes the records
-in an in-memory SQLite FTS5 table (porter stemming, per-field BM25 weights) and ranks them against the
-description's content words. The best match is reported only when it is clear: its score is at least
+The register is read-only: one JSON record per repository under `config.project_register_records`
+(schema `rlm-adk.project-work-record.v2`, README and schema beside the records; records of any other
+schema are skipped). Each call indexes the records in an in-memory SQLite FTS5 table (porter stemming,
+per-field BM25 weights) and ranks them against the description's content words. Host pointer ids are
+indexed too, so an old name such as "prayer life cycle twelve" finds the repository that pointer points
+at. The best match is reported only when it is clear: its score is at least
 `thresholds.project_confidence_ratio` (policy, default 1.5) times the runner-up's, or it is the only
 match, or the caller confirms a project id. Otherwise `spoken` asks to confirm the best candidate.
-Empty arrays in a record mean "none recorded", not proven absence, and the report says so.
+Empty lists in a record mean "none recorded", not proven absence, and the report says so.
 """
 
 from __future__ import annotations
@@ -15,14 +17,14 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
-from collections import Counter
 from pathlib import Path
 
 from ..config import Config
 from ..retrieval import content_terms
 from .policy import load_policy
-from .spoken import clean_spoken, spoken_date, words_to_numbers
+from .spoken import clean_spoken, sentences, spoken_date, words_to_numbers
 
+RECORD_SCHEMA = "rlm-adk.project-work-record.v2"
 # Words that describe the request ("the one where we built ...") rather than the project.
 REQUEST_WORDS = {
     "project", "projects", "one", "ones", "thing", "things", "stuff", "check", "checking", "status", "going",
@@ -30,13 +32,22 @@ REQUEST_WORDS = {
     "report", "where", "are", "is", "been", "being", "last", "time", "started", "start", "remember", "called",
     "whatever", "something", "think", "how", "like", "just", "some", "all", "any", "also", "very", "really",
 }
-FIELDS = ("project_id", "title", "summary", "work", "branches", "notes")
+FIELDS = ("project_id", "title", "summary", "products", "pointers", "notes")
 FIELD_WEIGHTS = (2.0, 3.0, 1.5, 1.5, 0.5, 1.0)
 MIN_SCORE = 0.01
+AXES = ("disposition", "need", "products", "consumers", "evidence")
+DISPOSITION_WORDS = {
+    "keep": "keep",
+    "consolidate": "consolidate",
+    "salvage": "salvage",
+    "archived": "archived",
+    "outside": "outside the data-product criterion",
+}
+RELATION_WORDS = (("produces", "produces"), ("contributes", "contributes to"), ("reads", "reads"))
 
 
 def load_records(directory: str | Path) -> list[dict]:
-    """Every `*.json` record in the register directory (sorted by file name); unreadable files skipped."""
+    """Every v2 `*.json` record in the register directory (sorted by file name); other files skipped."""
     root = Path(directory).expanduser()
     records: list[dict] = []
     for path in sorted(root.glob("*.json")):
@@ -44,7 +55,7 @@ def load_records(directory: str | Path) -> list[dict]:
             record = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        if isinstance(record, dict) and record.get("project_id"):
+        if isinstance(record, dict) and record.get("project_id") and record.get("schema") == RECORD_SCHEMA:
             record["_path"] = str(path)
             records.append(record)
     return records
@@ -62,26 +73,24 @@ def _id_words(project_id: str) -> str:
 
 def record_fields(record: dict) -> dict[str, str]:
     """The text of each indexed field of one record."""
-    baseline = record.get("baseline") or {}
-    plan = record.get("current_plan") or {}
     owner = record.get("owner") or {}
-    work = []
-    for item in record.get("work_items") or []:
-        work += [item.get("title") or "", ((item.get("plan") or {}).get("objective")) or "", item.get("next_action") or "", _words(item.get("work_id"))]
-    branches = [f"{_words(b.get('work_id'))} {_words(b.get('git_ref'))}" for b in record.get("active_branches") or []]
-    notes = list(record.get("unresolved") or []) + list(baseline.get("unknowns") or [])
-    for output in record.get("outputs") or []:
-        notes += [_words(output.get("output_id")), ((output.get("artifact") or {}).get("locator")) or "", ((output.get("deployment") or {}).get("target")) or ""]
-    for result in record.get("accepted_results") or []:
-        notes += [_words(result.get("result_id")), *(result.get("limitations") or [])]
-    for checkpoint in record.get("package_checkpoints") or []:
-        notes += [_words(checkpoint.get("package_key"))]
+    disposition = record.get("disposition") or {}
+    products = []
+    for item in record.get("products") or []:
+        products += [_words(item.get("product_id")), item.get("note") or ""]
+    for item in record.get("consumers") or []:
+        products += [item.get("consumer") or ""]
+    pointers = [_id_words(p) for p in record.get("host_pointer_ids") or []]
+    pointers += [_words(s) for s in disposition.get("successors") or []]
+    notes = list(record.get("unresolved") or [])
+    notes += [disposition.get("reason") or "", record.get("evidence_basis") or ""]
+    notes += [item.get("statement") or "" for item in record.get("need_source") or []]
     return {
         "project_id": _id_words(record["project_id"]),
         "title": record.get("title") or "",
-        "summary": " ".join(filter(None, [baseline.get("summary"), plan.get("objective"), owner.get("name")])),
-        "work": " ".join(filter(None, work)),
-        "branches": " ".join(branches),
+        "summary": " ".join(filter(None, [record.get("summary"), owner.get("name")])),
+        "products": " ".join(filter(None, products)),
+        "pointers": " ".join(filter(None, pointers)),
         "notes": " ".join(filter(None, notes)),
     }
 
@@ -113,71 +122,88 @@ def _short_title(title: str) -> str:
     return re.sub(r"\s*\([^)]*\)", "", title or "").strip()
 
 
-def _count_phrase(count: int, singular: str, plural: str | None = None) -> str:
-    return f"{count} {singular if count == 1 else (plural or singular + 's')}"
+def _first_sentence(text: str | None) -> str:
+    value = (text or "").strip()
+    spans = sentences(value)
+    first = value[spans[0][0]:spans[0][1]] if spans else value
+    return first.rstrip(" .") + "." if first else ""
+
+
+def _names(values: list[str], limit: int = 4) -> str:
+    """"a, b and c" (with "and N more" past `limit`)."""
+    shown = [_words(v) for v in values[:limit]]
+    if len(values) > limit:
+        shown.append(f"{len(values) - limit} more")
+    if len(shown) <= 1:
+        return "".join(shown)
+    return ", ".join(shown[:-1]) + " and " + shown[-1]
 
 
 def summarize(record: dict) -> dict:
-    """The five axes of one record as structured items plus one brief spoken sentence each."""
-    titles = {item.get("work_id"): item.get("title") for item in record.get("work_items") or []}
-    plan = record.get("current_plan") or {}
-    items = record.get("work_items") or []
-    statuses = Counter(item.get("status") or "unknown" for item in items)
-    plan_parts: list[str] = []
-    if plan.get("state") == "recorded" and plan.get("objective"):
-        plan_parts.append(f"the plan is {plan['objective'].rstrip('.')}")
+    """The five parts of one record as structured items plus one brief spoken sentence or two each."""
+    disposition = record.get("disposition") or {}
+    state = disposition.get("state") or "unknown"
+    successors = disposition.get("successors") or []
+    lead = f"Disposition: {DISPOSITION_WORDS.get(state, state)}"
+    if successors and state in ("consolidate", "salvage", "archived"):
+        lead += f", into {_names(successors)}"
+    disposition_spoken = lead + ". " + _first_sentence(disposition.get("reason"))
+
+    needs = record.get("need_source") or []
+    if needs:
+        latest = max(needs, key=lambda n: n.get("date") or "")
+        when = spoken_date(latest.get("date"))
+        count = f"{len(needs)} operator statement" + ("" if len(needs) == 1 else "s")
+        need_spoken = f"Need: {count}" + (f", the latest on {when}" if when else "") + ": " + _first_sentence(latest.get("statement"))
     else:
-        plan_parts.append("no overall plan is recorded")
-    if items:
-        plan_parts.append(_count_phrase(len(items), "work item") + " (" + ", ".join(f"{n} {s.replace('_', ' ')}" for s, n in statuses.most_common()) + ")")
-        active = next((i for i in items if i.get("status") in ("running", "awaiting_review", "blocked")), None) or next((i for i in items if i.get("status") in ("queued", "planned")), None)
-        if active:
-            step = f"; next is {active.get('title')}"
-            if active.get("next_action"):
-                step += f": {active['next_action'].rstrip('.')}"
-            plan_parts[-1] += step
-    branches = record.get("active_branches") or []
-    branch_text = "none recorded" if not branches else "; ".join(
-        f"{b.get('git_ref')}" + (f" for {titles.get(b.get('work_id')) or b.get('work_id')}" if b.get("work_id") else "") + (", with uncommitted changes" if b.get("dirty") else (", clean" if b.get("dirty") is False else ""))
-        for b in branches
-    )
-    results = record.get("accepted_results") or []
-    result_states = Counter(r.get("state") or "unknown" for r in results)
-    result_text = "none recorded" if not results else ", ".join(f"{n} {s}" for s, n in result_states.most_common()) + ": " + "; ".join(str(r.get("result_id")) for r in results[:3])
-    checkpoints = record.get("package_checkpoints") or []
-    checkpoint_text = "none recorded" if not checkpoints else "; ".join(
-        f"package {c.get('package_key')}" + (f" published as {(c.get('published') or {}).get('tag')}" if (c.get("published") or {}).get("state") == "published" else "") for c in checkpoints[:3]
-    )
-    outputs = record.get("outputs") or []
-    output_text = "none recorded" if not outputs else "; ".join(
-        f"{o.get('output_id')}" + (f" deployed to {(o.get('deployment') or {}).get('target')}" if (o.get("deployment") or {}).get("state") == "observed_deployed" else f", {((o.get('deployment') or {}).get('state') or 'deployment unknown').replace('_', ' ')}") for o in outputs[:3]
-    )
-    axes = {
-        "plan": {"state": plan.get("state"), "objective": plan.get("objective"), "work_items": [{k: i.get(k) for k in ("work_id", "title", "status", "next_action")} for i in items], "spoken": "Plan: " + "; ".join(plan_parts) + "."},
-        "branches": {"items": [{k: b.get(k) for k in ("work_id", "git_ref", "observed_commit", "dirty", "observed_at")} | {"locator": (b.get("repository") or {}).get("locator")} for b in branches], "spoken": f"Branches: {branch_text}."},
-        "results": {"items": [{k: r.get(k) for k in ("result_id", "work_id", "state")} for r in results], "spoken": f"Results: {result_text}."},
-        "checkpoints": {"items": [{k: c.get(k) for k in ("resident_id", "package_key", "work_ids")} | {"published": (c.get("published") or {}).get("state")} for c in checkpoints], "spoken": f"Checkpoints: {checkpoint_text}."},
-        "outputs": {"items": [{k: o.get(k) for k in ("output_id", "work_id", "result_id")} | {"deployment": (o.get("deployment") or {}).get("state"), "delivery": (o.get("delivery") or {}).get("state")} for o in outputs], "spoken": f"Outputs: {output_text}."},
+        need_spoken = "Need: no operator statement recorded."
+
+    products = record.get("products") or []
+    parts = []
+    for relation, words in RELATION_WORDS:
+        names = list(dict.fromkeys(p.get("product_id") for p in products if p.get("relation") == relation))
+        if names:
+            parts.append(f"{words} {_names(names)}")
+    products_spoken = "Products: " + ("; ".join(parts) if parts else "none recorded") + "."
+
+    consumers = record.get("consumers") or []
+    groups = []
+    for status in ("confirmed", "hypothetical"):
+        names = list(dict.fromkeys(c.get("consumer") for c in consumers if c.get("status") == status))
+        if names:
+            groups.append(f"{len(names)} {status}, {_names(names, 3)}")
+    consumers_spoken = "Consumers: " + ("; ".join(groups) if groups else "none recorded") + "."
+
+    level = record.get("evidence_level") or "unknown"
+    evidence_spoken = f"Evidence: {level}. " + _first_sentence(record.get("evidence_basis"))
+
+    return {
+        "disposition": {"state": state, "reason": disposition.get("reason"), "successors": successors, "decided_at": disposition.get("decided_at"), "review": disposition.get("review"), "spoken": disposition_spoken.strip()},
+        "need": {"items": [{k: n.get(k) for k in ("kind", "statement", "date")} for n in needs], "spoken": need_spoken},
+        "products": {"items": [{k: p.get(k) for k in ("product_id", "catalog", "relation")} for p in products], "spoken": products_spoken},
+        "consumers": {"items": [{k: c.get(k) for k in ("consumer", "status", "product_id", "evidence")} for c in consumers], "spoken": consumers_spoken},
+        "evidence": {"level": level, "basis": record.get("evidence_basis"), "spoken": evidence_spoken.strip()},
     }
-    return axes
 
 
 def report(record: dict) -> dict:
-    """Structured five-axis report of one record plus its spoken form (axes in their fixed order)."""
+    """Structured five-part report of one record plus its spoken form (parts in their fixed order)."""
     axes = summarize(record)
     updated = spoken_date(record.get("updated_at"))
     lead = f"{_short_title(record.get('title') or record['project_id'])}" + (f", as recorded on {updated}." if updated else ".")
-    spoken = clean_spoken(" ".join([lead] + [axes[name]["spoken"] for name in ("plan", "branches", "results", "checkpoints", "outputs")]))
+    spoken = clean_spoken(" ".join([lead] + [axes[name]["spoken"] for name in AXES]))
     return {
         "project_id": record["project_id"],
         "title": record.get("title"),
+        "summary": record.get("summary"),
         "updated_at": record.get("updated_at"),
         "record_revision": record.get("record_revision"),
         "owner": record.get("owner"),
+        "host_pointer_ids": record.get("host_pointer_ids") or [],
         "axes": axes,
         "unresolved": record.get("unresolved") or [],
         "record_path": record.get("_path"),
-        "note": "Empty arrays in the record mean none recorded, not proven absence.",
+        "note": "Empty lists in the record mean none recorded, not proven absence.",
         "spoken": spoken,
     }
 

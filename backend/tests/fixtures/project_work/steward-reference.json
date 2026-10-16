@@ -1,185 +1,130 @@
 {
-  "accepted_results": [],
-  "active_branches": [
+  "consumers": [
     {
-      "dirty": false,
-      "evidence": [
-        {
-          "claim": "Observed main at cleanup; working tree clean and pushed.",
-          "kind": "git",
-          "observed_at": "2026-10-11T12:58:16Z",
-          "reference": null
-        }
-      ],
-      "git_ref": "main",
-      "observed_at": "2026-10-11T12:58:16Z",
-      "observed_commit": "bd218a9daf5b925c1cb4b16c350ac87e837920c3",
-      "repository": {
-        "git_commit": "bd218a9daf5b925c1cb4b16c350ac87e837920c3",
-        "host": "desktop",
-        "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-13/steward-reference"
-      },
-      "work_id": "steward-reference-maintenance"
+      "consumer": "voice-intake-20261016 launch",
+      "evidence": "Grants the data root and gold (existing_gold); no code reader of gold exists (verify-discard review section 4).",
+      "observed_at": "2026-10-16",
+      "product_id": "steward-gold",
+      "status": "hypothetical"
     }
   ],
-  "baseline": {
-    "described_at": "2026-10-11T12:58:16.937920+00:00",
-    "described_by": "Rawley Stanhope (Claude Fable cleanup session 2026-10-11)",
-    "history": {
-      "references": [],
-      "state": "unknown"
+  "disposition": {
+    "decided_at": "2026-10-16",
+    "decided_by": "Rawley Stanhope (approved the portfolio review: \"Proceed\", 2026-10-16)",
+    "reason": "Samplers, bronze and journal backfill move into a data-pipelines resource_utilization producer with retention; interval silver and the busy/warm rule move to a minimal Stewardship project; gold, the statement and obligations are discarded and restarted against defect review D1-D10.",
+    "review": {
+      "host": "spark-a",
+      "locator": "/home/rawleysm/.config/rlm-adk/launch/reports/project-portfolio-review-20261016/REPORT.md",
+      "section": "3.6, 8.D.1, 8.E.2"
     },
-    "locations": [
-      {
-        "git_commit": null,
-        "host": "github",
-        "locator": "https://github.com/RawleySM/steward-reference",
-        "note": "Created 2026-10-11; 20 branches pushed.",
-        "observed_at": "2026-10-11T12:58:16Z",
-        "role": "canonical_remote",
-        "runnable_on_allocator_host": null
+    "state": "consolidate",
+    "successors": [
+      "data-pipelines",
+      "stewardship"
+    ]
+  },
+  "evidence_basis": "The sampler and maintenance units are installed and running on the desktop; no confirmed reader of its outputs.",
+  "evidence_level": "installed",
+  "host_pointer_ids": [
+    "steward-reference"
+  ],
+  "locations": [
+    {
+      "git_commit": "b10af24c47f9f248142151fa5d21c6476afbcb35",
+      "host": "github",
+      "locator": "https://github.com/RawleySM/steward-reference",
+      "observed_at": "2026-10-16",
+      "role": "canonical_remote"
+    },
+    {
+      "git_commit": "b10af24c47f9f248142151fa5d21c6476afbcb35",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-13/steward-reference",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    },
+    {
+      "git_commit": "7bf9306856a95262ca94ae24872bed739892fa61",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-13/steward-reference-live",
+      "note": "WorkingDirectory of the sampler and maintenance units.",
+      "observed_at": "2026-10-16",
+      "role": "deployment"
+    },
+    {
+      "git_commit": null,
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/share/steward-reference/data",
+      "note": "Bronze, silver and gold (STEWARD_DATA_ROOT).",
+      "observed_at": "2026-10-16",
+      "role": "artifact_store"
+    }
+  ],
+  "migrated_from": [
+    {
+      "project_id": "steward-reference",
+      "record_blob": "9654c069db3174c693cb069f992fad7e5f8c7a6f",
+      "record_revision": 1,
+      "register_commit": "ebc578f6944fab0eae9e17822135f08ebfeb2f1b",
+      "schema": "rlm-adk.project-work-record.v1"
+    }
+  ],
+  "need_source": [
+    {
+      "date": "2026-10-07",
+      "kind": "operator_statement",
+      "reference": {
+        "host": "spark-a",
+        "locator": "/home/rawleysm/.claude/projects/-home-rawleysm-rlm-adk/memory/steward-bare-minimum-standard.md"
       },
-      {
-        "git_commit": "bd218a9daf5b925c1cb4b16c350ac87e837920c3",
-        "host": "desktop",
-        "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-13/steward-reference",
-        "note": "Project checkout granted to stwref; main is the deploy source.",
-        "observed_at": "2026-10-11T12:58:16Z",
-        "role": "working_checkout",
-        "runnable_on_allocator_host": true
-      },
-      {
-        "git_commit": "bd218a9daf5b925c1cb4b16c350ac87e837920c3",
-        "host": "desktop",
-        "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-13/steward-reference-live",
-        "note": "Clean worktree the systemd units run from (steward-reference-maintenance, steward-reference-sampler).",
-        "observed_at": "2026-10-11T12:58:16Z",
-        "role": "deployment",
-        "runnable_on_allocator_host": null
-      },
-      {
-        "git_commit": null,
-        "host": "desktop",
-        "locator": "/home/rawley-stanhope/.local/share/steward-reference/data",
-        "note": "Primary data root: bronze, silver/steward.sqlite3, gold, state/deployed_commit.json.",
-        "observed_at": "2026-10-11T12:58:16Z",
-        "role": "artifact_store",
-        "runnable_on_allocator_host": null
-      }
-    ],
-    "summary": "Reference Steward built 2026-10-07 to 10-10: package steward_stwref (v11 published), samplers over every host, a 15-minute maintenance loop that deploys main into steward-reference-live after its tests pass, gold products (talent, idle, cost, route health, supply/demand, obligations, stewardship statement), standing_work.json and decisions_needed.json. Pushed to GitHub on 2026-10-11; before that the only remote was a local clone.",
-    "unknowns": []
-  },
-  "current_plan": {
-    "artifact": null,
-    "evidence": [],
-    "objective": null,
-    "state": "unknown"
-  },
-  "enrollment": {
-    "note": "Selected existing work; no historical replay.",
-    "origin": "manual_baseline"
-  },
-  "host_identity": {
-    "evidence": [],
-    "observed_at": null,
-    "pointer_sha256": null,
-    "registry": null,
-    "state": "unknown"
-  },
-  "identity_evidence": [],
-  "outputs": [],
+      "statement": "Every resource must be accounted for: financial, compute, subscriptions, tech assets and time; idle Sparks and subscriptions are defects with a reason or an assignment."
+    }
+  ],
   "owner": {
     "kind": "resident",
     "name": "Steward",
     "resident_id": "stwref"
   },
-  "package_checkpoints": [],
-  "project_id": "steward-reference",
-  "record_revision": 1,
-  "runtime_applicability": {
-    "note": "Applicability entered by Rawley Stanhope (Claude Fable cleanup session 2026-10-11).",
-    "package": "applicable",
-    "session": "not_applicable"
-  },
-  "schema": "rlm-adk.project-work-record.v1",
-  "title": "Steward reference pipeline (bronze/silver/gold utilization, samplers, route health, statements)",
-  "unresolved": [
-    "Gold still reports supervisor admission degraded from samples taken before the 2026-10-11 circuit reset; the next cycles should clear it.",
-    "meter_claude needs the desktop Claude usage cache; meter_openrouter needs a read-only key only Rawley can provide."
-  ],
-  "updated_at": "2026-10-11T12:58:17.022686+00:00",
-  "updated_by": "Rawley Stanhope (Claude Fable cleanup session 2026-10-11)",
-  "work_items": [
+  "products": [
     {
-      "evidence": [
-        {
-          "claim": "deployed_commit.json shows bd218a9 current, 120 tests OK, cycle 323 quality FAIL (2 errors) on 2026-10-11.",
-          "kind": "deployment",
-          "observed_at": "2026-10-11T12:58:16Z",
-          "reference": null
-        }
-      ],
-      "next_action": "Read gold each turn; commission delegates for the ledger defects below.",
-      "plan": {
-        "artifact": {
-          "git_commit": null,
-          "host": "desktop",
-          "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-13/steward-reference/WORKFLOW.md"
-        },
-        "evidence": [
-          {
-            "claim": "Plan document inspected during the 2026-10-11 cleanup.",
-            "kind": "file",
-            "observed_at": "2026-10-11T12:58:16Z",
-            "reference": {
-              "git_commit": null,
-              "host": "desktop",
-              "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-13/steward-reference/WORKFLOW.md"
-            }
-          }
-        ],
-        "objective": "Maintenance cycle every 15 minutes rebuilds silver and gold and deploys main when tests pass.",
-        "state": "recorded"
-      },
-      "status": "running",
-      "title": "Keep samplers, rebuilds and quality checks running",
-      "work_id": "steward-reference-maintenance"
+      "catalog": "project",
+      "note": "Sampled observations and Spark request history.",
+      "product_id": "steward-utilization-bronze",
+      "relation": "produces"
     },
     {
-      "evidence": [
-        {
-          "claim": "Maintenance journal 2026-10-11: 7 broken/degraded routes incl. supervisor admission on both Sparks (stale at that moment: circuits were reset the same morning).",
-          "kind": "file",
-          "observed_at": "2026-10-11T12:58:16Z",
-          "reference": null
-        }
-      ],
-      "next_action": "Delegate in steward-reference with tests, then publish.",
-      "plan": {
-        "artifact": {
-          "git_commit": null,
-          "host": "desktop",
-          "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/STANDING-WORK.md"
-        },
-        "evidence": [
-          {
-            "claim": "Plan document inspected during the 2026-10-11 cleanup.",
-            "kind": "file",
-            "observed_at": "2026-10-11T12:58:16Z",
-            "reference": {
-              "git_commit": null,
-              "host": "desktop",
-              "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle15/STANDING-WORK.md"
-            }
-          }
-        ],
-        "objective": "Known defects named in Cycle 14 and still present in gold on 2026-10-11.",
-        "state": "recorded"
-      },
-      "status": "queued",
-      "title": "Fix route_health 'no usage reader' row, supply reader policy path, meter_claude cache, meter_openrouter key",
-      "work_id": "ledger-defects-c15"
+      "catalog": "project",
+      "note": "Hourly busy, warm and idle facts.",
+      "product_id": "steward-interval-silver",
+      "relation": "produces"
+    },
+    {
+      "catalog": "project",
+      "note": "Quality failing since 2026-10-08; to be discarded.",
+      "product_id": "steward-gold",
+      "relation": "produces"
+    },
+    {
+      "catalog": "data-pipelines",
+      "product_id": "finances",
+      "relation": "reads"
+    },
+    {
+      "catalog": "data-pipelines",
+      "product_id": "apple_gateway",
+      "relation": "reads"
     }
-  ]
+  ],
+  "project_id": "steward-reference",
+  "record_revision": 1,
+  "schema": "rlm-adk.project-work-record.v2",
+  "summary": "Steward pipeline from cycle 13: GPU, Spark supervisor, host, tailnet, unit and Grok and Codex meters sampled every 60 or 300 s into bronze, journal backfill of Spark request history (the only such history), hourly interval silver, gold answers and a weekly statement. The desktop units steward-reference-sampler and steward-reference-maintenance run from cycle-13/steward-reference-live (7bf9306, detached). GitHub main b10af24 merged 'slim maintenance to backfill only' on 2026-10-16.",
+  "title": "steward-reference: utilization samplers, Spark request history and stewardship layers",
+  "unresolved": [
+    "resource_utilization is not a data-pipelines catalog product yet, and the Stewardship repository does not exist.",
+    "Whether the installed maintenance unit runs the slimmed main (b10af24) was not observed by this record.",
+    "Host pointer retirement is pending: it is done at the next supervised launch, after the voice-intake-20261016 launch (and its resume draft) is re-authored (REPORT section 8.F). The current launch grants its data root and gold."
+  ],
+  "updated_at": "2026-10-16T18:00:46Z",
+  "updated_by": "Rawley Stanhope (Claude portfolio-reset session 2026-10-16)"
 }

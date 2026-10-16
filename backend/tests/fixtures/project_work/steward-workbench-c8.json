@@ -1,0 +1,80 @@
+{
+  "consumers": [
+    {
+      "consumer": "discipleship-vision-c12 experience_pipeline/exchange_adapter.py",
+      "evidence": "Imports steward-c12 exchange/ by relative path (verify-discard review section 1.7); archived together.",
+      "observed_at": "2026-10-16",
+      "product_id": null,
+      "status": "confirmed"
+    }
+  ],
+  "disposition": {
+    "decided_at": "2026-10-16",
+    "decided_by": "Rawley Stanhope (approved the portfolio review: \"Proceed\", 2026-10-16)",
+    "reason": "Superseded by steward-reference; its allowance framing contradicts the 2026-10-07 stewardship standard. The 71 c8 Grok allowance readings are saved first.",
+    "review": {
+      "host": "spark-a",
+      "locator": "/home/rawleysm/.config/rlm-adk/launch/reports/project-portfolio-review-20261016/REPORT.md",
+      "section": "3.6, 8.F"
+    },
+    "state": "archived",
+    "successors": [
+      "steward-reference"
+    ]
+  },
+  "evidence_basis": "Tests exist; superseded and contradicted by the current standard.",
+  "evidence_level": "tested",
+  "host_pointer_ids": [
+    "steward-workbench-c8",
+    "steward-workbench-c11",
+    "steward-c12"
+  ],
+  "locations": [
+    {
+      "git_commit": "b73536cfb225d1e2b84341a9be96cdd5a0925469",
+      "host": "github",
+      "locator": "https://github.com/RawleySM/steward-workbench-c8",
+      "observed_at": "2026-10-16",
+      "role": "canonical_remote"
+    },
+    {
+      "git_commit": "b73536cfb225d1e2b84341a9be96cdd5a0925469",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-12/steward-c12",
+      "note": "Pointer steward-c12.",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    },
+    {
+      "git_commit": "8f66e7ec5ba432e248693ff099e0933ac0f49797",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-11/steward-workbench-c11",
+      "note": "Pointer steward-workbench-c11.",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    },
+    {
+      "git_commit": "0e4b2e7ec1adadb731bdcbc92ba8c54632a0c2d4",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-8/steward-workbench-c8",
+      "note": "Pointer steward-workbench-c8.",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    }
+  ],
+  "migrated_from": [],
+  "need_source": [],
+  "owner": null,
+  "products": [],
+  "project_id": "steward-workbench-c8",
+  "record_revision": 1,
+  "schema": "rlm-adk.project-work-record.v2",
+  "summary": "One GitHub repository behind three host pointers with three different heads: steward-workbench-c8 (0e4b2e7, an austerity allowance ledger), steward-workbench-c11 (8f66e7e) and steward-c12 (b73536c = GitHub main: a gateway re-reader and the resident exchange protocol).",
+  "title": "steward-workbench-c8: steward workbench lineage c8 to c12 (steward-c12), allowance ledger and exchange protocol",
+  "unresolved": [
+    "Host pointer retirement is pending: it is done at the next supervised launch, after the voice-intake-20261016 launch (and its resume draft) is re-authored (REPORT section 8.F).",
+    "The GitHub repository is not archived (isArchived=false, observed 2026-10-16)."
+  ],
+  "updated_at": "2026-10-16T18:00:46Z",
+  "updated_by": "Rawley Stanhope (Claude portfolio-reset session 2026-10-16)"
+}

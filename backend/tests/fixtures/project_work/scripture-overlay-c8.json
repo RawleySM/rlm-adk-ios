@@ -1,0 +1,112 @@
+{
+  "consumers": [
+    {
+      "consumer": "prayer-atlas-c8 scripture_pairings quote_check and scripture_grounding",
+      "evidence": "Load scripture-c12 bronze and verse_index by absolute path (verify-discard review section 1.7); to be repointed.",
+      "observed_at": "2026-10-16",
+      "product_id": null,
+      "status": "confirmed"
+    }
+  ],
+  "disposition": {
+    "decided_at": "2026-10-16",
+    "decided_by": "Rawley Stanhope (approved the portfolio review: \"Proceed\", 2026-10-16)",
+    "reason": "Discard after the repoints: the echo-window method is salvaged as a Prayer & Word candidate-echo detector and the concordance parquet is preserved; the cards have no reader.",
+    "review": {
+      "host": "spark-a",
+      "locator": "/home/rawleysm/.config/rlm-adk/launch/reports/project-portfolio-review-20261016/REPORT.md",
+      "section": "3.4, 4, 8.F"
+    },
+    "state": "archived",
+    "successors": [
+      "prayer-and-word"
+    ]
+  },
+  "evidence_basis": "Real outputs exist (concordance, cards); the concordance fed prayer_enrichment.",
+  "evidence_level": "exercised",
+  "host_pointer_ids": [
+    "scripture-overlay-c8",
+    "scripture-overlay-c11",
+    "scripture-c12"
+  ],
+  "locations": [
+    {
+      "git_commit": "8e6ac1633d76bf49023182479fe9f505cbcc79e0",
+      "host": "github",
+      "locator": "https://github.com/RawleySM/scripture-overlay-c8",
+      "observed_at": "2026-10-16",
+      "role": "canonical_remote"
+    },
+    {
+      "git_commit": "8e6ac1633d76bf49023182479fe9f505cbcc79e0",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-12/scripture-c12",
+      "note": "Pointer scripture-c12.",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    },
+    {
+      "git_commit": "6db52acf36196b0d1afaccaa69a3dc06911545be",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-11/scripture-overlay-c11",
+      "note": "Pointer scripture-overlay-c11.",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    },
+    {
+      "git_commit": "6db52acf36196b0d1afaccaa69a3dc06911545be",
+      "host": "desktop",
+      "locator": "/home/rawley-stanhope/.local/rlm-adk/projects/cycle-8/scripture-overlay-c8",
+      "note": "Pointer scripture-overlay-c8.",
+      "observed_at": "2026-10-16",
+      "role": "working_checkout"
+    }
+  ],
+  "migrated_from": [
+    {
+      "project_id": "scripture-c12",
+      "record_blob": "1b48779caef36936dbbe959e7445b72c126e8872",
+      "record_revision": 1,
+      "register_commit": "ebc578f6944fab0eae9e17822135f08ebfeb2f1b",
+      "schema": "rlm-adk.project-work-record.v1"
+    }
+  ],
+  "need_source": [
+    {
+      "date": "2026-10-07",
+      "kind": "operator_statement",
+      "reference": {
+        "host": "desktop",
+        "locator": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle12/experiments/experience-h13/RAWLEY-FEEDBACK.md"
+      },
+      "statement": "After hearing H7 v2: 'much more powerful if every single prayer also had a scripture verse'; the mechanical text-to-speech was the biggest issue."
+    }
+  ],
+  "owner": null,
+  "products": [
+    {
+      "catalog": "project",
+      "note": "Phrase-window prayer-to-verse matches; the parquet is preserved.",
+      "product_id": "scripture-echo-concordance",
+      "relation": "produces"
+    },
+    {
+      "catalog": "project",
+      "note": "Model-written per-verse cards; no reader.",
+      "product_id": "scripture-verse-cards",
+      "relation": "produces"
+    }
+  ],
+  "project_id": "scripture-overlay-c8",
+  "record_revision": 1,
+  "schema": "rlm-adk.project-work-record.v2",
+  "summary": "One GitHub repository behind three host pointers: scripture-overlay-c8 and scripture-overlay-c11 (6db52ac) and scripture-c12 (main 8e6ac16). It holds the c8 echo concordance (phrase-window prayer-to-verse matching), an ESV loader, a resolver, a lexical index and model-written per-verse cards for Genesis 21:7 to Exodus 6:21 with no reader.",
+  "title": "scripture-overlay-c8: Scripture overlay lineage c8 to c12 (scripture-c12), echo concordance and verse cards",
+  "unresolved": [
+    "Host pointer retirement is pending: it is done at the next supervised launch, after the voice-intake-20261016 launch (and its resume draft) is re-authored (REPORT section 8.F).",
+    "The GitHub repository is not archived (isArchived=false, observed 2026-10-16).",
+    "The current launch voice-intake-20261016 still requests scripture-c12."
+  ],
+  "updated_at": "2026-10-16T18:00:46Z",
+  "updated_by": "Rawley Stanhope (Claude portfolio-reset session 2026-10-16)"
+}
