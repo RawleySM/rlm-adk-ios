@@ -21,9 +21,11 @@ The log is the only store: a ticket is the fold of its events in file order (``r
 Later consumers append their own events (claimed, resolved) under the same ``ticket_id``.
 
 3. When ``intake_recipient`` names a resident, a triaged ticket whose disposition is in
-   ``intake_mail_dispositions`` is mailed to it (``mail_ticket``: ``allocatorctl inbox post --to``,
-   plain text whose first line is ``voice-portal ticket_id=... kind=...``) and a ``mailed`` event
-   records the message id. ``poll_replies`` reads the resident's answers
+   ``intake_mail_dispositions`` is mailed to it (``mail_ticket``: plain text whose first line is
+   ``voice-portal ticket_id=... kind=...``). With ``intake_mail_mode = "stage"`` (the default while
+   the runtime is not running) the mail and the exact ``allocatorctl inbox post --to`` command are
+   written beside the log and a ``mail_staged`` event records them; nothing reaches the allocator.
+   With ``"post"`` the command runs and a ``mailed`` event records the message id. ``poll_replies`` reads the resident's answers
    (``inbox list --to-operator --json --in-reply-to``) and appends one ``status`` event per reply;
    the reply's leading ``status: <word>`` becomes the ticket's status.
 """
@@ -189,6 +191,8 @@ def read_tickets(path: Path) -> dict[str, dict]:
         if event.get("event") == "triaged" and isinstance(event.get("triage"), dict):
             ticket["triage"] = event["triage"]
             ticket["triaged_at"] = event.get("at")
+        elif event.get("event") == "mail_staged":
+            ticket.setdefault("mail_staged", []).append({k: event.get(k) for k in ("recipient", "at", "body", "command", "note")})
         elif event.get("event") == "mailed" and event.get("message_id"):
             ticket.setdefault("mail", []).append({k: event.get(k) for k in ("message_id", "recipient", "at", "instance_id", "note")})
         elif event.get("event") == "status" and event.get("status"):
@@ -462,7 +466,7 @@ def _triage_logged(cfg: Config, ticket_id: str) -> None:
         return
     try:
         ticket = read_tickets(log_path(cfg)).get(ticket_id) or {}
-        if cfg.intake_recipient and not ticket.get("mail") and (ticket.get("triage") or {}).get("disposition") in (cfg.intake_mail_dispositions or []):
+        if cfg.intake_recipient and not ticket.get("mail") and not ticket.get("mail_staged") and (ticket.get("triage") or {}).get("disposition") in (cfg.intake_mail_dispositions or []):
             mail_ticket(cfg, ticket_id)
     except Exception:  # noqa: BLE001 - logged; POST /issues/<id>/mail can send it later
         log.exception("mailing %s failed", ticket_id)
@@ -492,6 +496,7 @@ def summary(ticket: dict) -> dict:
         "triage_state": triage.get("state"),
         "chars": len(ticket.get("text") or ""),
         "mailed": bool(ticket.get("mail")),
+        "mail_staged": bool(ticket.get("mail_staged")),
         "replies": len(ticket.get("replies") or []),
     }
 
@@ -572,7 +577,8 @@ def mail_ticket(cfg: Config, ticket_id: str, *, note: str | None = None, force: 
         force: Send again although the ticket was already mailed.
 
     Returns:
-        ``{"mailed": True, "message_id", "recipient"}``, or ``{"mailed": False, "reason", ...}``.
+        ``{"mailed": True, "message_id", "recipient"}``; in stage mode ``{"mailed": False,
+        "staged": True, "body", "command"}``; otherwise ``{"mailed": False, "reason", ...}``.
     """
     if not cfg.intake_recipient:
         return {"mailed": False, "reason": "intake_recipient_unset"}
@@ -582,10 +588,21 @@ def mail_ticket(cfg: Config, ticket_id: str, *, note: str | None = None, force: 
         return {"mailed": False, "reason": "not_found"}
     if ticket.get("mail") and not force:
         return {"mailed": False, "reason": "already_mailed", "mail": ticket["mail"]}
+    if cfg.intake_mail_mode != "post" and ticket.get("mail_staged") and not force:
+        return {"mailed": False, "staged": True, "reason": "already_staged", "mail_staged": ticket["mail_staged"]}
     outdir = cfg.root / "outbox" / "issues"
     outdir.mkdir(parents=True, exist_ok=True)
     body = outdir / f"{ticket_id}-{int(time.time())}.txt"
     body.write_text(mail_text(ticket, note), encoding="utf-8")
+    command = [cfg.allocatorctl, "inbox", "post", "--to", cfg.intake_recipient, "--file", str(body)]
+    if cfg.intake_mail_mode != "post":
+        # Stub: everything short of delivery. The runtime is not running; the staged command is what
+        # "post" mode would run, and POST /issues/<id>/mail {"force": true} re-stages after edits.
+        event = {"schema": SCHEMA, "event": "mail_staged", "ticket_id": ticket_id, "at": time.time(), "recipient": cfg.intake_recipient, "body": str(body), "command": command, "note": note}
+        with _LogLock(path):
+            _append(path, event)
+        log.info("issue %s mail staged for %s at %s", ticket_id, cfg.intake_recipient, body)
+        return {"mailed": False, "staged": True, "recipient": cfg.intake_recipient, "body": str(body), "command": command}
     try:
         proc = _allocatorctl(cfg, ["inbox", "post", "--to", cfg.intake_recipient, "--file", str(body)])
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -642,9 +659,22 @@ def poll_replies(cfg: Config) -> list[dict]:
     return recorded
 
 
+def record_status(cfg: Config, ticket_id: str, status: str, *, text: str = "", artifact: str | None = None, by: str = "operator-session") -> dict | None:
+    """Append a ``status`` event written by someone other than the mailed resident (an operator
+    session delivering the change itself, for example). Returns the event, or None for an unknown ticket."""
+    path = log_path(cfg)
+    if ticket_id not in read_tickets(path):
+        return None
+    event = {"schema": SCHEMA, "event": "status", "ticket_id": ticket_id, "at": time.time(), "status": status, "from": by, "text": text, "artifact": artifact}
+    with _LogLock(path):
+        _append(path, event)
+    log.info("issue %s: status %s by %s", ticket_id, status, by)
+    return event
+
+
 def start_reply_poller(cfg: Config) -> threading.Thread | None:
-    """Poll replies every ``intake_poll_s`` seconds on a daemon thread (only with a recipient)."""
-    if not cfg.intake_recipient or cfg.intake_poll_s <= 0:
+    """Poll replies every ``intake_poll_s`` seconds on a daemon thread (only when mail is posted)."""
+    if not cfg.intake_recipient or cfg.intake_mail_mode != "post" or cfg.intake_poll_s <= 0:
         return None
 
     def loop() -> None:

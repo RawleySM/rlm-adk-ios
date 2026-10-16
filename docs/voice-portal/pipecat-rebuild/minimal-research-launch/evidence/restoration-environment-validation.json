@@ -1,0 +1,59 @@
+{
+  "red": {
+    "invocation_id": "8368ed95b3494df3bd6f1a32afc0516b",
+    "native_run_ids": [
+      "provider-fake-96dce42193eb4a9fb76875591468e31d"
+    ],
+    "report_paths": [
+      "/home/rawleysm/.local/share/rlm-adk/retrace/686b21b5604d/invocations/8368ed95b3494df3bd6f1a32afc0516b/native-provider-fake-96dce42193eb4a9fb76875591468e31d.json"
+    ],
+    "outcomes": [
+      {
+        "status": "ASSERTION_FAILURE",
+        "counts": {
+          "total": 39,
+          "passed": 38,
+          "failed": 1,
+          "xfail": 0,
+          "xpass": 0
+        }
+      }
+    ]
+  },
+  "green": {
+    "invocation_id": "e441c07ea9d14b9390f26438936434d5",
+    "native_run_ids": [
+      "provider-fake-cf78534a5a1a4ae48c38c790beea790d"
+    ],
+    "report_paths": [
+      "/home/rawleysm/.local/share/rlm-adk/retrace/686b21b5604d/invocations/e441c07ea9d14b9390f26438936434d5/native-provider-fake-cf78534a5a1a4ae48c38c790beea790d.json"
+    ],
+    "outcomes": [
+      {
+        "status": "EXPECTED_CHECKS_HELD",
+        "counts": {
+          "total": 39,
+          "passed": 39,
+          "failed": 0,
+          "xfail": 0,
+          "xpass": 0
+        }
+      }
+    ]
+  },
+  "f6": {
+    "invocation_id": "70aaed79d0be4a73880da9a00d132898",
+    "outcomes": [
+      {
+        "status": "EXPECTED_CHECKS_HELD",
+        "counts": {
+          "total": 597,
+          "passed": 597,
+          "failed": 0,
+          "xfail": 12,
+          "xpass": 0
+        }
+      }
+    ]
+  }
+}

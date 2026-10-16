@@ -1,0 +1,224 @@
+{
+  "assignment_plan": {
+    "path": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/A/rlm-adk--research-trial-compatib-06a7dcdc82/native-trial-77e3c601199f6467cb27ce96cdf014c9/supervision/checkpoints/checkpoint-1a71a45452cf8cbfa9b28a0c.json",
+    "pointer": "/assignment_plan",
+    "sha256": "c2ca02e19bbdab7ad16209ff6019226bc4bd07a8ac8b8f4fb99fb2fbd9b080e5"
+  },
+  "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+  "boottime": 1485839.042359979,
+  "coordinator_cleanup": {
+    "local": "unit_exit_observed",
+    "remote_inference_usage": "unknown"
+  },
+  "latest_checkpoint": {
+    "path": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/A/rlm-adk--research-trial-compatib-06a7dcdc82/native-trial-77e3c601199f6467cb27ce96cdf014c9/supervision/checkpoints/checkpoint-1a71a45452cf8cbfa9b28a0c.json",
+    "sha256": "c2ca02e19bbdab7ad16209ff6019226bc4bd07a8ac8b8f4fb99fb2fbd9b080e5"
+  },
+  "latest_decision": {
+    "path": "/home/rawley-stanhope/srv/rlm-adk/live-test/experiments/77e3c601199f6467cb27ce96cdf014c9a128315a610dfb52cae6ce4c9c940fa7/rounds/a81d66790075eb2a67bf94f8/decision-e4f3eb44f0b11775.json",
+    "sha256": "ef8b7b4640f61b1a18395ad535ce08664d4a44fb62b13b4c7745088bcb5cf6e1"
+  },
+  "owner_exit": {
+    "observation": {
+      "ActiveState": "deactivating",
+      "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/rlm-native-experiment-77e3c601199f6467cb27ce96cdf014c9.service",
+      "InvocationID": "c618a0e9fa2e471c8e666217a5f6d08e",
+      "LoadState": "loaded",
+      "MainPID": "0",
+      "Result": "exit-code",
+      "SubState": "stop-post",
+      "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+      "boottime": 1485839.021605672,
+      "returncode": 0,
+      "utc": 1792021144.0530565
+    },
+    "systemd_exit": {
+      "EXIT_CODE": "exited",
+      "EXIT_STATUS": "70",
+      "INVOCATION_ID": "c618a0e9fa2e471c8e666217a5f6d08e",
+      "SERVICE_RESULT": "exit-code"
+    }
+  },
+  "reason": "independent coordinator exited; settlement-only recovery",
+  "reference": {
+    "path": "/home/rawley-stanhope/srv/rlm-adk/live-test/experiments/77e3c601199f6467cb27ce96cdf014c9a128315a610dfb52cae6ce4c9c940fa7/recovery/68252cd16d9b40e11955048c.json",
+    "sha256": "61afac6d7188efff0d550c90fe719a5bf7b345c9cd126acd4bf83fbb3469c5e3"
+  },
+  "request_ref": {
+    "path": "/home/rawley-stanhope/srv/rlm-adk/live-test/experiments/77e3c601199f6467cb27ce96cdf014c9a128315a610dfb52cae6ce4c9c940fa7/request.json",
+    "sha256": "279b70c31ba3a27730454b8989daba07c56b2585e905ecabdb46bff23974a31d"
+  },
+  "restoration": {
+    "allocator_root": "/home/rawley-stanhope/srv/rlm-adk",
+    "baseline": {
+      "control_root": "/home/rawley-stanhope/.local/rlm-adk/runtime_control",
+      "hold": null,
+      "release": "/home/rawley-stanhope/srv/rlm-adk/releases/24e2a4df875ce895fc64195883643d543fdd8187566bf90665de27e59567d6c1"
+    },
+    "experiment_owner": {
+      "path": "/home/rawley-stanhope/srv/rlm-adk/live-test/experiments/77e3c601199f6467cb27ce96cdf014c9a128315a610dfb52cae6ce4c9c940fa7/request.json",
+      "sha256": "279b70c31ba3a27730454b8989daba07c56b2585e905ecabdb46bff23974a31d"
+    },
+    "lease_id": "live-test-28e9162cbe9c",
+    "phase": "restored",
+    "schema": "native_allocator_restoration.v1"
+  },
+  "semantic": null,
+  "stability": [
+    {
+      "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+      "boottime": 1485839.244305737,
+      "store_changes": {
+        "provenance_db": 2,
+        "session_db": 2
+      },
+      "unit": {
+        "cgroup_empty": true,
+        "error": "",
+        "fields": {
+          "ActiveState": "inactive",
+          "ControlGroup": "",
+          "LoadState": "not-found",
+          "MainPID": "0",
+          "Result": "success"
+        },
+        "local_settled": true,
+        "returncode": 0,
+        "unit": "rlm-adk-live-test-native-trial-77e3c601199f6467cb2-8e33fb4b32.service",
+        "unit_absent": true
+      },
+      "utc": 1792021144.275757
+    },
+    {
+      "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+      "boottime": 1485850.256654144,
+      "store_changes": {
+        "provenance_db": 2,
+        "session_db": 2
+      },
+      "unit": {
+        "cgroup_empty": true,
+        "error": "",
+        "fields": {
+          "ActiveState": "inactive",
+          "ControlGroup": "",
+          "LoadState": "not-found",
+          "MainPID": "0",
+          "Result": "success"
+        },
+        "local_settled": true,
+        "returncode": 0,
+        "unit": "rlm-adk-live-test-native-trial-77e3c601199f6467cb2-8e33fb4b32.service",
+        "unit_absent": true
+      },
+      "utc": 1792021155.2881057
+    }
+  ],
+  "status": "settled",
+  "trial_settlement": {
+    "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+    "boottime": 1485839.128835925,
+    "checker_retirement": {
+      "complete": true,
+      "errors": [],
+      "observations": [
+        {
+          "command": [
+            "stop",
+            "rlm-adk-live-supervision-cc7a43bf8a777d89.timer"
+          ],
+          "error": "",
+          "returncode": 0
+        },
+        {
+          "command": [
+            "show",
+            "rlm-adk-live-supervision-cc7a43bf8a777d89.service",
+            "--property=LoadState,ActiveState,SubState,MainPID,Result,ExecMainStatus"
+          ],
+          "error": "",
+          "fields": {
+            "ActiveState": "inactive",
+            "ExecMainStatus": "0",
+            "LoadState": "loaded",
+            "MainPID": "0",
+            "Result": "success",
+            "SubState": "dead"
+          },
+          "returncode": 0
+        },
+        {
+          "command": [
+            "show",
+            "rlm-adk-live-supervision-cc7a43bf8a777d89.timer",
+            "--property=LoadState,ActiveState,SubState,MainPID,Result,ExecMainStatus"
+          ],
+          "error": "",
+          "fields": {
+            "ActiveState": "inactive",
+            "LoadState": "loaded",
+            "Result": "success",
+            "SubState": "dead"
+          },
+          "returncode": 0
+        }
+      ],
+      "service": "rlm-adk-live-supervision-cc7a43bf8a777d89.service",
+      "status": "retired_clean",
+      "timer": "rlm-adk-live-supervision-cc7a43bf8a777d89.timer",
+      "unresolved_errors": []
+    },
+    "external_monitors": [],
+    "local_settled": true,
+    "next_action": "end the lease after every trial settles",
+    "observation": {
+      "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+      "boottime": 1485839.076805931,
+      "intent": {
+        "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+        "boottime": 1485838.580573997,
+        "reason": "continuation refused: SupervisionError: trial has already ended; settle and record semantic outcome",
+        "run_id": "native-trial-77e3c601199f6467cb27ce96cdf014c9",
+        "schema": "rlm_adk.live_supervision.v1",
+        "unit": "rlm-adk-live-test-native-trial-77e3c601199f6467cb2-8e33fb4b32.service",
+        "utc": 1792021143.6120248
+      },
+      "observation": {
+        "cgroup_empty": true,
+        "error": "",
+        "fields": {
+          "ActiveState": "inactive",
+          "ControlGroup": "",
+          "LoadState": "not-found",
+          "MainPID": "0",
+          "Result": "success"
+        },
+        "local_settled": true,
+        "returncode": 0,
+        "unit": "rlm-adk-live-test-native-trial-77e3c601199f6467cb2-8e33fb4b32.service",
+        "unit_absent": true
+      },
+      "schema": "rlm_adk.live_supervision.v1",
+      "stop_request": {
+        "error": "Failed to stop rlm-adk-live-test-native-trial-77e3c601199f6467cb2-8e33fb4b32.service: Unit rlm-adk-live-test-native-trial-77e3c601199f6467cb2-8e33fb4b32.service not loaded.",
+        "returncode": 5
+      },
+      "unit": "rlm-adk-live-test-native-trial-77e3c601199f6467cb2-8e33fb4b32.service",
+      "utc": 1792021144.1082566
+    },
+    "open_delegates": [],
+    "outcome": "stopped",
+    "provider_cleanup": {
+      "status": "not_applicable"
+    },
+    "run_id": "native-trial-77e3c601199f6467cb27ce96cdf014c9",
+    "schema": "rlm_adk.live_supervision.v1",
+    "semantic_acceptance": "requires_outer_goal_judgment",
+    "settlement_reference": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/A/rlm-adk--research-trial-compatib-06a7dcdc82/native-trial-77e3c601199f6467cb27ce96cdf014c9/supervision/settlements/settlement-046de295ec2cb977.json",
+    "submission_closed": true,
+    "unresolved": [],
+    "utc": 1792021144.1602867,
+    "wake_cancellation": "outer_supervisor_required"
+  },
+  "utc": 1792021144.0738106
+}

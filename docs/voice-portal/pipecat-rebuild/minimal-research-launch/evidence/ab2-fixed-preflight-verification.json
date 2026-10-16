@@ -1,0 +1,82 @@
+[
+  {
+    "arm": "A",
+    "preflight": {
+      "path": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/operations/ab2-preflight-A-fixed.json",
+      "sha256": "6d484e0d122860c4104ea45db408040d3b8238bd46410e1f942bc2e23840ebc8"
+    },
+    "status": "preflight_ready",
+    "runtime_submitted": false,
+    "source": "0a070963b84ec2d40fce0863970a79a0720c472b",
+    "route_receipt": {
+      "path": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-002/A/rlm-adk--research-trial-route-pr-b7704ed916/ab2-readiness-A-fixed/route-readiness/20261015T001409Z-isolated-launch-0619fc15.json",
+      "sha256": "a33d5eb608da65843d9a318a07b9d9015536f6d1ae74ee3c9bf8942e64c5cd33"
+    },
+    "verdict": "ready",
+    "failed_routes": [],
+    "overrides": [],
+    "routes": [
+      {
+        "rung_id": "codex_gpt61_sol_subscription",
+        "shape": "tools",
+        "status": "ready",
+        "reply": "tool call",
+        "latency_s": 5.997
+      },
+      {
+        "rung_id": "grok_46_reasoning_supergrok",
+        "shape": "text",
+        "status": "ready",
+        "reply": "ok",
+        "latency_s": 6.897
+      },
+      {
+        "rung_id": "codex_gpt61_sol_subscription",
+        "shape": "text",
+        "status": "ready",
+        "reply": "ok",
+        "latency_s": 6.2
+      }
+    ]
+  },
+  {
+    "arm": "B",
+    "preflight": {
+      "path": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/operations/ab2-preflight-B-fixed.json",
+      "sha256": "e930e1e2fe54cfa60de08c6a989c5e70b8f340d5a1f245f7527f5d853746bf28"
+    },
+    "status": "preflight_ready",
+    "runtime_submitted": false,
+    "source": "0a070963b84ec2d40fce0863970a79a0720c472b",
+    "route_receipt": {
+      "path": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-002/B/rlm-adk--research-trial-route-pr-b7704ed916/ab2-readiness-B-fixed/route-readiness/20261015T001409Z-isolated-launch-7d621760.json",
+      "sha256": "2ab552fb83b23ab9b944ef399d6fb88dabcba86bdbb610e73adef321fc1c2b9b"
+    },
+    "verdict": "ready",
+    "failed_routes": [],
+    "overrides": [],
+    "routes": [
+      {
+        "rung_id": "codex_gpt61_sol_subscription",
+        "shape": "tools",
+        "status": "ready",
+        "reply": "tool call",
+        "latency_s": 6.191
+      },
+      {
+        "rung_id": "grok_46_reasoning_supergrok",
+        "shape": "text",
+        "status": "ready",
+        "reply": "ok",
+        "latency_s": 6.556
+      },
+      {
+        "rung_id": "codex_gpt61_sol_subscription",
+        "shape": "text",
+        "status": "ready",
+        "reply": "ok",
+        "latency_s": 5.326
+      }
+    ]
+  }
+]

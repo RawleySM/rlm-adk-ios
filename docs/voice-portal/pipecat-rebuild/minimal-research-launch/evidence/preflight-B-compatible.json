@@ -1,0 +1,100 @@
+{
+  "created_at": 1792019106.9901035,
+  "git_branch": null,
+  "git_sha": "c64d55210968cf61ea127995962a444bdf012a4a",
+  "next_action": "Use a fresh --run-id without --preflight-only; launch repeats readiness checks.",
+  "procedure": "tests_rlm_adk/live_tests/native_supervision",
+  "resident_launch": {
+    "authoring": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/rlm-adk--research-trial-compatib-06a7dcdc82/compatible-preflight-B/launch-authoring.json",
+    "authoring_sha256": "93b230ca294dda414752b3b06b22408a5d920a46c1c204fe45d1a4849f6b5d66",
+    "authority_paths": [
+      "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/installation",
+      "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/packages",
+      "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/projects/trial-ab-output",
+      "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/registry/residents.sqlite3",
+      "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/rlm-adk--research-trial-compatib-06a7dcdc82/compatible-preflight-B/runtime_data/stores/sessions/session.db",
+      "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/skills.git",
+      "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/snapshots/campaign",
+      "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/snapshots/gold",
+      "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/snapshots/prayer_enrichment",
+      "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/snapshots/prayer_ingest.sqlite3",
+      "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/snapshots/prayer_products",
+      "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/snapshots/prayer_records",
+      "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/snapshots/sample",
+      "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/snapshots/vision_corpus",
+      "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/specs",
+      "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/workspaces"
+    ],
+    "document_sha256": "27e5a9edd0b7c5d49ea694ee226654317231ebf828e25accdedf9ad9686c936d",
+    "home": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B",
+    "instance_id": "ab-topo-b-20261014",
+    "launch_id": "5e6949214bacc8911b17964d9ebae05adff70f735c8d123ad68bd1dabce136f6",
+    "launch_projects": {
+      "already_registered": [],
+      "pins": {
+        "trial-ab-output": "1243b1c7ec89d346e940957a00d868e7e50588ddbd711f1d787a4185b019fd9b"
+      },
+      "registered": [
+        "trial-ab-output"
+      ],
+      "would_register": []
+    },
+    "mode": "fresh",
+    "readiness": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/rlm-adk--research-trial-compatib-06a7dcdc82/compatible-preflight-B/resident-readiness.json",
+    "readiness_sha256": "04cff611927d82c01d58a1fd1d53c2b74f041ea9b8f0bcb733ce731f7124b882",
+    "registry": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/registry/residents.sqlite3",
+    "residents": [
+      {
+        "package_key": "steward_stwref",
+        "parent_resident_id": null,
+        "resident_id": "stwref",
+        "start": "warm"
+      },
+      {
+        "package_key": "prayer_and_life_context_pryc12",
+        "parent_resident_id": "stwref",
+        "resident_id": "pryc12",
+        "start": "warm"
+      },
+      {
+        "package_key": "discipleship_vision_visc12",
+        "parent_resident_id": "pryc12",
+        "resident_id": "visc12",
+        "start": "warm"
+      }
+    ],
+    "sealed": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/rlm-adk--research-trial-compatib-06a7dcdc82/compatible-preflight-B/launch/launch.json",
+    "source": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/launch.author.json",
+    "source_sha256": "08c3773577ed024b0afcfeec51520cb6ae3f328d4be5383bf85872b9024a5add",
+    "status": "sealed",
+    "transforms": [
+      {
+        "authored": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/sessions/session.db",
+        "effective": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/rlm-adk--research-trial-compatib-06a7dcdc82/compatible-preflight-B/runtime_data/stores/sessions/session.db",
+        "pointer": "/storage/sessions/database"
+      },
+      {
+        "authored": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/installation",
+        "effective": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/installation",
+        "pointer": "/skills/installation_root"
+      },
+      {
+        "authored": null,
+        "effective": "# Native supervision qualification\n\nThe launch document supplies the resident topology and workload. The independent\ncoordinator must retain one native session and foreground REPL across reviews,\ncollect current resident/project evidence, run every accepted monitoring assignment\nthrough finite native children, evaluate original reports and global evidence, and\nauthor continuation or stop. Continuation requires an already armed process wake.\n\nAcceptance requires original native request/report/review evidence, observed exact\ntrial and provider settlement, checker retirement, unchanged stopped stores and\nobserved restoration of the allocator's prior baseline. Provider-fake execution\nqualifies wiring only; actual-provider timing and live acceptance remain separate.\n",
+        "pointer": "/resident/tree/steering"
+      }
+    ]
+  },
+  "route_readiness": {
+    "log": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/rlm-adk--research-trial-compatib-06a7dcdc82/compatible-preflight-B/route-readiness.log",
+    "receipt": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/rlm-adk--research-trial-compatib-06a7dcdc82/compatible-preflight-B/route-readiness/20261014T230506Z-isolated-launch-b1b76252.json",
+    "receipt_sha256": "5473c0cbc539ad1c7f9eb29d4f060b3ca090a3f90fc506954b5a0ddd68dac3e4",
+    "status": "ready"
+  },
+  "run_id": "compatible-preflight-B",
+  "run_root": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/rlm-adk--research-trial-compatib-06a7dcdc82/compatible-preflight-B",
+  "runtime_submitted": false,
+  "schema": "rlm_adk.live_test_preflight.v1",
+  "status": "preflight_ready",
+  "worktree": "/home/rawley-stanhope/dev/rlm-adk--research-trial-compatible"
+}

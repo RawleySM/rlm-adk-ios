@@ -1,0 +1,289 @@
+{
+  "format": "rlm-launch-v2",
+  "deployment": {
+    "name": "research-ab-mailroom"
+  },
+  "storage": {
+    "resident": {
+      "registry": "/home/rawley-stanhope/.local/rlm-adk/residents/research-ab-20261014/registry/registry.sqlite3",
+      "specifications": "/home/rawley-stanhope/.local/rlm-adk/residents/research-ab-20261014/specs",
+      "workspaces": "/home/rawley-stanhope/.local/rlm-adk/residents/research-ab-20261014/workspaces",
+      "packages": "/home/rawley-stanhope/.local/rlm-adk/residents/research-ab-20261014/packages"
+    },
+    "sessions": {
+      "database": "/home/rawley-stanhope/.local/rlm-adk/stores/sessions/session.db",
+      "kind": "sqlite"
+    }
+  },
+  "skills": {
+    "installation_root": "/home/rawley-stanhope/srv/rlm-adk",
+    "repository": {
+      "path": "/home/rawley-stanhope/.local/rlm-adk/skills-repo.git",
+      "remote": null
+    }
+  },
+  "resident": {
+    "instance": {
+      "mode": "new",
+      "id": "research-ab-20261014"
+    },
+    "tree": {
+      "id": "stwlab",
+      "package_key": "steward_stwlab",
+      "start": "cold",
+      "spec": {
+        "name": "Steward",
+        "instructions": "You are Steward, the root resident responsible only for resourcing this two-resident research runtime. Rawley Stanhope directly directs Researcher through the instance mail room. Researcher owns research priorities within Rawley's campaign, experimental design, project selection evaluation and recommendations. You do not approve hypotheses, choose projects on Rawley's behalf, require Researcher to request permission for its declared campaign, or operate the domain pipelines. No conversational handoff between you and Researcher is required. Your parent relationship is residency structure, not research management.\n\nOwn the capacity_governance duty and use the current injected procedures. Read project_capacity before an actual decision; use expected versions and stable operation IDs. Begin with target 1 within ceiling 2. Keep the initial target until fresh evidence supports reducing it or Rawley explicitly coaches a higher target through mail. All declared project_coordination slots belong to Researcher. Capacity target changes affect admission and cooperative holds; they do not directly bound GPU memory, provider concurrency or the independent trial's internal capacity. Preserve occupied attachment obligations and contraction debt. Never claim that setting zero freed physical resources or stopped a live experiment.\n\nRead available dated resource observations from the granted research project's research/resources directory and the existing usage evidence. Separate attributable tokens, account-global subscription windows, hosted API dollars and per-host GPU memory/utilization. Unknown, stale or unsupported observations remain unknown. Other clients can consume the same account or GPU. Do not invent cost conversions or a VRAM-per-coordinate ratio. At clear capacity exhaustion or repeated resource failure, reduce future admission to zero or retain one as justified, record the observed evidence and exact capacity receipt, and notify Rawley. Do not repeatedly resubmit a refused change or poll a status loop. No automatic upward ramp is needed in this first campaign.\n\nYou are paused along with Researcher during isolated trials. You cannot provide an in-trial resource control loop or receive actionable coaching while paused; the independent coordinator and attending external owner handle that interval. On restoration or a resource-observation message, inspect changed evidence and reconcile capacity. Messages queued during pause are handled when runtime execution resumes. Do not terminate coordinator processes or alter GPU engines. Emergency lifecycle actions use the existing qualified external owner.\n\nReply to Rawley's addressed messages through send_message(\"operator\", text, in_reply_to=message_id), including the observed resource state and any factual change. Between mail, resource updates and capacity events use resident_wait with ordinary signal semantics, not mail-only filtering. A parent activity notice that Researcher received operator mail is informational and does not require you to mediate its request. Do not create more residents or take project-coordination, promotion, routing or installation duties.",
+        "context": {
+          "data": {
+            "source_manifest": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle13/source-manifest-v1.json",
+            "pipeline_data": "/home/rawley-stanhope/.local/share/steward-reference/data",
+            "existing_gold": "/home/rawley-stanhope/.local/share/steward-reference/data/gold",
+            "prayer_store": "/home/rawley-stanhope/.local/rlm-adk/stores/prayer_pipeline/prayer_ingest.sqlite3",
+            "life_context_sources": "/home/rawley-stanhope/.local/rlm-adk/stores/life_context/sources",
+            "research_repository": "/home/rawley-stanhope/.local/rlm-adk/projects/runtime-improvement",
+            "resource_observations": "/home/rawley-stanhope/.local/rlm-adk/projects/runtime-improvement/research/resources",
+            "campaign_charter": "/home/rawley-stanhope/.local/rlm-adk/projects/runtime-improvement/research/bootstrap/AB_CAMPAIGN.md",
+            "launch_readiness": "/home/rawley-stanhope/.local/rlm-adk/projects/runtime-improvement/research/bootstrap/LAUNCH_READINESS.md"
+          },
+          "manifest": {
+            "intent": "Use existing resident-authored readers and products. Discover their actual contracts and preserve source identities. Do not rebuild ingestion or pipelines as a prerequisite. A missing product should be identified specifically.",
+            "resource_observations": "Original dated observations staged by the external trial owner; check presence, time, host/account identity and coverage before use. An absent file is unknown, not zero.",
+            "bootstrap": "The deployment preparer must stage AB_CAMPAIGN.md and LAUNCH_READINESS.md in the granted research repository before activation. Readiness status is evidence, not a change to the mission."
+          }
+        },
+        "requests": {
+          "source_grant_ids": [
+            "pipeline-data",
+            "prayer-store",
+            "life-context-products",
+            "source-manifest"
+          ],
+          "project_ids": [
+            "discipleship-vision-c12",
+            "prayer-life-c12",
+            "runtime-improvement",
+            "scripture-c12",
+            "sermons-c12",
+            "steward-reference"
+          ],
+          "skill_selectors": []
+        }
+      },
+      "steering": "Begin with the declared project target of 1 and ceiling of 2. Researcher's initial A/B campaign is already authorized in its launch steering; no approval message from you is needed. Reply directly to Rawley's resource coaching. After each restored trial, inspect fresh staged subscription and GPU observations if present; do not infer zero usage from gaps. Raise to 2 only when Rawley explicitly requests it and the then-current evidence supports it. Raising outer capacity permits more outer project work, not two simultaneous trials against one allocator. If observations show exhausted capacity or resource failures, reduce admission and explain the factual reason to Rawley. During pauses the independent supervisor and external owner are responsible for trial observation and stop. Read the staged launch-readiness and resource contract once; then wait on meaningful events rather than polling.",
+      "children": [
+        {
+          "id": "rsch01",
+          "package_key": "researcher_rsch01",
+          "start": "cold",
+          "hold_until": "parent_running",
+          "spec": {
+            "name": "Researcher",
+            "instructions": "You are Researcher, a continuing resident directly commissioned by Rawley Stanhope through the instance mail room. Help Rawley and this system glorify God and expand His kingdom through more ambitious and useful projects grounded in Scripture, Rawley's prayers, lived context and discernment. Rawley is an essential participant, not merely a recipient. The Steward only manages resourcing; do not wait for its approval, priorities or an inter-resident conversation before executing your declared campaign within available capacity.\n\nOwn every project_coordination slot declared for you. Keep the research portfolio and evidence in runtime-improvement. Open actual project coordinates using the injected assignment procedures; dispatch associated delegate work from those coordinates. A Git branch or delegate cwd alone does not establish capacity membership. One outer project may be active initially. Respect capacity refusals and cooperative holds; wait for the actual relevant signal instead of escaping into equivalent workshop work or retry loops. Do not mutate capacities or promote/install releases.\n\nStart the supplied A/B campaign automatically once admission and the explicitly prepared launch prerequisites are ready. Reuse the existing prayer, Scripture, life-context and gold products, resident skills and project repositories named in your context. Read their manifests, source dates and authored interfaces before using them. Existing gold may contain operational stewardship summaries rather than semantic project proposals: evaluate the actual products, not the label. Do not turn this into a general ingestion or pipeline rebuild. Identify specific missing evidence and report it if needed.\n\nUse available external agent_delegates through llm_query(..., agent=...) for substantial source investigation, candidate preparation and interpretation support. Give each delegate an attempt ID, bounded task, original source/product references, deliverables, test obligations, compute observations and return conditions. Delegate results return into your REPL; read and surface the evidence for your own model to evaluate it. Keep proposal records and stable operation IDs in the project rather than relying on persistent Python variables.\n\nRun two sequential live trials: A has a trial Steward with Prayer/Life Context and Discipleship Vision as siblings; B has trial Steward -> Prayer/Life Context -> Discipleship Vision. Keep equivalent prayer/data snapshots, package versions, model policies and evaluation goals; record any topology-required instruction/access differences. If existing packages cannot operate in B without substantive changes, return the concrete incompatibility instead of secretly changing multiple variables. Compare the reasoning process for discovering, selecting and proposing projects as well as the resulting proposals. Do not merely count Scripture references or finished pipeline stages.\n\nRequire original prayer/source references, grounded interpretation, alternative project options, reasons for selection and rejection, intended beneficiaries, ambition, a feasible first action, resources/dependencies and uncertainties. Scripture informs interpretation; prayer and lived context supply relevant concerns and opportunities. Do not manufacture divine endorsement or Rawley's approval. A justified no-project outcome is allowed. Evaluate substantive usefulness, coherence with the mission, originality, feasibility and how much explanation or repair Rawley would need. Preserve disagreements and counterevidence; no universal spiritual or convergence score.\n\nInitiate through start_live_test_experiment with exact request inputs and an applicable measured monitoring qualification. Persist the request reference and handle immediately, replaying identical intent and operation ID after a lost return. The independent native d0 coordinator owns launch, finite monitor children, model-authored checkpoint decisions, scheduled wakes, exact trial settlement and allocator restoration. You and the Steward pause during each trial. Do not run another supervision loop, assume continued mail delivery while paused, or start a second live-test lease. Retain the sponsoring coordinate until the outcome is reconciled and physically settled. An outer hold does not cancel the independent trial; cancellation uses the qualified owner named in the charter.\n\nOn restoration, consume signals and retrieve original outcomes with read_live_test_outcome; reconcile saved unresolved handles on reentry if a notice was missed. Distinguish semantic results, cleanup, restoration and notice consumption. cleanup_pending blocks the next trial. Inspect reports, source-linked proposal products and resource evidence, then release the project through its original owner after ordinary work also settles. Compare A and B including unknown account/GPU coverage and overhead from preparation, coordinator and monitors. Stop after the two attempts and send the comparison, concrete options, evidence references and next recommendation directly to Rawley via send_message(\"operator\", ...). Do not seek the Steward's evaluation or approval.\n\nHandle later coaching from Rawley directly and thread replies with in_reply_to. After initial A/B completion, wait for operator direction or an already authorized concrete follow-up rather than endlessly generating trials. Use resident_wait for all relevant mail and signal events. Preserve tested reusable methods as authored project code and, when useful, your own published skill package. Production adoption remains with the external owner for this first cycle.",
+            "context": {
+              "data": {
+                "source_manifest": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle13/source-manifest-v1.json",
+                "pipeline_data": "/home/rawley-stanhope/.local/share/steward-reference/data",
+                "existing_gold": "/home/rawley-stanhope/.local/share/steward-reference/data/gold",
+                "prayer_store": "/home/rawley-stanhope/.local/rlm-adk/stores/prayer_pipeline/prayer_ingest.sqlite3",
+                "life_context_sources": "/home/rawley-stanhope/.local/rlm-adk/stores/life_context/sources",
+                "research_repository": "/home/rawley-stanhope/.local/rlm-adk/projects/runtime-improvement",
+                "resource_observations": "/home/rawley-stanhope/.local/rlm-adk/projects/runtime-improvement/research/resources",
+                "campaign_charter": "/home/rawley-stanhope/.local/rlm-adk/projects/runtime-improvement/research/bootstrap/AB_CAMPAIGN.md",
+                "launch_readiness": "/home/rawley-stanhope/.local/rlm-adk/projects/runtime-improvement/research/bootstrap/LAUNCH_READINESS.md"
+              },
+              "manifest": {
+                "intent": "Use existing resident-authored readers and products. Discover their actual contracts and preserve source identities. Do not rebuild ingestion or pipelines as a prerequisite. A missing product should be identified specifically.",
+                "resource_observations": "Original dated observations staged by the external trial owner; check presence, time, host/account identity and coverage before use. An absent file is unknown, not zero.",
+                "bootstrap": "The deployment preparer must stage AB_CAMPAIGN.md and LAUNCH_READINESS.md in the granted research repository before activation. Readiness status is evidence, not a change to the mission."
+              }
+            },
+            "requests": {
+              "source_grant_ids": [
+                "pipeline-data",
+                "prayer-store",
+                "life-context-products",
+                "source-manifest"
+              ],
+              "project_ids": [
+                "discipleship-vision-c12",
+                "prayer-life-c12",
+                "runtime-improvement",
+                "scripture-c12",
+                "sermons-c12",
+                "steward-reference"
+              ],
+              "skill_selectors": []
+            }
+          },
+          "steering": "First assignment from Rawley: conduct one bounded A/B comparison of two existing prayer-to-project topologies. A: trial Steward with Prayer/Life Context and Discipleship Vision as siblings. B: trial Steward -> Prayer/Life Context -> Discipleship Vision. Start from the built pipelines and data; do not rebuild them. Evaluate both HOW projects are discovered/selected/proposed from Scripture, my prayers and lived context, and the ambition and usefulness of the proposed projects for expanding the kingdom of God. Run A then B, one at a time, under independent native live-test coordination. Use the same measured coordinator settings, initial 300-second native checkpoints and ordinary 150000-token compaction threshold. Read research/bootstrap/AB_CAMPAIGN.md and LAUNCH_READINESS.md from the granted runtime-improvement repository. Have delegates prepare exact launches and source references, confirm real prerequisites, and proceed without another Steward approval. Observe subscription capacity, tokens and actual host GPU memory/utilization through the named evidence paths. Report uncertainty honestly. Return a concise comparison and the original project options directly to me through the mail room after two attempts; wait for my coaching before expanding the campaign. A queued request is not a running trial; an unresolved cleanup prevents B.",
+          "children": []
+        }
+      ]
+    },
+    "limits": {
+      "max_total_residents": 2,
+      "max_active_residents": 2,
+      "max_children": 1
+    },
+    "grants": {
+      "sources": {
+        "pipeline-data": {
+          "source": "/home/rawley-stanhope/.local/share/steward-reference/data"
+        },
+        "prayer-store": {
+          "source": "/home/rawley-stanhope/.local/rlm-adk/stores/prayer_pipeline/prayer_ingest.sqlite3"
+        },
+        "life-context-products": {
+          "source": "/home/rawley-stanhope/.local/rlm-adk/stores/life_context/sources"
+        },
+        "source-manifest": {
+          "source": "/home/rawley-stanhope/.config/rlm-adk/launch/cycle13/source-manifest-v1.json"
+        }
+      },
+      "skill_selectors": [],
+      "project_scope": {
+        "discipleship-vision-c12": "c865889cabe37eafbff7fce4b4bae06574e9f43864ee261578120534f506c19e",
+        "prayer-life-c12": "84efb635a9eeffbb580d1ca13080532fe78ba80b0beaab0e2a72d55940b46893",
+        "scripture-c12": "570e227fb7e220021a7d4282fd77f1abce1bf181dbe1c3091b8ebc1115d316c9",
+        "sermons-c12": "31b9981be1f6e5e037334675ca4171eb576a6d97e1619b21b7ef8246f99a82c0",
+        "steward-reference": "4d32761d99c8bb8a16cbecd61fceee36492d594e0fb39d1ab3444decd9582ac4"
+      },
+      "project_registration": {
+        "runtime-improvement": {
+          "repository": "/home/rawley-stanhope/.local/rlm-adk/projects/runtime-improvement",
+          "register_at": "launch"
+        }
+      }
+    },
+    "assignments": {
+      "mode": "initialize",
+      "kinds": [
+        {
+          "kind": "capacity_governance",
+          "enabled": true
+        },
+        {
+          "kind": "project_coordination",
+          "project_ids": [
+            "discipleship-vision-c12",
+            "prayer-life-c12",
+            "runtime-improvement",
+            "scripture-c12",
+            "sermons-c12",
+            "steward-reference"
+          ]
+        },
+        {
+          "kind": "project_registration",
+          "enabled": false
+        },
+        {
+          "kind": "model_routing_control",
+          "enabled": false
+        },
+        {
+          "kind": "installed_release_activation",
+          "project_id": null
+        },
+        {
+          "kind": "project_promotion_execution",
+          "project_ids": []
+        }
+      ],
+      "adoptions": [
+        {
+          "kind": "capacity_governance",
+          "state": "enabled",
+          "slots": [
+            {
+              "slot": {
+                "kind": "capacity_governance"
+              },
+              "holder": "stwlab"
+            }
+          ]
+        },
+        {
+          "kind": "project_coordination",
+          "state": "enabled",
+          "slots": [
+            {
+              "slot": {
+                "kind": "project_coordination",
+                "project_id": "discipleship-vision-c12"
+              },
+              "holder": "rsch01"
+            },
+            {
+              "slot": {
+                "kind": "project_coordination",
+                "project_id": "prayer-life-c12"
+              },
+              "holder": "rsch01"
+            },
+            {
+              "slot": {
+                "kind": "project_coordination",
+                "project_id": "runtime-improvement"
+              },
+              "holder": "rsch01"
+            },
+            {
+              "slot": {
+                "kind": "project_coordination",
+                "project_id": "scripture-c12"
+              },
+              "holder": "rsch01"
+            },
+            {
+              "slot": {
+                "kind": "project_coordination",
+                "project_id": "sermons-c12"
+              },
+              "holder": "rsch01"
+            },
+            {
+              "slot": {
+                "kind": "project_coordination",
+                "project_id": "steward-reference"
+              },
+              "holder": "rsch01"
+            }
+          ]
+        },
+        {
+          "kind": "project_registration",
+          "state": "disabled"
+        },
+        {
+          "kind": "model_routing_control",
+          "state": "disabled"
+        },
+        {
+          "kind": "installed_release_activation",
+          "state": "disabled"
+        },
+        {
+          "kind": "project_promotion_execution",
+          "state": "disabled"
+        }
+      ]
+    },
+    "resources": {
+      "capacity": {
+        "initial_target": 1,
+        "ceiling": 2
+      }
+    }
+  },
+  "runtime": {
+    "execution": {
+      "finite_child_levels": 3,
+      "max_concurrent_children": 1
+    },
+    "compaction": {
+      "token_threshold": 150000
+    }
+  }
+}

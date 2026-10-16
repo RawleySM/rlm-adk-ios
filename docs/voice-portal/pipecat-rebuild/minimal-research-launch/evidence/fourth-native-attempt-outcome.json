@@ -1,0 +1,74 @@
+{
+  "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+  "boottime": 1483656.030946088,
+  "coordinator_cleanup": {
+    "local": "unit_exit_observed",
+    "remote_inference_usage": "unknown"
+  },
+  "owner_exit": {
+    "observation": {
+      "ActiveState": "failed",
+      "ControlGroup": "",
+      "InvocationID": "29bfb2abeeeb4745a0675226e4ae36d4",
+      "LoadState": "loaded",
+      "MainPID": "0",
+      "Result": "exit-code",
+      "SubState": "failed",
+      "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+      "boottime": 1483656.008830671,
+      "returncode": 0,
+      "utc": 1792018961.0402815
+    },
+    "systemd_exit": null
+  },
+  "reason": "independent coordinator exited; settlement-only recovery",
+  "reference": {
+    "path": "/home/rawley-stanhope/srv/rlm-adk/live-test/experiments/5dcd1cbf1d4d82cb877c7b10e53c205c0c49eec1e8f59250ea022de493e3cee4/recovery/4d7b3fb67e0a707c51b49be1.json",
+    "sha256": "297a33a934581746d115d89a08fb34f30dd5cfb3bf12fb25c5a6d456505831a5"
+  },
+  "request_ref": {
+    "path": "/home/rawley-stanhope/srv/rlm-adk/live-test/experiments/5dcd1cbf1d4d82cb877c7b10e53c205c0c49eec1e8f59250ea022de493e3cee4/request.json",
+    "sha256": "1c14fd4897bc6c0e42f0332fa1091e7dc77c46b4c5106dcb873170129ec550bd"
+  },
+  "restoration": {
+    "allocator_root": "/home/rawley-stanhope/srv/rlm-adk",
+    "baseline": {
+      "control_root": "/home/rawley-stanhope/.local/rlm-adk/runtime_control",
+      "hold": null,
+      "release": "/home/rawley-stanhope/srv/rlm-adk/releases/5f5b027f4da51f545f858c079207960699063944bfd5ed61b3993cb708af56c2"
+    },
+    "experiment_owner": {
+      "path": "/home/rawley-stanhope/srv/rlm-adk/live-test/experiments/5dcd1cbf1d4d82cb877c7b10e53c205c0c49eec1e8f59250ea022de493e3cee4/request.json",
+      "sha256": "1c14fd4897bc6c0e42f0332fa1091e7dc77c46b4c5106dcb873170129ec550bd"
+    },
+    "lease_id": "live-test-5f02236a4db6",
+    "phase": "restored",
+    "schema": "native_allocator_restoration.v1"
+  },
+  "semantic": {
+    "decision": "stop",
+    "error_acknowledgments": [
+      "Launch IsolationError: dependency environment expected 640c66eb332466826b84219e423ca7c6f0b9603fc66614d6bddac39489cbfb4b, actual f8b02cbfc01bed08d4255fae865e38c1f3ad42e8151849e55edd2f1fbf71a600.",
+      "Mandatory monitor coverage unavailable because launch failed before runtime submission.",
+      "Exact lease settlement and production restoration are not verified by the inspected evidence; no cleanup success claimed."
+    ],
+    "goal_evidence": {
+      "acceptance": "Not evaluated: trial never started; no project-selection or proposal outcome claimed.",
+      "bootstrap_log": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/A/rlm-adk--native-supervision-qual-09de2b6f97/native-trial-5dcd1cbf1d4d82cb877c7b10e53c205c/bootstrap.log",
+      "failure_evidence": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/A/rlm-adk--native-supervision-qual-09de2b6f97/native-trial-5dcd1cbf1d4d82cb877c7b10e53c205c/launch-failure.json",
+      "provider_start_attempted": false,
+      "runtime_receipt_present": false,
+      "runtime_submission_attempted": false
+    },
+    "rationale": "Launch refused during private provenance bootstrap because the frozen skill installation dependency environment does not match the supplied interpreter. Do not mutate frozen installation or retry the same run. Driver must preserve failure evidence and verify exact lease cleanup/restoration before B."
+  },
+  "status": "settled",
+  "trial_settlement": {
+    "launcher_refusal": {
+      "path": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/A/rlm-adk--native-supervision-qual-09de2b6f97/native-trial-5dcd1cbf1d4d82cb877c7b10e53c205c/launch-failure.json",
+      "sha256": "45e90dcc59762005ffd1aa7a7d0b0ded3bb613621f7d6c3b9c82302dbe030555"
+    },
+    "runtime_submission_attempted": false
+  },
+  "utc": 1792018961.062397
+}

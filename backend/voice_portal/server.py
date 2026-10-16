@@ -371,7 +371,13 @@ class Handler(BaseHTTPRequestHandler):
                 if method == "POST" and parts[2:] == ["mail"]:
                     payload = self._read_json() if int(self.headers.get("Content-Length") or 0) else {}
                     result = issues.mail_ticket(cfg, parts[1], note=payload.get("note"), force=bool(payload.get("force")))
-                    return self._json(200 if result.get("mailed") else (404 if result.get("reason") == "not_found" else 409), result)
+                    return self._json(200 if result.get("mailed") or result.get("staged") else (404 if result.get("reason") == "not_found" else 409), result)
+                if method == "POST" and parts[2:] == ["status"]:
+                    payload = self._read_json()
+                    if not payload.get("status"):
+                        return self._json(400, {"error": "status is required"})
+                    event = issues.record_status(cfg, parts[1], str(payload["status"]), text=str(payload.get("text") or ""), artifact=payload.get("artifact"), by=str(payload.get("by") or "operator-session"))
+                    return self._json(201 if event else 404, event or {"error": "not_found"})
                 if method == "POST" and parts == ["issues", "replies"]:
                     return self._json(200, {"recorded": issues.poll_replies(cfg)})
             return self._json(404, {"error": "not_found", "path": url.path})

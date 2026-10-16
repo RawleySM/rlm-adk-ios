@@ -1,0 +1,101 @@
+{
+  "measurement_sha256": "9378c7e05f25e66b01a947299fdc4b1c654299cbea1f2b4275b43fb1982477d2",
+  "ready": {
+    "driver": {
+      "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+      "kind": "no_trial_qualification",
+      "pid": 3980875,
+      "start_ticks": 148788196
+    },
+    "managed_execution": false,
+    "native_skill_runtime": null,
+    "provenance_db": "/home/rawley-stanhope/.local/share/rlm-adk/native-supervision-20261014/measurement-11/coordinator/stores/provenance/provenance.sqlite3",
+    "provenance_identity": {
+      "canonical_data_home": "/home/rawley-stanhope/.local/share/rlm-adk/native-supervision-20261014/measurement-11/coordinator",
+      "canonical_provenance_db": "/home/rawley-stanhope/.local/share/rlm-adk/native-supervision-20261014/measurement-11/coordinator/stores/provenance/provenance.sqlite3",
+      "canonical_session_db": "/home/rawley-stanhope/.local/share/rlm-adk/native-supervision-20261014/measurement-11/coordinator/stores/sessions/session.db",
+      "carrier_id": "provenance-epoch10-258af66c2c8f4ee080cfdb2eb99c466c",
+      "created_at": 1792023201.4383218,
+      "identity_id": 1,
+      "identity_schema_version": 2,
+      "identity_sha256": "6b5a652aeaacdb0243e481c3d3cfc59b91ab41e0cb683fdde7f75e898fbc2201",
+      "provenance_store_epoch": 10
+    },
+    "request_ref": {
+      "path": "/home/rawley-stanhope/.local/share/rlm-adk/native-supervision-20261014/measurement-11/request.json",
+      "sha256": "7fd265c881d2e3cf1b59b725165c068207933b141850e0c46642e2be8d777998"
+    },
+    "run_id": "native-coordinator-measurement-11",
+    "session_db": "/home/rawley-stanhope/.local/share/rlm-adk/native-supervision-20261014/measurement-11/coordinator/stores/sessions/session.db",
+    "session_id": "coordinator-3cc2c3d2bf5aa78c39944721",
+    "user_id": "native-experiment-measurement-11",
+    "workspace": "/home/rawley-stanhope/.local/share/rlm-adk/native-supervision-20261014/measurement-11/coordinator/workspace"
+  },
+  "cycles": [
+    {
+      "cycle": "0",
+      "reports": 2,
+      "failures": [],
+      "delivered_reports": 2,
+      "review_seconds": 64.0112899900414,
+      "wake_received": {
+        "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+        "boottime": 1488050.059149332,
+        "utc": 1792023355.0906007
+      }
+    },
+    {
+      "cycle": "1",
+      "reports": 2,
+      "failures": [],
+      "delivered_reports": 2,
+      "review_seconds": 59.43376321089454,
+      "wake_received": {
+        "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+        "boottime": 1488199.170924732,
+        "utc": 1792023504.2023757
+      }
+    },
+    {
+      "cycle": "2",
+      "reports": 4,
+      "failures": [],
+      "delivered_reports": 4,
+      "review_seconds": 97.79265557206236,
+      "wake_received": {
+        "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+        "boottime": 1488348.330336525,
+        "utc": 1792023653.3617873
+      }
+    },
+    {
+      "cycle": "3",
+      "reports": 4,
+      "failures": [],
+      "delivered_reports": 4,
+      "review_seconds": 110.48707946296781,
+      "wake_received": {
+        "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+        "boottime": 1488497.448699436,
+        "utc": 1792023802.4801505
+      }
+    },
+    {
+      "cycle": "4",
+      "reports": 4,
+      "failures": [],
+      "delivered_reports": 4,
+      "review_seconds": 79.45379747310653,
+      "wake_received": {
+        "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+        "boottime": 1488646.584926697,
+        "utc": 1792023951.6163778
+      }
+    }
+  ],
+  "cleanup": {
+    "complete": true,
+    "foreground_repl_closed": true,
+    "receipt": "ApplicationCloseReceipt(runner_closed=True, seat_retirements=(SeatRetirementReceipt(owner='composition:3ee6d8901c4447e1a6a247564d6e47b5:compaction', failures=()), SeatRetirementReceipt(owner='composition:3ee6d8901c4447e1a6a247564d6e47b5:child', failures=()), SeatRetirementReceipt(owner='composition:3ee6d8901c4447e1a6a247564d6e47b5:root', failures=())), credential_view_closed=True)"
+  }
+}

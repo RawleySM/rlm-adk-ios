@@ -1,0 +1,69 @@
+{
+  "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+  "boottime": 1482024.38404413,
+  "coordinator_cleanup": {
+    "complete": true,
+    "foreground_repl_closed": true,
+    "receipt": "ApplicationCloseReceipt(runner_closed=True, seat_retirements=(SeatRetirementReceipt(owner='composition:c7672ac1070240feafb3c447fcb12ad6:compaction', failures=()), SeatRetirementReceipt(owner='composition:c7672ac1070240feafb3c447fcb12ad6:child', failures=()), SeatRetirementReceipt(owner='composition:c7672ac1070240feafb3c447fcb12ad6:root', failures=())), credential_view_closed=True)"
+  },
+  "reason": "Launch was attempted once and refused: BLOCKED: skill configuration requires protected regular private bytes (isolated launch exit 2). No successful trial receipt or mandatory monitor coverage is available. Stop rather than retry or modify frozen configuration; preserve incomplete results and leave exact lease cleanup/restoration to the native driver. Acceptance is not established.",
+  "reference": {
+    "path": "/home/rawley-stanhope/srv/rlm-adk/live-test/experiments/0e631959eaec3f874fe7823c964d29899c73d135435d0bfe8709c2d823aef253/recovery/9d081253009585cee316ae1b.json",
+    "sha256": "bbb97200c534345c6f6b680995104d413fea64f329e8dedd26d3e5d6b549f4ea"
+  },
+  "request_ref": {
+    "path": "/home/rawley-stanhope/srv/rlm-adk/live-test/experiments/0e631959eaec3f874fe7823c964d29899c73d135435d0bfe8709c2d823aef253/request.json",
+    "sha256": "e95fe50dceaad2c7001a4998a144121b2652e41ad6bb767e9a6673005dab8965"
+  },
+  "restoration": {
+    "allocator_root": "/home/rawley-stanhope/srv/rlm-adk",
+    "baseline": {
+      "control_root": "/home/rawley-stanhope/.local/rlm-adk/runtime_control",
+      "hold": null,
+      "release": "/home/rawley-stanhope/srv/rlm-adk/releases/483c0002a18cdfe2e053597d85690d2e392c1ee063b4b611820de1c4ca37ef66"
+    },
+    "experiment_owner": {
+      "path": "/home/rawley-stanhope/srv/rlm-adk/live-test/experiments/0e631959eaec3f874fe7823c964d29899c73d135435d0bfe8709c2d823aef253/request.json",
+      "sha256": "e95fe50dceaad2c7001a4998a144121b2652e41ad6bb767e9a6673005dab8965"
+    },
+    "lease_id": "live-test-bd8e07e7fa88",
+    "phase": "restored",
+    "schema": "native_allocator_restoration.v1"
+  },
+  "semantic": {
+    "decision": "stop",
+    "error_acknowledgments": [
+      "Launch refusal acknowledged; offending configuration file is not identified by the diagnostic.",
+      "No claim of settlement, restoration, project acceptance, or convergence."
+    ],
+    "goal_evidence": {
+      "lease_id": "live-test-bd8e07e7fa88",
+      "original_error": "launch failed: BLOCKED: skill configuration requires protected regular private bytes; isolated launch refused (exit 2)",
+      "required_scopes": [
+        "runtime:resident:stwref",
+        "runtime:resident:pryc12",
+        "runtime:resident:visc12",
+        "projects:project:trial-ab-output"
+      ],
+      "restoration_status": "unverified",
+      "status": "not_evaluated_launch_blocked"
+    },
+    "rationale": "Launch was attempted once and refused: BLOCKED: skill configuration requires protected regular private bytes (isolated launch exit 2). No successful trial receipt or mandatory monitor coverage is available. Stop rather than retry or modify frozen configuration; preserve incomplete results and leave exact lease cleanup/restoration to the native driver. Acceptance is not established."
+  },
+  "status": "settled",
+  "trial_settlement": {
+    "launcher_refusal": {
+      "at": 1792017303.3344145,
+      "cause": "skill configuration requires protected regular private bytes",
+      "failure_type": "IsolationError",
+      "launcher_closed": true,
+      "phase": "preflight",
+      "provider_start_attempted": false,
+      "run_id": "native-trial-0e631959eaec3f874fe7823c964d2989",
+      "runtime_submission_attempted": false,
+      "schema": "rlm_adk.live_test_launch_failure.v1"
+    },
+    "runtime_submission_attempted": false
+  },
+  "utc": 1792017329.4154956
+}

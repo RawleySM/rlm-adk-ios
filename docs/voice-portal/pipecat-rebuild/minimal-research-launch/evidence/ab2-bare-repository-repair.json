@@ -1,0 +1,59 @@
+{
+  "at": 1792022640.7850113,
+  "source": "43503af3e7ad962614d87cdca98aab534d7859c1",
+  "reason": "ordinary clone used incorrect non-bare layout; tags were present, not missing",
+  "checks": [
+    {
+      "arm": "A",
+      "bare": "true",
+      "all_refs_match": true,
+      "versions": [
+        {
+          "package_key": "steward_stwref",
+          "number": 11,
+          "tag": "refs/tags/steward_stwref/v11",
+          "commit": "bbe9efb35524c15295415408e7e9e9bb2c69c3cb"
+        },
+        {
+          "package_key": "prayer_and_life_context_pryc12",
+          "number": 2,
+          "tag": "refs/tags/prayer_and_life_context_pryc12/v2",
+          "commit": "e53acdefae54b48c3c44726044aa93b9af6bf250"
+        },
+        {
+          "package_key": "discipleship_vision_visc12",
+          "number": 3,
+          "tag": "refs/tags/discipleship_vision_visc12/v3",
+          "commit": "adef75255952addeb065c3e81cffc15ca311729b"
+        }
+      ],
+      "preserved_wrong_copy": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/operations/ab2-A-nonbare-skills-copy"
+    },
+    {
+      "arm": "B",
+      "bare": "true",
+      "all_refs_match": true,
+      "versions": [
+        {
+          "package_key": "steward_stwref",
+          "number": 11,
+          "tag": "refs/tags/steward_stwref/v11",
+          "commit": "bbe9efb35524c15295415408e7e9e9bb2c69c3cb"
+        },
+        {
+          "package_key": "prayer_and_life_context_pryc12",
+          "number": 2,
+          "tag": "refs/tags/prayer_and_life_context_pryc12/v2",
+          "commit": "e53acdefae54b48c3c44726044aa93b9af6bf250"
+        },
+        {
+          "package_key": "discipleship_vision_visc12",
+          "number": 3,
+          "tag": "refs/tags/discipleship_vision_visc12/v3",
+          "commit": "adef75255952addeb065c3e81cffc15ca311729b"
+        }
+      ],
+      "preserved_wrong_copy": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/operations/ab2-B-nonbare-skills-copy"
+    }
+  ]
+}

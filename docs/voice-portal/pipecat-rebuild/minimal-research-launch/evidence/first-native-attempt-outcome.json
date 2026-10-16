@@ -1,0 +1,46 @@
+{
+  "begin_refusal": {
+    "path": "/home/rawley-stanhope/srv/rlm-adk/live-test/experiments/8fbb96e58b3a5a666e915fc0c880826148b1ba1c5e10ed064b05f343b7d08190/allocator-begin.json",
+    "sha256": "de0d713d7eca9ef18a29a4dbb2a966798abbe6d3119d3b44ef848634b8b03ed7"
+  },
+  "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+  "boottime": 1481085.999844893,
+  "coordinator_cleanup": {
+    "local": "unit_exit_observed",
+    "remote_inference_usage": "unknown"
+  },
+  "owner_exit": {
+    "observation": {
+      "ActiveState": "failed",
+      "ControlGroup": "",
+      "InvocationID": "65556f87315b4330833efdadb23a98bd",
+      "LoadState": "loaded",
+      "MainPID": "0",
+      "Result": "exit-code",
+      "SubState": "failed",
+      "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+      "boottime": 1481085.97788606,
+      "returncode": 0,
+      "utc": 1792016391.0093374
+    },
+    "systemd_exit": null
+  },
+  "reason": "independent coordinator exited; settlement-only recovery",
+  "reference": {
+    "path": "/home/rawley-stanhope/srv/rlm-adk/live-test/experiments/8fbb96e58b3a5a666e915fc0c880826148b1ba1c5e10ed064b05f343b7d08190/recovery/b3c0a97da7deae29bbeed13b.json",
+    "sha256": "2f83d69e20b95f85191b062a7a9299020b75ba867ff5bf59480f2e969d64dd18"
+  },
+  "request_ref": {
+    "path": "/home/rawley-stanhope/srv/rlm-adk/live-test/experiments/8fbb96e58b3a5a666e915fc0c880826148b1ba1c5e10ed064b05f343b7d08190/request.json",
+    "sha256": "bbae20a4384773393e5e690b30645c017b8f65b7e2123ffbe95222a8931e195f"
+  },
+  "restoration": {
+    "status": "never_began"
+  },
+  "semantic": {
+    "decision": "stop",
+    "rationale": "Launch attempted but native begin was refused: production allocator cannot import rlm_adk.live_testing.native.contracts (ModuleNotFoundError: No module named 'rlm_adk.live_testing'). No receipt was returned and no trial acceptance or convergence is claimed. Preserve the launch failure for owner remediation rather than retrying unchanged host configuration."
+  },
+  "status": "settled",
+  "utc": 1792016391.0312958
+}

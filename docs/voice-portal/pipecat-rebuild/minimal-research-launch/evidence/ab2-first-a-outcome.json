@@ -1,0 +1,58 @@
+{
+  "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+  "boottime": 1487270.530942867,
+  "coordinator_cleanup": {
+    "complete": true,
+    "foreground_repl_closed": true,
+    "receipt": "ApplicationCloseReceipt(runner_closed=True, seat_retirements=(SeatRetirementReceipt(owner='composition:3fa6fe25df274dbdaec44297c08141d1:compaction', failures=()), SeatRetirementReceipt(owner='composition:3fa6fe25df274dbdaec44297c08141d1:child', failures=()), SeatRetirementReceipt(owner='composition:3fa6fe25df274dbdaec44297c08141d1:root', failures=())), credential_view_closed=True)"
+  },
+  "reason": "Launch refused during private provenance bootstrap: steward_stwref version does not resolve (version_not_found). Preserve failed attempt; do not substitute frozen versions or retry under the same run ID.",
+  "reference": {
+    "path": "/home/rawley-stanhope/srv/rlm-adk/live-test/experiments/4079fba0fe8a6bab30c600c15946ac75b68365083a6aeb20d5d16f0f3ce2b32a/recovery/7616b9b3a96a2e16ef03f764.json",
+    "sha256": "de9e1b48b648fe8aaef4f4f5d42e9afb40b6d38b2e143a959f31212a6e953284"
+  },
+  "request_ref": {
+    "path": "/home/rawley-stanhope/srv/rlm-adk/live-test/experiments/4079fba0fe8a6bab30c600c15946ac75b68365083a6aeb20d5d16f0f3ce2b32a/request.json",
+    "sha256": "0d5430566415d03300b0915901de1e5efff4a02eb7c4cbb16b171766b79320b7"
+  },
+  "restoration": {
+    "allocator_root": "/home/rawley-stanhope/srv/rlm-adk",
+    "baseline": {
+      "control_root": "/home/rawley-stanhope/.local/rlm-adk/runtime_control",
+      "hold": null,
+      "release": "/home/rawley-stanhope/srv/rlm-adk/releases/24e2a4df875ce895fc64195883643d543fdd8187566bf90665de27e59567d6c1"
+    },
+    "experiment_owner": {
+      "path": "/home/rawley-stanhope/srv/rlm-adk/live-test/experiments/4079fba0fe8a6bab30c600c15946ac75b68365083a6aeb20d5d16f0f3ce2b32a/request.json",
+      "sha256": "0d5430566415d03300b0915901de1e5efff4a02eb7c4cbb16b171766b79320b7"
+    },
+    "lease_id": "live-test-1693e503838b",
+    "phase": "restored",
+    "schema": "native_allocator_restoration.v1"
+  },
+  "semantic": {
+    "decision": "stop",
+    "error_acknowledgments": [
+      "Original launch failure and bootstrap traceback inspected. Exact lease settlement and restoration are not verified here; supplied driver must reconcile cleanup."
+    ],
+    "goal_evidence": {
+      "acceptance": "No trial outcome established.",
+      "bootstrap_log": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-002/A/rlm-adk--research-trial-compatib-06a7dcdc82/native-trial-4079fba0fe8a6bab30c600c15946ac75/bootstrap.log",
+      "launch_failure": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-002/A/rlm-adk--research-trial-compatib-06a7dcdc82/native-trial-4079fba0fe8a6bab30c600c15946ac75/launch-failure.json",
+      "phase": "bootstrap",
+      "provider_start_attempted": false,
+      "runtime_receipt_present": false,
+      "runtime_submission_attempted": false
+    },
+    "rationale": "Launch refused during private provenance bootstrap: steward_stwref version does not resolve (version_not_found). Preserve failed attempt; do not substitute frozen versions or retry under the same run ID."
+  },
+  "status": "settled",
+  "trial_settlement": {
+    "launcher_refusal": {
+      "path": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-002/A/rlm-adk--research-trial-compatib-06a7dcdc82/native-trial-4079fba0fe8a6bab30c600c15946ac75/launch-failure.json",
+      "sha256": "f8f7cc09f7a911113186de6e8f7d6be3aa6d5003f9ba3cf6f71fc07e548333be"
+    },
+    "runtime_submission_attempted": false
+  },
+  "utc": 1792022575.5623937
+}

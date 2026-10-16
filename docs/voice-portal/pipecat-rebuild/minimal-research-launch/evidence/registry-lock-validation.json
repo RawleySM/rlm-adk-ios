@@ -1,0 +1,108 @@
+{
+  "red": {
+    "invocation_id": "0ccb59220e7f449a81626b31067c7166",
+    "native_run_ids": [
+      "provider-fake-63621d40a3264d8480d5e1d3637da24a"
+    ],
+    "report_paths": [
+      "/home/rawleysm/.local/share/rlm-adk/retrace/686b21b5604d/invocations/0ccb59220e7f449a81626b31067c7166/native-provider-fake-63621d40a3264d8480d5e1d3637da24a.json"
+    ],
+    "outcomes": [
+      {
+        "status": "ASSERTION_FAILURE",
+        "counts": {
+          "total": 9,
+          "passed": 7,
+          "failed": 2,
+          "xfail": 0,
+          "xpass": 0
+        },
+        "failures": [
+          {
+            "name": "resident_sqlite_journal",
+            "category": "contract",
+            "passed": false,
+            "xfail": false,
+            "xfail_id": null,
+            "error": "[resident-sqlite-lock] '[REGISTRY_LOCK:journal=true]' not in combined output",
+            "elapsed_ms": 0.012064119800925255
+          },
+          {
+            "name": "resident_sqlite_visibility",
+            "category": "contract",
+            "passed": false,
+            "xfail": false,
+            "xfail_id": null,
+            "error": "[resident-sqlite-lock] '[REGISTRY_LOCK:visibility=true]' not in combined output",
+            "elapsed_ms": 0.0037921126931905746
+          }
+        ]
+      }
+    ]
+  },
+  "green": {
+    "invocation_id": "faa06995992c4de48044d869a9b9d77b",
+    "native_run_ids": [
+      "provider-fake-bda3babdadae49ef850007b93f896c05"
+    ],
+    "report_paths": [
+      "/home/rawleysm/.local/share/rlm-adk/retrace/686b21b5604d/invocations/faa06995992c4de48044d869a9b9d77b/native-provider-fake-bda3babdadae49ef850007b93f896c05.json"
+    ],
+    "outcomes": [
+      {
+        "status": "EXPECTED_CHECKS_HELD",
+        "counts": {
+          "total": 9,
+          "passed": 9,
+          "failed": 0,
+          "xfail": 0,
+          "xpass": 0
+        },
+        "failures": []
+      }
+    ]
+  },
+  "wait": {
+    "invocation_id": "ac397c7a72c44d6b9b257fb7f7b6fc00",
+    "native_run_ids": [
+      "provider-fake-8b6fc8ee40b648db9ce2ce6d0a1d1602"
+    ],
+    "report_paths": [
+      "/home/rawleysm/.local/share/rlm-adk/retrace/686b21b5604d/invocations/ac397c7a72c44d6b9b257fb7f7b6fc00/native-provider-fake-8b6fc8ee40b648db9ce2ce6d0a1d1602.json"
+    ],
+    "outcomes": [
+      {
+        "status": "EXPECTED_CHECKS_HELD",
+        "counts": {
+          "total": 25,
+          "passed": 25,
+          "failed": 0,
+          "xfail": 0,
+          "xpass": 0
+        },
+        "failures": []
+      }
+    ]
+  },
+  "f6": {
+    "invocation_id": "1b2ab99054ab4e45a4619a36b6e9bbad",
+    "native_run_ids": [
+      "f6sticky-6602a3617350-87142938d2ae4875b5e3c1a2ba6c2d33"
+    ],
+    "report_paths": [
+      "/home/rawleysm/.local/share/rlm-adk/retrace/686b21b5604d/invocations/1b2ab99054ab4e45a4619a36b6e9bbad/native-f6sticky-6602a3617350-87142938d2ae4875b5e3c1a2ba6c2d33.json"
+    ],
+    "outcomes": [
+      {
+        "status": "EXPECTED_CHECKS_HELD",
+        "counts": {
+          "total": 597,
+          "passed": 597,
+          "failed": 0,
+          "xfail": 12,
+          "xpass": 0
+        }
+      }
+    ]
+  }
+}

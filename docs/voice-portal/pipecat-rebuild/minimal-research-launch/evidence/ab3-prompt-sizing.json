@@ -1,0 +1,54 @@
+{
+  "objective_chars": 2077,
+  "synthetic_previous_report_is_sizing_only": true,
+  "results": [
+    {
+      "assignment": "projects:project:trial-ab-output",
+      "previous_report": false,
+      "chars": 7036,
+      "status": "ready"
+    },
+    {
+      "assignment": "projects:project:trial-ab-output",
+      "previous_report": true,
+      "chars": 7162,
+      "status": "ready"
+    },
+    {
+      "assignment": "runtime:resident:pryc12",
+      "previous_report": false,
+      "chars": 6986,
+      "status": "ready"
+    },
+    {
+      "assignment": "runtime:resident:pryc12",
+      "previous_report": true,
+      "chars": 7112,
+      "status": "ready"
+    },
+    {
+      "assignment": "runtime:resident:stwref",
+      "previous_report": false,
+      "chars": 6986,
+      "status": "ready"
+    },
+    {
+      "assignment": "runtime:resident:stwref",
+      "previous_report": true,
+      "chars": 7112,
+      "status": "ready"
+    },
+    {
+      "assignment": "runtime:resident:visc12",
+      "previous_report": false,
+      "chars": 6996,
+      "status": "ready"
+    },
+    {
+      "assignment": "runtime:resident:visc12",
+      "previous_report": true,
+      "chars": 7122,
+      "status": "ready"
+    }
+  ]
+}

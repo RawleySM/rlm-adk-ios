@@ -1,0 +1,69 @@
+{
+  "prepared_at_utc": "2026-10-14T20:33:19.578700+00:00",
+  "source_checkout": "/home/rawleysm/.codex/worktrees/launcher-modules/rlm-adk",
+  "source_checkout_head": "11a90f43cf42abb6ec116a67aa4c321fd2a9de32",
+  "merged_runtime_source": "d6a0871058fe491a7f06d1b906ccd3a281724d36",
+  "authoring_sha256": "65fde5e18ac965832da4aedca1f9ef747d12077f9e00d0f96dca8591610f3750",
+  "schema_sha256": "ead35c6351ffa9eeb1489b60b5252637b8348a72ccce5e6705781e6e264f4579",
+  "normalized_document_sha256": "722be7531e15961167b6b0778ea021539f7fd21ba6acde69cf49ac1111882624",
+  "complete": true,
+  "nodes": [
+    {
+      "id": "stwlab",
+      "name": "Steward",
+      "depth": 0
+    },
+    {
+      "id": "rsch01",
+      "name": "Researcher",
+      "depth": 1
+    }
+  ],
+  "project_slots": [
+    {
+      "project_id": "discipleship-vision-c12",
+      "holder": "rsch01"
+    },
+    {
+      "project_id": "prayer-life-c12",
+      "holder": "rsch01"
+    },
+    {
+      "project_id": "runtime-improvement",
+      "holder": "rsch01"
+    },
+    {
+      "project_id": "scripture-c12",
+      "holder": "rsch01"
+    },
+    {
+      "project_id": "sermons-c12",
+      "holder": "rsch01"
+    },
+    {
+      "project_id": "steward-reference",
+      "holder": "rsch01"
+    }
+  ],
+  "capacity": {
+    "ceiling": 2,
+    "initial_target": 1
+  },
+  "checks": [
+    "LaunchDocument build and in-memory seal",
+    "Two-node roster and node JSON consistency",
+    "All six coordination slots held by Researcher",
+    "Initial target 1 within ceiling 2",
+    "Embedded steering matches operator-readable files",
+    "Desktop existing five canonical project pointer revisions match selected pins"
+  ],
+  "not_proven": [
+    "Operational launch preflight and route readiness",
+    "New research repository and bootstrap staging",
+    "Outer skill installation compatibility and formation",
+    "Actual A/B trial manifests, snapshots and monitoring capacity",
+    "Runtime mail delivery or native invocation",
+    "GPU sample capture and native model-visible delivery",
+    "Installed release update or live acceptance"
+  ]
+}

@@ -1,0 +1,280 @@
+{
+  "assignment_plan": {
+    "path": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/A/rlm-adk--research-trial-compatib-06a7dcdc82/native-trial-e478eac7e84967f151f613e3a1b4562c/supervision/checkpoints/checkpoint-897dfcda6ef6cbd8b59a45d1.json",
+    "pointer": "/assignment_plan",
+    "sha256": "9ff4e8aacecea9a9b237576e9fbe03ae52d6ab4137e65bccdfb496b70d60d142"
+  },
+  "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+  "boottime": 1485606.925886943,
+  "coordinator_cleanup": {
+    "complete": true,
+    "foreground_repl_closed": true,
+    "receipt": "ApplicationCloseReceipt(runner_closed=True, seat_retirements=(SeatRetirementReceipt(owner='composition:f7a7232de0614ab5a564f69ba32d6d29:compaction', failures=()), SeatRetirementReceipt(owner='composition:f7a7232de0614ab5a564f69ba32d6d29:child', failures=()), SeatRetirementReceipt(owner='composition:f7a7232de0614ab5a564f69ba32d6d29:root', failures=())), credential_view_closed=True)"
+  },
+  "latest_checkpoint": {
+    "path": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/A/rlm-adk--research-trial-compatib-06a7dcdc82/native-trial-e478eac7e84967f151f613e3a1b4562c/supervision/checkpoints/checkpoint-897dfcda6ef6cbd8b59a45d1.json",
+    "sha256": "9ff4e8aacecea9a9b237576e9fbe03ae52d6ab4137e65bccdfb496b70d60d142"
+  },
+  "latest_decision": {
+    "path": "/home/rawley-stanhope/srv/rlm-adk/live-test/experiments/e478eac7e84967f151f613e3a1b4562c4b49a103405a40f63e865e07e0937601/rounds/dbebcf48144dd5c8d941c3dc/decision-3d07a2d2775d5b3f.json",
+    "sha256": "5acd43d0c863cb674c7ee40acd6f754531adcd4cbd95f6f863a93db4eaf2fc65"
+  },
+  "reason": "Stop for missing mandatory coverage, explicitly required by objective and runbook-A. The successful assessment batch returned zero reports and no dispatch failures; the checkpoint has zero scopes/monitors, no admitted residents or projects, and three pending admissions. None of the four mandatory scopes is covered. Registry open failure and unavailable events tables also make collection incomplete. This is not a convergence or wedge inference from quietness, nor proof of repeated unrecoverable errors. Preserve incomplete results and let the driver join native work and perform stop/restoration; settlement is not yet proved.",
+  "reference": {
+    "path": "/home/rawley-stanhope/srv/rlm-adk/live-test/experiments/e478eac7e84967f151f613e3a1b4562c4b49a103405a40f63e865e07e0937601/recovery/ff4406351e31a6562a7bbe04.json",
+    "sha256": "4c62196edddb5bbf28da2ace12ff6cbbf0a73880847e667a39154da9e814491e"
+  },
+  "request_ref": {
+    "path": "/home/rawley-stanhope/srv/rlm-adk/live-test/experiments/e478eac7e84967f151f613e3a1b4562c4b49a103405a40f63e865e07e0937601/request.json",
+    "sha256": "0c8ea21a82d87df9b09a77b5fd832505c4dc26b4397e6f34975820c5c7982757"
+  },
+  "restoration": {
+    "allocator_root": "/home/rawley-stanhope/srv/rlm-adk",
+    "baseline": {
+      "control_root": "/home/rawley-stanhope/.local/rlm-adk/runtime_control",
+      "hold": null,
+      "release": "/home/rawley-stanhope/srv/rlm-adk/releases/24e2a4df875ce895fc64195883643d543fdd8187566bf90665de27e59567d6c1"
+    },
+    "experiment_owner": {
+      "path": "/home/rawley-stanhope/srv/rlm-adk/live-test/experiments/e478eac7e84967f151f613e3a1b4562c4b49a103405a40f63e865e07e0937601/request.json",
+      "sha256": "0c8ea21a82d87df9b09a77b5fd832505c4dc26b4397e6f34975820c5c7982757"
+    },
+    "lease_id": "live-test-c2f08fcd19bb",
+    "phase": "restored",
+    "schema": "native_allocator_restoration.v1"
+  },
+  "semantic": {
+    "acknowledged_errors": [
+      {
+        "component": "registry",
+        "error": "unable to open database file"
+      },
+      {
+        "component": "compaction_usage",
+        "error": "no such table: events"
+      },
+      {
+        "component": "control_evidence",
+        "error": {
+          "component": "session_recovery_receipts",
+          "reason": "no such table: events"
+        }
+      }
+    ],
+    "checkpoint": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/A/rlm-adk--research-trial-compatib-06a7dcdc82/native-trial-e478eac7e84967f151f613e3a1b4562c/supervision/checkpoints/checkpoint-897dfcda6ef6cbd8b59a45d1.json",
+    "checkpoint_sha256": "9ff4e8aacecea9a9b237576e9fbe03ae52d6ab4137e65bccdfb496b70d60d142",
+    "collection_errors": [
+      {
+        "component": "registry",
+        "error": "unable to open database file"
+      },
+      {
+        "component": "compaction_usage",
+        "error": "no such table: events"
+      },
+      {
+        "component": "control_evidence",
+        "error": {
+          "component": "session_recovery_receipts",
+          "reason": "no such table: events"
+        }
+      }
+    ],
+    "decision": "stop",
+    "expected_generation": 0,
+    "goal_evidence": [
+      {
+        "finding": "Original measurement contract requires grounded proposals with alternatives, selection/rejection reasons, beneficiaries, ambition, feasible first action, dependencies and uncertainties, or justified no-project.",
+        "source": "/home/rawley-stanhope/.local/rlm-adk/projects/runtime-improvement/research/attempts/ab-prep-001/measurement-contract.json"
+      },
+      {
+        "finding": "Directly read README: only trial output repository identity/header. Direct recursive non-.git file inventory contains README.md only. No inspectable project-selection method, proposal or justified no-project established.",
+        "source": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/A/projects/trial-ab-output/README.md"
+      },
+      {
+        "finding": "Global evidence reports awaiting_activation, active unit not locally settled, incomplete control evidence and missing mandatory scope coverage. Usage coverage remains unknown; zero recorded occurrences is not zero spend.",
+        "source": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/A/rlm-adk--research-trial-compatib-06a7dcdc82/native-trial-e478eac7e84967f151f613e3a1b4562c/supervision/checkpoints/checkpoint-897dfcda6ef6cbd8b59a45d1.json"
+      }
+    ],
+    "next_interval_seconds": 300,
+    "rationale": "Stop for missing mandatory coverage, explicitly required by objective and runbook-A. The successful assessment batch returned zero reports and no dispatch failures; the checkpoint has zero scopes/monitors, no admitted residents or projects, and three pending admissions. None of the four mandatory scopes is covered. Registry open failure and unavailable events tables also make collection incomplete. This is not a convergence or wedge inference from quietness, nor proof of repeated unrecoverable errors. Preserve incomplete results and let the driver join native work and perform stop/restoration; settlement is not yet proved.",
+    "reports": [],
+    "retire_assignment_ids": [],
+    "specialist_assignments": [],
+    "supervisor_identity": "native-coordinator-e478eac7e84967f151f613e3a1b4562c"
+  },
+  "stability": [
+    {
+      "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+      "boottime": 1485607.189866514,
+      "store_changes": {
+        "provenance_db": 2,
+        "session_db": 2
+      },
+      "unit": {
+        "cgroup_empty": true,
+        "error": "",
+        "fields": {
+          "ActiveState": "inactive",
+          "ControlGroup": "",
+          "LoadState": "not-found",
+          "MainPID": "0",
+          "Result": "success"
+        },
+        "local_settled": true,
+        "returncode": 0,
+        "unit": "rlm-adk-live-test-native-trial-e478eac7e84967f151f-780dd908fd.service",
+        "unit_absent": true
+      },
+      "utc": 1792020912.2213175
+    },
+    {
+      "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+      "boottime": 1485618.202652742,
+      "store_changes": {
+        "provenance_db": 2,
+        "session_db": 2
+      },
+      "unit": {
+        "cgroup_empty": true,
+        "error": "",
+        "fields": {
+          "ActiveState": "inactive",
+          "ControlGroup": "",
+          "LoadState": "not-found",
+          "MainPID": "0",
+          "Result": "success"
+        },
+        "local_settled": true,
+        "returncode": 0,
+        "unit": "rlm-adk-live-test-native-trial-e478eac7e84967f151f-780dd908fd.service",
+        "unit_absent": true
+      },
+      "utc": 1792020923.2341042
+    }
+  ],
+  "status": "settled",
+  "trial_settlement": {
+    "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+    "boottime": 1485607.012353944,
+    "checker_retirement": {
+      "complete": true,
+      "errors": [],
+      "observations": [
+        {
+          "command": [
+            "stop",
+            "rlm-adk-live-supervision-91f316a3d9440c33.timer"
+          ],
+          "error": "",
+          "returncode": 0
+        },
+        {
+          "command": [
+            "show",
+            "rlm-adk-live-supervision-91f316a3d9440c33.service",
+            "--property=LoadState,ActiveState,SubState,MainPID,Result,ExecMainStatus"
+          ],
+          "error": "",
+          "fields": {
+            "ActiveState": "activating",
+            "ExecMainStatus": "0",
+            "LoadState": "loaded",
+            "MainPID": "3942351",
+            "Result": "success",
+            "SubState": "start"
+          },
+          "returncode": 0
+        },
+        {
+          "command": [
+            "show",
+            "rlm-adk-live-supervision-91f316a3d9440c33.service",
+            "--property=LoadState,ActiveState,SubState,MainPID,Result,ExecMainStatus"
+          ],
+          "error": "",
+          "fields": {
+            "ActiveState": "inactive",
+            "ExecMainStatus": "0",
+            "LoadState": "loaded",
+            "MainPID": "0",
+            "Result": "success",
+            "SubState": "dead"
+          },
+          "returncode": 0
+        },
+        {
+          "command": [
+            "show",
+            "rlm-adk-live-supervision-91f316a3d9440c33.timer",
+            "--property=LoadState,ActiveState,SubState,MainPID,Result,ExecMainStatus"
+          ],
+          "error": "",
+          "fields": {
+            "ActiveState": "inactive",
+            "LoadState": "loaded",
+            "Result": "success",
+            "SubState": "dead"
+          },
+          "returncode": 0
+        }
+      ],
+      "service": "rlm-adk-live-supervision-91f316a3d9440c33.service",
+      "status": "retired_clean",
+      "timer": "rlm-adk-live-supervision-91f316a3d9440c33.timer",
+      "unresolved_errors": []
+    },
+    "external_monitors": [],
+    "local_settled": true,
+    "next_action": "end the lease after every trial settles",
+    "observation": {
+      "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+      "boottime": 1485606.953177086,
+      "intent": {
+        "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+        "boottime": 1485606.929523872,
+        "reason": "Stop for missing mandatory coverage, explicitly required by objective and runbook-A. The successful assessment batch returned zero reports and no dispatch failures; the checkpoint has zero scopes/monitors, no admitted residents or projects, and three pending admissions. None of the four mandatory scopes is covered. Registry open failure and unavailable events tables also make collection incomplete. This is not a convergence or wedge inference from quietness, nor proof of repeated unrecoverable errors. Preserve incomplete results and let the driver join native work and perform stop/restoration; settlement is not yet proved.",
+        "run_id": "native-trial-e478eac7e84967f151f613e3a1b4562c",
+        "schema": "rlm_adk.live_supervision.v1",
+        "unit": "rlm-adk-live-test-native-trial-e478eac7e84967f151f-780dd908fd.service",
+        "utc": 1792020911.960975
+      },
+      "observation": {
+        "cgroup_empty": true,
+        "error": "",
+        "fields": {
+          "ActiveState": "inactive",
+          "ControlGroup": "",
+          "LoadState": "not-found",
+          "MainPID": "0",
+          "Result": "success"
+        },
+        "local_settled": true,
+        "returncode": 0,
+        "unit": "rlm-adk-live-test-native-trial-e478eac7e84967f151f-780dd908fd.service",
+        "unit_absent": true
+      },
+      "schema": "rlm_adk.live_supervision.v1",
+      "stop_request": {
+        "error": "Failed to stop rlm-adk-live-test-native-trial-e478eac7e84967f151f-780dd908fd.service: Unit rlm-adk-live-test-native-trial-e478eac7e84967f151f-780dd908fd.service not loaded.",
+        "returncode": 5
+      },
+      "unit": "rlm-adk-live-test-native-trial-e478eac7e84967f151f-780dd908fd.service",
+      "utc": 1792020911.9846277
+    },
+    "open_delegates": [],
+    "outcome": "stopped",
+    "provider_cleanup": {
+      "status": "not_applicable"
+    },
+    "run_id": "native-trial-e478eac7e84967f151f613e3a1b4562c",
+    "schema": "rlm_adk.live_supervision.v1",
+    "semantic_acceptance": "requires_outer_goal_judgment",
+    "settlement_reference": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/A/rlm-adk--research-trial-compatib-06a7dcdc82/native-trial-e478eac7e84967f151f613e3a1b4562c/supervision/settlements/settlement-a524e99d9d4f8b89.json",
+    "submission_closed": true,
+    "unresolved": [],
+    "utc": 1792020912.0438046,
+    "wake_cancellation": "outer_supervisor_required"
+  },
+  "utc": 1792020911.957338
+}

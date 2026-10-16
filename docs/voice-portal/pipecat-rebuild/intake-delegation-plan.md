@@ -43,6 +43,15 @@ cited; inferences are marked.
   by a carry-forward `allocatorctl update`. Until then the old behaviour holds. Note for that work:
   #1354 makes its plan's 60-second interval impossible (review budget must leave 6 s; measured review
   latency is 129-147 s) and conflicts textually in `request_model.py`.
+- **Overnight run, then scaled back (2026-10-16).** The new instance ran on the desktop from 00:59 to
+  06:02 EDT (about 600 resident model calls: Steward 195, Researcher 260, Intake 142). Eleven tickets
+  were mailed to Intake, which accepted most (the update banner among them, `bug-20261015-03`, with a
+  worktree `intake/bug-20261015-03` and no changes yet); the coordinate-hold acceptance attempts
+  `coordinate-hold-live-20261016-01..04` ran on it, the last settled incomplete. The service is
+  stopped. Rawley then narrowed the scope: deliver the update banner (build 19) without starting the
+  runtime, with the ticket-to-mail step short of delivery. So `intake_mail_mode` defaults to `"stage"`
+  (mail and post command written beside the log, a `mail_staged` event, no allocator call), and the
+  banner is built directly in the app, not by Intake's delegate.
 - **Voice portal.** The ticket-to-mail bridge and reply polling are built (`issues.mail_ticket`,
   `poll_replies`, `POST /issues/<id>/mail`, `POST /issues/replies`; config `intake_recipient`,
   `intake_mail_dispositions`, `intake_poll_s`), and the work outbox posts with `--to work_recipient`

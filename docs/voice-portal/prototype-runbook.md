@@ -397,9 +397,20 @@ Installing on the phone (acceptance step, separate from the build):
 - Paired route: from the Mac helper with the phone cabled (or on a Wi-Fi pairing created over the
   cable), `pymobiledevice3 apps install RLMADK.ipa`. This is an upgrade of the same bundle id under
   the same team; do **not** uninstall first, which would delete the retained captures.
-- Link route (later, once we host the files over HTTPS): open `index.html` on the phone and tap
-  "Install on this iPhone"; the `itms-services` link needs a trusted HTTPS manifest. It is a tap on
-  the phone, never a silent push.
+- Link route: open the build's page on the phone and tap "Install on this iPhone"; the
+  `itms-services` link needs a trusted HTTPS manifest. It is a tap on the phone (plus Apple's
+  confirmation), never a silent push. First exercised with build 18 on 2026-10-15.
+  The pages are on Spark-A, `~/.local/state/rlm-adk-ios-prototype-supervision/private-delivery`,
+  served tailnet-only by Tailscale Serve at `https://rlm-adk-spark.tail0ec4a5.ts.net:8443/`.
+  Publish a downloaded `direct-install-<N>` artifact with
+  `python3 scripts/direct_install.py publish --ipa RLMADK.ipa --receipt direct-install-receipt.json
+  --root <delivery folder> --root-url https://rlm-adk-spark.tail0ec4a5.ts.net:8443 --notes "<one line>"`:
+  it writes `build<N>/` (IPA, manifest, page, sha256, receipt), then `latest.json` (atomically, last)
+  and the root `index.html`.
+- Update banner (build 19 and later): the app reads that `latest.json` when it comes to the
+  foreground and every 5 minutes while open (`RLMADK/Model/AppUpdate.swift`; override with
+  `RLMADK_UPDATE_URL`). A newer build for this bundle shows "Update available: build N" with Install
+  (opens the `itms-services` link) and a dismiss; the device snapshot reports `update_offer`.
 - First launch: the phone must be online for Apple's certificate check (PPQ); Developer Mode must
   be on. Then verify retention, not assume it: before installing, run `sync_manifest` and note the
   captures' bytes and sha256 from `GET /devices/<id>/manifest`; after installing and launching,

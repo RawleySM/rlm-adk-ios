@@ -1,0 +1,10 @@
+{
+  "at": 1792017848.928498,
+  "preserved_events": 717,
+  "exact_prefix_equal": true,
+  "live_event_count": 725,
+  "quick_check": "ok",
+  "backup": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/operations/registry-io-forensics/settled-registry.sqlite3",
+  "sha256": "5abfc4bfe37fa755dbc7b6e2c93946de22027795e220f27b73a6a9b987b00790",
+  "recovery": "Original owner graceful close checkpointed its retained WAL; no registry replacement"
+}

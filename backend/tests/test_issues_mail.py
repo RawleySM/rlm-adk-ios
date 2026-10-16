@@ -59,6 +59,7 @@ class IntakeMail(unittest.TestCase):
         self.state = self.tmp / "fake_state.json"
         os.environ["FAKE_STATE"] = str(self.state)
         self.cfg.intake_recipient = "intk01"
+        self.cfg.intake_mail_mode = "post"
 
     def tearDown(self):
         os.environ.pop("FAKE_STATE", None)
@@ -102,6 +103,29 @@ class IntakeMail(unittest.TestCase):
         self.assertEqual(folded["status"], "accepted")
         self.assertEqual(folded["replies"][0]["text"], "status: accepted Delegating to Claude Code on branch intake/bug-1.")
         self.assertEqual(issues.list_tickets(self.cfg)[0]["replies"], 1)
+
+    def test_stage_mode_writes_the_mail_and_command_but_never_calls_the_allocator(self):
+        self.cfg.intake_mail_mode = "stage"
+        ticket, _ = issues.record_report(self.cfg, REPORT)
+        result = issues.mail_ticket(self.cfg, ticket["ticket_id"], note="Answers to the open questions.")
+        self.assertTrue(result["staged"])
+        self.assertFalse(result["mailed"])
+        self.assertEqual(result["command"][1:5], ["inbox", "post", "--to", "intk01"])
+        self.assertTrue(Path(result["body"]).read_text().startswith(f"voice-portal ticket_id={ticket['ticket_id']}"))
+        self.assertFalse(self.state.exists(), "the allocator was never called")
+        folded = issues.read_tickets(issues.log_path(self.cfg))[ticket["ticket_id"]]
+        self.assertEqual(folded["mail_staged"][0]["recipient"], "intk01")
+        self.assertNotIn("mail", folded)
+        self.assertEqual(issues.mail_ticket(self.cfg, ticket["ticket_id"])["reason"], "already_staged")
+        self.assertIsNone(issues.start_reply_poller(self.cfg), "nothing to poll while mail is only staged")
+
+    def test_operator_status_event(self):
+        ticket, _ = issues.record_report(self.cfg, REPORT)
+        event = issues.record_status(self.cfg, ticket["ticket_id"], "done", text="Build 19 adds the banner.", artifact="https://host/build19/")
+        self.assertEqual(event["from"], "operator-session")
+        folded = issues.read_tickets(issues.log_path(self.cfg))[ticket["ticket_id"]]
+        self.assertEqual(folded["status"], "done")
+        self.assertIsNone(issues.record_status(self.cfg, "bug-19990101-01", "done"))
 
     def test_reply_status_words(self):
         self.assertEqual(issues._reply_status("status: escalated to rsch01"), "escalated")

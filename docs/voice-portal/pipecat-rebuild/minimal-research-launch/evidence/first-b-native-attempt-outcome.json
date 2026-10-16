@@ -1,0 +1,235 @@
+{
+  "assignment_plan": {
+    "path": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/rlm-adk--research-trial-compatib-06a7dcdc82/native-trial-8388a93daff5c9b6d8d624cda7788984/supervision/checkpoints/checkpoint-b19fabe992a9b325e845c882.json",
+    "pointer": "/assignment_plan",
+    "sha256": "d13090340ecfa3d6a0b67fd85eec6468704bbf58d9af60dd22683b3a577d3b66"
+  },
+  "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+  "boottime": 1486651.092636356,
+  "coordinator_cleanup": {
+    "complete": true,
+    "foreground_repl_closed": true,
+    "receipt": "ApplicationCloseReceipt(runner_closed=True, seat_retirements=(SeatRetirementReceipt(owner='composition:58cc7fdc1e5b4428a975b667ce48e2be:compaction', failures=()), SeatRetirementReceipt(owner='composition:58cc7fdc1e5b4428a975b667ce48e2be:child', failures=()), SeatRetirementReceipt(owner='composition:58cc7fdc1e5b4428a975b667ce48e2be:root', failures=())), credential_view_closed=True)"
+  },
+  "latest_checkpoint": {
+    "path": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/rlm-adk--research-trial-compatib-06a7dcdc82/native-trial-8388a93daff5c9b6d8d624cda7788984/supervision/checkpoints/checkpoint-b19fabe992a9b325e845c882.json",
+    "sha256": "d13090340ecfa3d6a0b67fd85eec6468704bbf58d9af60dd22683b3a577d3b66"
+  },
+  "latest_decision": {
+    "path": "/home/rawley-stanhope/srv/rlm-adk/live-test/experiments/8388a93daff5c9b6d8d624cda7788984052bb9a1196f76811850a7266f018312/rounds/936dfdc24eb03a898badefae/decision-929abb4bcc450312.json",
+    "sha256": "26e0217a50d25c0d8ecdf4e9a48feb59f5b1fb0ddb32dc08bae7d740f6101738"
+  },
+  "reason": "Stop conservatively for unresolved post-admission monitoring coverage, preserving incomplete results. All three residents are now admitted and trial-ab-output is eligible, but the original checkpoint has no current assignments/scopes and the original dispatch has no handoffs. The single successful native assessment batch returned zero reports and no failures; this is not fabricated report failure, but supplies no required current monitoring for any of the four admitted scopes. The plan proposes all four additions, yet current coverage remains absent. Unlike awaiting_activation this is an active admitted trial. No host failure, wedge, convergence, exhausted capacity or completed acceptance is inferred. Driver must join native work before stop/restore; no settlement is claimed.",
+  "reference": {
+    "path": "/home/rawley-stanhope/srv/rlm-adk/live-test/experiments/8388a93daff5c9b6d8d624cda7788984052bb9a1196f76811850a7266f018312/recovery/c386129449162e528b08de39.json",
+    "sha256": "c5718bb373b212a2d1273f77697a44bc451a53bc3eb975020035d10263e39b1d"
+  },
+  "request_ref": {
+    "path": "/home/rawley-stanhope/srv/rlm-adk/live-test/experiments/8388a93daff5c9b6d8d624cda7788984052bb9a1196f76811850a7266f018312/request.json",
+    "sha256": "e054af277ca51f3207341c1ded918e49fabf1e7bfb80de10514974cf3ae4b77a"
+  },
+  "restoration": {
+    "allocator_root": "/home/rawley-stanhope/srv/rlm-adk",
+    "baseline": {
+      "control_root": "/home/rawley-stanhope/.local/rlm-adk/runtime_control",
+      "hold": null,
+      "release": "/home/rawley-stanhope/srv/rlm-adk/releases/24e2a4df875ce895fc64195883643d543fdd8187566bf90665de27e59567d6c1"
+    },
+    "experiment_owner": {
+      "path": "/home/rawley-stanhope/srv/rlm-adk/live-test/experiments/8388a93daff5c9b6d8d624cda7788984052bb9a1196f76811850a7266f018312/request.json",
+      "sha256": "e054af277ca51f3207341c1ded918e49fabf1e7bfb80de10514974cf3ae4b77a"
+    },
+    "lease_id": "live-test-4b4e3cbace4e",
+    "phase": "restored",
+    "schema": "native_allocator_restoration.v1"
+  },
+  "semantic": {
+    "acknowledged_errors": [],
+    "checkpoint": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/rlm-adk--research-trial-compatib-06a7dcdc82/native-trial-8388a93daff5c9b6d8d624cda7788984/supervision/checkpoints/checkpoint-b19fabe992a9b325e845c882.json",
+    "checkpoint_sha256": "d13090340ecfa3d6a0b67fd85eec6468704bbf58d9af60dd22683b3a577d3b66",
+    "collection_errors": [],
+    "decision": "stop",
+    "expected_generation": 1,
+    "goal_evidence": [
+      {
+        "observation": "Original packet inspected: assignments empty; topology accepts stwref, pryc12 and visc12 in chain and eligible trial-ab-output. All four required scopes appear as uncovered additions. Collection remains incomplete with unread backlog despite no collection errors. Unit active, native/delegate work pending, collected tool failures zero; retained worker state alone is not liveness.",
+        "source": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/rlm-adk--research-trial-compatib-06a7dcdc82/native-trial-8388a93daff5c9b6d8d624cda7788984/supervision/checkpoints/checkpoint-b19fabe992a9b325e845c882.json"
+      },
+      {
+        "observation": "Original dispatch inspected: handoffs empty. Original successful native batch reports empty and failures empty. Required post-admission scope monitoring remains unverified, not silently waived.",
+        "source": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/rlm-adk--research-trial-compatib-06a7dcdc82/native-trial-8388a93daff5c9b6d8d624cda7788984/supervision/monitors/checkpoint-b19fabe992a9b325e845c882-dispatch.json"
+      },
+      {
+        "observation": "Original opening and developed possibilities inspected: advisory review distinguishes evidence from interpretation and consent, identifies existing-testimony correction, present responsibility and Scripture-led challenge alternatives; warns against duplicate templates, assumed response and endorsement. Promising partial work, not verified final selection or complete source-grounded proposals. Preserve for rsch01 comparison; no merge/promotion/activation acceptance claimed.",
+        "source": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/projects/trial-ab-output/vision/vision-review.md"
+      },
+      {
+        "observation": "Usage nulls, incomplete scans, overlapping scopes and account-global subscription observations prevent total token/cost attribution. Spend, repeated waits and elapsed quiet do not prove convergence or wedge.",
+        "source": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/rlm-adk--research-trial-compatib-06a7dcdc82/native-trial-8388a93daff5c9b6d8d624cda7788984/supervision/checkpoints/checkpoint-b19fabe992a9b325e845c882.json"
+      }
+    ],
+    "next_interval_seconds": 300,
+    "rationale": "Stop conservatively for unresolved post-admission monitoring coverage, preserving incomplete results. All three residents are now admitted and trial-ab-output is eligible, but the original checkpoint has no current assignments/scopes and the original dispatch has no handoffs. The single successful native assessment batch returned zero reports and no failures; this is not fabricated report failure, but supplies no required current monitoring for any of the four admitted scopes. The plan proposes all four additions, yet current coverage remains absent. Unlike awaiting_activation this is an active admitted trial. No host failure, wedge, convergence, exhausted capacity or completed acceptance is inferred. Driver must join native work before stop/restore; no settlement is claimed.",
+    "reports": [],
+    "retire_assignment_ids": [],
+    "specialist_assignments": [],
+    "supervisor_identity": "native-coordinator-8388a93daff5c9b6d8d624cda7788984"
+  },
+  "stability": [
+    {
+      "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+      "boottime": 1486654.602496335,
+      "store_changes": {
+        "provenance_db": 2,
+        "session_db": 2
+      },
+      "unit": {
+        "cgroup_empty": true,
+        "error": "",
+        "fields": {
+          "ActiveState": "inactive",
+          "ControlGroup": "",
+          "LoadState": "not-found",
+          "MainPID": "0",
+          "Result": "success"
+        },
+        "local_settled": true,
+        "returncode": 0,
+        "unit": "rlm-adk-live-test-native-trial-8388a93daff5c9b6d8d-2b70c973a6.service",
+        "unit_absent": true
+      },
+      "utc": 1792021959.6339478
+    },
+    {
+      "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+      "boottime": 1486665.614851558,
+      "store_changes": {
+        "provenance_db": 2,
+        "session_db": 2
+      },
+      "unit": {
+        "cgroup_empty": true,
+        "error": "",
+        "fields": {
+          "ActiveState": "inactive",
+          "ControlGroup": "",
+          "LoadState": "not-found",
+          "MainPID": "0",
+          "Result": "success"
+        },
+        "local_settled": true,
+        "returncode": 0,
+        "unit": "rlm-adk-live-test-native-trial-8388a93daff5c9b6d8d-2b70c973a6.service",
+        "unit_absent": true
+      },
+      "utc": 1792021970.646303
+    }
+  ],
+  "status": "settled",
+  "trial_settlement": {
+    "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+    "boottime": 1486654.492145891,
+    "checker_retirement": {
+      "complete": true,
+      "errors": [],
+      "observations": [
+        {
+          "command": [
+            "stop",
+            "rlm-adk-live-supervision-4a002d26dee24553.timer"
+          ],
+          "error": "",
+          "returncode": 0
+        },
+        {
+          "command": [
+            "show",
+            "rlm-adk-live-supervision-4a002d26dee24553.service",
+            "--property=LoadState,ActiveState,SubState,MainPID,Result,ExecMainStatus"
+          ],
+          "error": "",
+          "fields": {
+            "ActiveState": "inactive",
+            "ExecMainStatus": "0",
+            "LoadState": "loaded",
+            "MainPID": "0",
+            "Result": "success",
+            "SubState": "dead"
+          },
+          "returncode": 0
+        },
+        {
+          "command": [
+            "show",
+            "rlm-adk-live-supervision-4a002d26dee24553.timer",
+            "--property=LoadState,ActiveState,SubState,MainPID,Result,ExecMainStatus"
+          ],
+          "error": "",
+          "fields": {
+            "ActiveState": "inactive",
+            "LoadState": "loaded",
+            "Result": "success",
+            "SubState": "dead"
+          },
+          "returncode": 0
+        }
+      ],
+      "service": "rlm-adk-live-supervision-4a002d26dee24553.service",
+      "status": "retired_clean",
+      "timer": "rlm-adk-live-supervision-4a002d26dee24553.timer",
+      "unresolved_errors": []
+    },
+    "external_monitors": [],
+    "local_settled": true,
+    "next_action": "end the lease after every trial settles",
+    "observation": {
+      "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+      "boottime": 1486654.445308102,
+      "intent": {
+        "boot_id": "2bc1f2a0-ff1f-4eb0-ab6f-0a878ab2ca6e",
+        "boottime": 1486651.108619964,
+        "reason": "Stop conservatively for unresolved post-admission monitoring coverage, preserving incomplete results. All three residents are now admitted and trial-ab-output is eligible, but the original checkpoint has no current assignments/scopes and the original dispatch has no handoffs. The single successful native assessment batch returned zero reports and no failures; this is not fabricated report failure, but supplies no required current monitoring for any of the four admitted scopes. The plan proposes all four additions, yet current coverage remains absent. Unlike awaiting_activation this is an active admitted trial. No host failure, wedge, convergence, exhausted capacity or completed acceptance is inferred. Driver must join native work before stop/restore; no settlement is claimed.",
+        "run_id": "native-trial-8388a93daff5c9b6d8d624cda7788984",
+        "schema": "rlm_adk.live_supervision.v1",
+        "unit": "rlm-adk-live-test-native-trial-8388a93daff5c9b6d8d-2b70c973a6.service",
+        "utc": 1792021956.1400712
+      },
+      "observation": {
+        "cgroup_empty": true,
+        "error": "",
+        "fields": {
+          "ActiveState": "inactive",
+          "ControlGroup": "",
+          "LoadState": "not-found",
+          "MainPID": "0",
+          "Result": "success"
+        },
+        "local_settled": true,
+        "returncode": 0,
+        "unit": "rlm-adk-live-test-native-trial-8388a93daff5c9b6d8d-2b70c973a6.service",
+        "unit_absent": true
+      },
+      "schema": "rlm_adk.live_supervision.v1",
+      "stop_request": {
+        "error": "Failed to stop rlm-adk-live-test-native-trial-8388a93daff5c9b6d8d-2b70c973a6.service: Unit rlm-adk-live-test-native-trial-8388a93daff5c9b6d8d-2b70c973a6.service not loaded.",
+        "returncode": 5
+      },
+      "unit": "rlm-adk-live-test-native-trial-8388a93daff5c9b6d8d-2b70c973a6.service",
+      "utc": 1792021959.476759
+    },
+    "open_delegates": [],
+    "outcome": "stopped",
+    "provider_cleanup": {
+      "status": "not_applicable"
+    },
+    "run_id": "native-trial-8388a93daff5c9b6d8d624cda7788984",
+    "schema": "rlm_adk.live_supervision.v1",
+    "semantic_acceptance": "requires_outer_goal_judgment",
+    "settlement_reference": "/home/rawley-stanhope/.local/share/rlm-adk/research-ab-20261014/ab-prep-001/B/rlm-adk--research-trial-compatib-06a7dcdc82/native-trial-8388a93daff5c9b6d8d624cda7788984/supervision/settlements/settlement-01fbe9dc455b3de2.json",
+    "submission_closed": true,
+    "unresolved": [],
+    "utc": 1792021959.5235972,
+    "wake_cancellation": "outer_supervisor_required"
+  },
+  "utc": 1792021956.1240878
+}

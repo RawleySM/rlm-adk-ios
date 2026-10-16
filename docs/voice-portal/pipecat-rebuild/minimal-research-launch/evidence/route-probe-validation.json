@@ -1,0 +1,196 @@
+[
+  {
+    "phase": "red",
+    "invocation_id": "915cddd38dc54a258f58bdf4f5c907e8",
+    "exit_code": 1,
+    "runtime": {
+      "root": "/home/rawleysm/.codex/worktrees/launcher-modules/rlm-adk",
+      "commit": "8e521c30ee187284a0d5f57b4d2523eec6c5274a",
+      "source_files": {},
+      "source_files_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "diff_sha256": "21641bac348309e9f09c936650df90e3f516aedf16e6b806b4554f6055da6fbf",
+      "untracked_sha256": "b62a9eca2924415b2d3ba56e6f23a8d5acb10675a7fc63c62b196f981a059ddc",
+      "package_sha256": "17397183ac858f01d9ff1d0014e6634236bcf202a4b9465304eabc9217376ec8"
+    },
+    "outcomes": [
+      {
+        "target": "live_repl_route_readiness",
+        "status": "ASSERTION_FAILURE",
+        "counts": {
+          "total": 43,
+          "passed": 42,
+          "failed": 1,
+          "xfail": 0,
+          "xpass": 0
+        },
+        "unexpected_failures": [
+          {
+            "name": "route_readiness_shape_appropriate_instruction",
+            "category": "gateway",
+            "passed": false,
+            "xfail": false,
+            "xfail_id": null,
+            "error": "[LR-route-readiness] '[ROUTE_READINESS:shape_appropriate_instruction=true]' not in combined output",
+            "elapsed_ms": 0.007536029443144798
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "phase": "green",
+    "invocation_id": "e7e60b5b02334442af5b4cda48dd36e9",
+    "exit_code": 0,
+    "runtime": {
+      "root": "/home/rawleysm/.codex/worktrees/launcher-modules/rlm-adk",
+      "commit": "8e521c30ee187284a0d5f57b4d2523eec6c5274a",
+      "source_files": {},
+      "source_files_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "diff_sha256": "24ac45c4d1ee844acb93091b35bbcfce240117e5503acb80f87cc9c640acd4e8",
+      "untracked_sha256": "b62a9eca2924415b2d3ba56e6f23a8d5acb10675a7fc63c62b196f981a059ddc",
+      "package_sha256": "350a5a9ddc3d154f5c88528e19a72021b7ad8abd04f8ed841880ead22f6cfc4e"
+    },
+    "outcomes": [
+      {
+        "target": "live_repl_route_readiness",
+        "status": "EXPECTED_CHECKS_HELD",
+        "counts": {
+          "total": 43,
+          "passed": 43,
+          "failed": 0,
+          "xfail": 0,
+          "xpass": 0
+        },
+        "unexpected_failures": []
+      }
+    ]
+  },
+  {
+    "phase": "integration-first",
+    "invocation_id": "1f59174da3fe4e1780ff229c7a8a03f7",
+    "exit_code": 1,
+    "runtime": {
+      "root": "/home/rawleysm/.codex/worktrees/launcher-modules/rlm-adk",
+      "commit": "8e521c30ee187284a0d5f57b4d2523eec6c5274a",
+      "source_files": {},
+      "source_files_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "diff_sha256": "1356a8ff2e893482797e42fd3abb792bc58dfdb7bd724a0e4459125c024fbcd0",
+      "untracked_sha256": "b62a9eca2924415b2d3ba56e6f23a8d5acb10675a7fc63c62b196f981a059ddc",
+      "package_sha256": "350a5a9ddc3d154f5c88528e19a72021b7ad8abd04f8ed841880ead22f6cfc4e"
+    },
+    "outcomes": [
+      {
+        "target": "F6",
+        "status": "ASSERTION_FAILURE",
+        "counts": {
+          "total": 597,
+          "passed": 589,
+          "failed": 8,
+          "xfail": 12,
+          "xpass": 0
+        },
+        "unexpected_failures": [
+          {
+            "name": "f6_livetest_renewable_authority",
+            "category": "monitoring_evidence",
+            "passed": false,
+            "xfail": false,
+            "xfail_id": null,
+            "error": "f6_livetest_renewable_authority: non-true Boolean verdict False",
+            "elapsed_ms": 0.008848030120134354
+          },
+          {
+            "name": "f6_livetest_facade_error_contract",
+            "category": "monitoring_evidence",
+            "passed": false,
+            "xfail": false,
+            "xfail_id": null,
+            "error": "Traceback (most recent call last):\n  File \"/home/rawleysm/.codex/worktrees/launcher-modules/rlm-adk/tests_rlm_adk/provider_fake/f6_default_monitoring.py\", line 29, in exercise\n    return _exercise(witness)\n           ^^^^^^^^^^^^^^^^^^\n  File \"/home/rawleysm/.codex/worktrees/launcher-modules/rlm-adk/tests_rlm_adk/provider_fake/f6_default_monitoring.py\", line 437, in _exercise\n    scope = next(a for a in after[\"scoped_accounting\"][\"scopes\"] if a[\"assignment_id\"] == aid)\n                            ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^\nKeyError: 'scopes'\n",
+            "elapsed_ms": 0.0064640771597623825
+          },
+          {
+            "name": "f6_monitor_catalog_profile",
+            "category": "monitoring_evidence",
+            "passed": false,
+            "xfail": false,
+            "xfail_id": null,
+            "error": "Traceback (most recent call last):\n  File \"/home/rawleysm/.codex/worktrees/launcher-modules/rlm-adk/tests_rlm_adk/provider_fake/f6_default_monitoring.py\", line 29, in exercise\n    return _exercise(witness)\n           ^^^^^^^^^^^^^^^^^^\n  File \"/home/rawleysm/.codex/worktrees/launcher-modules/rlm-adk/tests_rlm_adk/provider_fake/f6_default_monitoring.py\", line 437, in _exercise\n    scope = next(a for a in after[\"scoped_accounting\"][\"scopes\"] if a[\"assignment_id\"] == aid)\n                            ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^\nKeyError: 'scopes'\n",
+            "elapsed_ms": 0.002288026735186577
+          },
+          {
+            "name": "f6_monitor_topology_partitions",
+            "category": "monitoring_evidence",
+            "passed": false,
+            "xfail": false,
+            "xfail_id": null,
+            "error": "Traceback (most recent call last):\n  File \"/home/rawleysm/.codex/worktrees/launcher-modules/rlm-adk/tests_rlm_adk/provider_fake/f6_default_monitoring.py\", line 29, in exercise\n    return _exercise(witness)\n           ^^^^^^^^^^^^^^^^^^\n  File \"/home/rawleysm/.codex/worktrees/launcher-modules/rlm-adk/tests_rlm_adk/provider_fake/f6_default_monitoring.py\", line 437, in _exercise\n    scope = next(a for a in after[\"scoped_accounting\"][\"scopes\"] if a[\"assignment_id\"] == aid)\n                            ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^\nKeyError: 'scopes'\n",
+            "elapsed_ms": 0.0024479813873767853
+          },
+          {
+            "name": "f6_monitor_assignment_adoption",
+            "category": "monitoring_evidence",
+            "passed": false,
+            "xfail": false,
+            "xfail_id": null,
+            "error": "Traceback (most recent call last):\n  File \"/home/rawleysm/.codex/worktrees/launcher-modules/rlm-adk/tests_rlm_adk/provider_fake/f6_default_monitoring.py\", line 29, in exercise\n    return _exercise(witness)\n           ^^^^^^^^^^^^^^^^^^\n  File \"/home/rawleysm/.codex/worktrees/launcher-modules/rlm-adk/tests_rlm_adk/provider_fake/f6_default_monitoring.py\", line 437, in _exercise\n    scope = next(a for a in after[\"scoped_accounting\"][\"scopes\"] if a[\"assignment_id\"] == aid)\n                            ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^\nKeyError: 'scopes'\n",
+            "elapsed_ms": 0.0017280690371990204
+          },
+          {
+            "name": "f6_monitor_effect_scope",
+            "category": "monitoring_evidence",
+            "passed": false,
+            "xfail": false,
+            "xfail_id": null,
+            "error": "Traceback (most recent call last):\n  File \"/home/rawleysm/.codex/worktrees/launcher-modules/rlm-adk/tests_rlm_adk/provider_fake/f6_default_monitoring.py\", line 29, in exercise\n    return _exercise(witness)\n           ^^^^^^^^^^^^^^^^^^\n  File \"/home/rawleysm/.codex/worktrees/launcher-modules/rlm-adk/tests_rlm_adk/provider_fake/f6_default_monitoring.py\", line 437, in _exercise\n    scope = next(a for a in after[\"scoped_accounting\"][\"scopes\"] if a[\"assignment_id\"] == aid)\n                            ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^\nKeyError: 'scopes'\n",
+            "elapsed_ms": 0.0016319099813699722
+          },
+          {
+            "name": "f6_monitor_budget_coverage",
+            "category": "monitoring_evidence",
+            "passed": false,
+            "xfail": false,
+            "xfail_id": null,
+            "error": "Traceback (most recent call last):\n  File \"/home/rawleysm/.codex/worktrees/launcher-modules/rlm-adk/tests_rlm_adk/provider_fake/f6_default_monitoring.py\", line 29, in exercise\n    return _exercise(witness)\n           ^^^^^^^^^^^^^^^^^^\n  File \"/home/rawleysm/.codex/worktrees/launcher-modules/rlm-adk/tests_rlm_adk/provider_fake/f6_default_monitoring.py\", line 437, in _exercise\n    scope = next(a for a in after[\"scoped_accounting\"][\"scopes\"] if a[\"assignment_id\"] == aid)\n                            ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^\nKeyError: 'scopes'\n",
+            "elapsed_ms": 0.0014719553291797638
+          },
+          {
+            "name": "f6_monitor_report_cleanup",
+            "category": "monitoring_evidence",
+            "passed": false,
+            "xfail": false,
+            "xfail_id": null,
+            "error": "Traceback (most recent call last):\n  File \"/home/rawleysm/.codex/worktrees/launcher-modules/rlm-adk/tests_rlm_adk/provider_fake/f6_default_monitoring.py\", line 29, in exercise\n    return _exercise(witness)\n           ^^^^^^^^^^^^^^^^^^\n  File \"/home/rawleysm/.codex/worktrees/launcher-modules/rlm-adk/tests_rlm_adk/provider_fake/f6_default_monitoring.py\", line 437, in _exercise\n    scope = next(a for a in after[\"scoped_accounting\"][\"scopes\"] if a[\"assignment_id\"] == aid)\n                            ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^\nKeyError: 'scopes'\n",
+            "elapsed_ms": 0.0016479752957820892
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "phase": "integration-unchanged-repeat",
+    "invocation_id": "6243c50330a343a783e8c2b186f5d87f",
+    "exit_code": 0,
+    "runtime": {
+      "root": "/home/rawleysm/.codex/worktrees/launcher-modules/rlm-adk",
+      "commit": "8797ce5e9b64c559d68652c35f7c9bcc094b3657",
+      "source_files": {},
+      "source_files_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "untracked_sha256": "b62a9eca2924415b2d3ba56e6f23a8d5acb10675a7fc63c62b196f981a059ddc",
+      "package_sha256": "350a5a9ddc3d154f5c88528e19a72021b7ad8abd04f8ed841880ead22f6cfc4e"
+    },
+    "outcomes": [
+      {
+        "target": "F6",
+        "status": "EXPECTED_CHECKS_HELD",
+        "counts": {
+          "total": 597,
+          "passed": 597,
+          "failed": 0,
+          "xfail": 12,
+          "xpass": 0
+        }
+      }
+    ]
+  }
+]
