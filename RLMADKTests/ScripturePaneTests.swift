@@ -38,6 +38,9 @@ final class ScripturePaneTests: XCTestCase {
         XCTAssertEqual(TalkClientMessage.clientPassage(reference: "Romans 12", reason: "select").json["reference"] as? String, "Romans 12")
         XCTAssertEqual(TalkClientMessage.clientRead(action: "pause").json["type"] as? String, "client_read")
         XCTAssertEqual(TalkClientMessage.clientRead(action: "pause").json["action"] as? String, "pause")
+        XCTAssertNil(TalkClientMessage.clientRead(action: "play").json["index"])
+        // A tapped verse number; a string so it survives the WebRTC client-message envelope.
+        XCTAssertEqual(TalkClientMessage.clientRead(action: "play", index: 15).json["index"] as? String, "15")
     }
 
     func testReadingProgressFollowsTheVerses() {
@@ -101,5 +104,50 @@ final class ScripturePaneTests: XCTestCase {
         // Progress of another passage (a late message) is ignored.
         model.talkEventReceived(.reading(ReadingEvent(state: "started", reference: "John 1")))
         XCTAssertFalse(model.reading.isReading)
+    }
+
+    /// Tapping a blue verse number hits that verse; the middle of a line of text does not.
+    @MainActor func testVerseNumberTapHitsItsVerse() throws {
+        guard case .passage(let p)? = TalkMessageParser.events(fromText: psalm23).first else { return XCTFail() }
+        let coordinator = ScriptureTextView.Coordinator()
+        let view = UITextView(frame: CGRect(x: 0, y: 0, width: 360, height: 800))
+        view.textContainerInset = UIEdgeInsets(top: 18, left: 20, bottom: 60, right: 20)
+        view.attributedText = coordinator.build(p, fontSize: 20)
+        view.layoutIfNeeded()
+        var firstRect = CGRect.null
+        for i in 0..<p.verses.count {
+            let range = coordinator.numberRanges[i]
+            XCTAssertEqual((view.attributedText.string as NSString).substring(with: range), "\(p.verses[i].verse)\u{00a0}")
+            let start = try XCTUnwrap(view.position(from: view.beginningOfDocument, offset: range.location))
+            let end = try XCTUnwrap(view.position(from: start, offset: range.length))
+            let rect = view.firstRect(for: try XCTUnwrap(view.textRange(from: start, to: end)))
+            if i == 0 { firstRect = rect }
+            XCTAssertEqual(ScriptureTextView.verseNumberHit(at: CGPoint(x: rect.midX, y: rect.midY), in: view, numberRanges: coordinator.numberRanges), i)
+            XCTAssertEqual(ScriptureTextView.verseNumberHit(at: CGPoint(x: rect.midX + 8, y: rect.midY + 6), in: view, numberRanges: coordinator.numberRanges), i, "a near miss still counts")
+        }
+        XCTAssertNil(ScriptureTextView.verseNumberHit(at: CGPoint(x: 300, y: firstRect.midY), in: view, numberRanges: coordinator.numberRanges))
+    }
+
+    /// A tapped verse asks the talk server to read from it.
+    @MainActor func testReadFromSendsTheVerseIndex() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("pane-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let model = PortalModel(store: LocalStore(root: root))
+        model.recognitionStarter = {}
+        model.deliveryProbe = { true }
+        var made: FakeTalkClient?
+        model.talkFactory = { kind in
+            let fake = FakeTalkClient(kind: kind)
+            made = fake
+            return fake
+        }
+        model.connectTalk()
+        let talk = try XCTUnwrap(made)
+        guard case .passage(let p)? = TalkMessageParser.events(fromText: psalm23).first else { return XCTFail() }
+        model.talkEventReceived(.passage(p))
+        model.readFrom(index: 2)
+        XCTAssertTrue(talk.sent.contains(.clientRead(action: "play", index: 2)), "\(talk.sent)")
+        model.readFrom(index: 9)
+        XCTAssertFalse(talk.sent.contains(.clientRead(action: "play", index: 9)), "no such verse")
     }
 }

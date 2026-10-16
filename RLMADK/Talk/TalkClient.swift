@@ -74,8 +74,9 @@ enum TalkClientMessage: Equatable {
     case clientEvent(name: String, detail: [String: String])
     /// Open a passage in the scripture pane ("Romans 12"); pauses any reading.
     case clientPassage(reference: String, reason: String)
-    /// The pane's Read / Pause: "play", "pause" or "restart".
-    case clientRead(action: String)
+    /// The pane's Read / Pause: "play", "pause" or "restart"; `index` (a tapped verse number) starts at
+    /// that verse of the pane's passage (its position in the verse list) and reads on.
+    case clientRead(action: String, index: Int? = nil)
     /// The Bug chip: "start", "stop" or "cancel", with flat context fields (app_build, transport,
     /// audio_route, install_id, client) and, on stop, the phone's own transcript lines.
     case clientBug(action: String, context: [String: String], deviceLines: [String])
@@ -99,7 +100,7 @@ enum TalkClientMessage: Equatable {
         case .clientText(let text): return ["text": text]
         case .clientEvent(let name, let detail): return detail.merging(["event": name]) { _, new in new }
         case .clientPassage(let reference, let reason): return ["reference": reference, "reason": reason]
-        case .clientRead(let action): return ["action": action]
+        case .clientRead(let action, let index): return index.map { ["action": action, "index": String($0)] } ?? ["action": action]
         case .clientBug(let action, let context, let deviceLines):
             var out = context.merging(["action": action]) { _, new in new }
             if !deviceLines.isEmpty { out["device_segments"] = deviceLines.joined(separator: "\n") }
