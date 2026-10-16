@@ -19,12 +19,20 @@ Order of work, so the words are never lost to a slow or failed model call:
 
 The log is the only store: a ticket is the fold of its events in file order (``read_tickets``).
 Later consumers append their own events (claimed, resolved) under the same ``ticket_id``.
+
+3. When ``intake_recipient`` names a resident, a triaged ticket whose disposition is in
+   ``intake_mail_dispositions`` is mailed to it (``mail_ticket``: ``allocatorctl inbox post --to``,
+   plain text whose first line is ``voice-portal ticket_id=... kind=...``) and a ``mailed`` event
+   records the message id. ``poll_replies`` reads the resident's answers
+   (``inbox list --to-operator --json --in-reply-to``) and appends one ``status`` event per reply;
+   the reply's leading ``status: <word>`` becomes the ticket's status.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 import fcntl
+import subprocess
 import json
 import logging
 import os
@@ -181,8 +189,12 @@ def read_tickets(path: Path) -> dict[str, dict]:
         if event.get("event") == "triaged" and isinstance(event.get("triage"), dict):
             ticket["triage"] = event["triage"]
             ticket["triaged_at"] = event.get("at")
+        elif event.get("event") == "mailed" and event.get("message_id"):
+            ticket.setdefault("mail", []).append({k: event.get(k) for k in ("message_id", "recipient", "at", "instance_id", "note")})
         elif event.get("event") == "status" and event.get("status"):
             ticket["status"] = event["status"]
+            if event.get("reply_message_id"):
+                ticket.setdefault("replies", []).append({k: event.get(k) for k in ("reply_message_id", "in_reply_to", "from", "status", "text", "sent_at", "at")})
     return tickets
 
 
@@ -447,6 +459,13 @@ def _triage_logged(cfg: Config, ticket_id: str) -> None:
         triage_ticket(cfg, ticket_id)
     except Exception:  # noqa: BLE001 - logged; the ticket stays pending and is retried at next start
         log.exception("triage of %s failed", ticket_id)
+        return
+    try:
+        ticket = read_tickets(log_path(cfg)).get(ticket_id) or {}
+        if cfg.intake_recipient and not ticket.get("mail") and (ticket.get("triage") or {}).get("disposition") in (cfg.intake_mail_dispositions or []):
+            mail_ticket(cfg, ticket_id)
+    except Exception:  # noqa: BLE001 - logged; POST /issues/<id>/mail can send it later
+        log.exception("mailing %s failed", ticket_id)
 
 
 def resume_pending(cfg: Config) -> list[str]:
@@ -472,6 +491,8 @@ def summary(ticket: dict) -> dict:
         "disposition": triage.get("disposition"),
         "triage_state": triage.get("state"),
         "chars": len(ticket.get("text") or ""),
+        "mailed": bool(ticket.get("mail")),
+        "replies": len(ticket.get("replies") or []),
     }
 
 
@@ -483,3 +504,157 @@ def list_tickets(cfg: Config, *, status: str | None = None, limit: int = 50) -> 
 
 def new_report_id() -> str:
     return uuid.uuid4().hex
+
+
+# ----- the Intake resident's mail (instance mailbox) -----
+
+POSTED_RE = re.compile(r"posted\s+message_id=(\S+)\s+to=(\S+)")
+STATUS_WORDS = ("accepted", "answered", "escalated", "failed", "needs_detail", "done", "declined")
+
+
+def mail_text(ticket: dict, note: str | None = None) -> str:
+    """The plain-text mail a resident receives for one ticket (never JSON: a JSON body of the
+    shape ``{"kind": "job_request"}`` would be read as cloud-job demand by the host)."""
+    triage = ticket.get("triage") or {}
+    context = ticket.get("context") or {}
+    source = ticket.get("source") or {}
+    passage = context.get("passage") or {}
+    lines = [
+        f"voice-portal ticket_id={ticket.get('ticket_id')} kind={triage.get('kind')} priority={triage.get('priority')} "
+        f"disposition={triage.get('disposition')} component={triage.get('component')}",
+        "",
+        f"Title: {triage.get('title')}",
+        f"Recorded: {ticket.get('recorded_at_iso')} from the phone's Bug chip (app build {source.get('app_build', '?')}).",
+        "",
+        "Rawley said (speech recognition, read charitably):",
+        f"  \"{ticket.get('text') or ''}\"",
+        "",
+        f"Summary: {triage.get('summary') or ''}",
+    ]
+    if triage.get("observed"):
+        lines.append(f"Observed: {triage['observed']}")
+    if triage.get("expected"):
+        lines.append(f"Expected: {triage['expected']}")
+    for step in triage.get("steps") or []:
+        lines.append(f"Step: {step}")
+    if triage.get("flags"):
+        lines.append(f"Flags: {', '.join(triage['flags'])}")
+    if triage.get("detail_questions"):
+        lines.append("Open questions from triage:")
+        lines += [f"  - {q}" for q in triage["detail_questions"]]
+    if note:
+        lines += ["", "Note from the operator's session:", note]
+    lines += ["", "Context when the report began:"]
+    if passage.get("reference"):
+        lines.append(f"  Scripture pane: {passage['reference']} ({'being read aloud' if passage.get('reading') else 'open'}).")
+    lines.append(f"  Portal mode: {context.get('mode_before')}.")
+    for turn in (context.get("recent_turns") or [])[-4:]:
+        lines.append(f"  {turn.get('role')}: {str(turn.get('text') or '')[:240]}")
+    lines += [
+        "",
+        f"Full record: GET http://100.90.105.30:8765/issues/{ticket.get('ticket_id')} (intake issues log).",
+        "Reply to this message with send_message(\"operator\", \"status: <accepted|answered|escalated|failed|needs_detail> ...\", in_reply_to=<this message id>).",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _allocatorctl(cfg: Config, args: list[str]) -> subprocess.CompletedProcess:
+    return subprocess.run([cfg.allocatorctl, *args], capture_output=True, text=True, timeout=cfg.allocatorctl_timeout_s)
+
+
+def mail_ticket(cfg: Config, ticket_id: str, *, note: str | None = None, force: bool = False) -> dict:
+    """Mail one ticket to ``intake_recipient`` and record a ``mailed`` event.
+
+    Args:
+        cfg: Service configuration (``intake_recipient``, ``allocatorctl``).
+        ticket_id: The ticket to send.
+        note: Text appended under "Note from the operator's session" (answers to open questions).
+        force: Send again although the ticket was already mailed.
+
+    Returns:
+        ``{"mailed": True, "message_id", "recipient"}``, or ``{"mailed": False, "reason", ...}``.
+    """
+    if not cfg.intake_recipient:
+        return {"mailed": False, "reason": "intake_recipient_unset"}
+    path = log_path(cfg)
+    ticket = read_tickets(path).get(ticket_id)
+    if ticket is None:
+        return {"mailed": False, "reason": "not_found"}
+    if ticket.get("mail") and not force:
+        return {"mailed": False, "reason": "already_mailed", "mail": ticket["mail"]}
+    outdir = cfg.root / "outbox" / "issues"
+    outdir.mkdir(parents=True, exist_ok=True)
+    body = outdir / f"{ticket_id}-{int(time.time())}.txt"
+    body.write_text(mail_text(ticket, note), encoding="utf-8")
+    try:
+        proc = _allocatorctl(cfg, ["inbox", "post", "--to", cfg.intake_recipient, "--file", str(body)])
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"mailed": False, "reason": "allocatorctl_failed", "error": str(exc)}
+    match = POSTED_RE.search(proc.stdout or "")
+    if proc.returncode != 0 or not match:
+        return {"mailed": False, "reason": "refused", "returncode": proc.returncode, "output": ((proc.stdout or "") + (proc.stderr or "")).strip()[:600]}
+    event = {"schema": SCHEMA, "event": "mailed", "ticket_id": ticket_id, "at": time.time(), "message_id": match.group(1), "recipient": match.group(2), "note": note, "body": str(body)}
+    with _LogLock(path):
+        _append(path, event)
+    log.info("issue %s mailed to %s as %s", ticket_id, match.group(2), match.group(1))
+    return {"mailed": True, "message_id": match.group(1), "recipient": match.group(2)}
+
+
+def _reply_status(text: str) -> str:
+    m = re.match(r"\s*status\s*[:=]\s*([a-z_]+)", text or "", re.I)
+    word = (m.group(1) if m else (text or "").strip().split(" ", 1)[0]).lower().strip(".,:")
+    return word if word in STATUS_WORDS else "answered"
+
+
+def poll_replies(cfg: Config) -> list[dict]:
+    """Record the resident's replies to mailed tickets as ``status`` events; returns those recorded."""
+    path = log_path(cfg)
+    tickets = read_tickets(path)
+    recorded: list[dict] = []
+    for ticket in tickets.values():
+        seen = {r.get("reply_message_id") for r in ticket.get("replies") or []}
+        for mail in ticket.get("mail") or []:
+            try:
+                proc = _allocatorctl(cfg, ["inbox", "list", "--to-operator", "--json", "--in-reply-to", mail["message_id"]])
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                log.warning("reply poll for %s failed: %s", ticket["ticket_id"], exc)
+                continue
+            if proc.returncode != 0:
+                # An id from an earlier instance is refused (mail_bad_reply); nothing to record.
+                continue
+            try:
+                messages = json.loads(proc.stdout or "{}").get("messages") or []
+            except json.JSONDecodeError:
+                continue
+            for message in messages:
+                if message.get("message_id") in seen:
+                    continue
+                event = {
+                    "schema": SCHEMA, "event": "status", "ticket_id": ticket["ticket_id"], "at": time.time(),
+                    "status": _reply_status(message.get("text") or ""), "reply_message_id": message.get("message_id"),
+                    "in_reply_to": mail["message_id"], "from": message.get("from"), "text": message.get("text"), "sent_at": message.get("sent_at"),
+                }
+                with _LogLock(path):
+                    _append(path, event)
+                seen.add(message.get("message_id"))
+                recorded.append(event)
+                log.info("issue %s: reply %s (%s)", ticket["ticket_id"], event["reply_message_id"], event["status"])
+    return recorded
+
+
+def start_reply_poller(cfg: Config) -> threading.Thread | None:
+    """Poll replies every ``intake_poll_s`` seconds on a daemon thread (only with a recipient)."""
+    if not cfg.intake_recipient or cfg.intake_poll_s <= 0:
+        return None
+
+    def loop() -> None:
+        while True:
+            time.sleep(cfg.intake_poll_s)
+            try:
+                poll_replies(cfg)
+            except Exception:  # noqa: BLE001 - logged; the next poll tries again
+                log.exception("reply poll failed")
+
+    thread = threading.Thread(target=loop, name="intake-replies", daemon=True)
+    thread.start()
+    return thread

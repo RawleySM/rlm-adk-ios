@@ -11,6 +11,43 @@ Sources: rlm-adk at `origin/main` 48df8d54 (paths below are rlm-adk paths unless
 allocator read through `allocatorctl status --json`, and the proposals in this directory. Facts are
 cited; inferences are marked.
 
+## 0. Updates 2026-10-16 (decisions taken and what changed since the plan)
+
+- **Decisions.** Rawley chose one launch with Steward, Researcher and Intake together, Claude Code
+  as Intake's delegate, and lifted the two-resident limit. Resident limits are fixed for an instance
+  in its registry policy (`rlm_adk/residents/provisioning.py`, `RegistryPolicy`: "Everything here is
+  fixed for the instance: storage, the launch root, limits, root grants ..."; a resume with new
+  limits is refused as "resident application policy conflict"), so the launch is a **new instance**,
+  `voice-intake-20261016`, with all three residents cold (neither had a published package). Steward
+  and Researcher keep Codex's minimal-launch specifications verbatim except one Researcher sentence,
+  changed on Rawley's instruction: "Start the supplied A/B campaign automatically once admission and
+  the explicitly prepared launch prerequisites are ready." became "Start the supplied A/B campaign
+  only when Rawley directs it through the mail room; until then it stays held." Everything else
+  specific to this launch is in steering. Because the instance is new, Intake holds a
+  `project_coordination` slot for `rlm-adk-ios` (registered at launch), opens that coordinate for each
+  ticket and dispatches its delegate from it; capacity target 2 within ceiling 3; limits 3/3/2. Merges:
+  Intake's delegate may merge its own rlm-adk-ios pull request once every required check passes.
+  Authoring: desktop `~/.config/rlm-adk/launch/voice-intake-20261016/` (`launch.author.json`, its
+  generator `make_voice_intake_instance.py`).
+- **Host items landed.** `inbox list --json` and `--in-reply-to` (rlm-adk #1352), the delegate `cwd`
+  doc fix (#1348), and dossiers for the outside-repository delegate notice (#1350) and partial quiesce
+  (#1351). The allocator is updated to main `8c0a94c9`, reviewed beforehand (no blockers; the Researcher
+  needs a fresh measured qualification after #1346/#1354).
+- **Partial quiesce, in progress (Codex, branch `codex/coordinate-trial-holds`, not merged).** A native
+  experiment will run under a lease with no production hold: continuous residents (Steward, Intake)
+  keep running; each experiment occupies one of the Researcher's project coordinates until cleanup;
+  the Steward holds or releases it with `hold_branch` / `release_branch` under capacity governance;
+  the Researcher pauses and resumes its own experiment (`pause_live_test_experiment`,
+  `resume_live_test_experiment`); a held trial stays held until every hold is released. No new duty
+  kind. This removes the risk in section 4 that a Researcher experiment pauses Intake, once installed
+  by a carry-forward `allocatorctl update`. Until then the old behaviour holds. Note for that work:
+  #1354 makes its plan's 60-second interval impossible (review budget must leave 6 s; measured review
+  latency is 129-147 s) and conflicts textually in `request_model.py`.
+- **Voice portal.** The ticket-to-mail bridge and reply polling are built (`issues.mail_ticket`,
+  `poll_replies`, `POST /issues/<id>/mail`, `POST /issues/replies`; config `intake_recipient`,
+  `intake_mail_dispositions`, `intake_poll_s`), and the work outbox posts with `--to work_recipient`
+  and parses the mailbox receipt.
+
 ## 1. Where things stand (observed)
 
 | Item | State | Evidence |
