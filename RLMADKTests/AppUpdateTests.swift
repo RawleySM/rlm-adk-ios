@@ -82,7 +82,7 @@ final class AppUpdateTests: XCTestCase {
         terminated = 0
         model.appSuspender = { suspended += 1; return canSuspend }
         model.captureStopperForInstall = { done in done() }
-        model.appTerminator = { terminated += 1 }
+        model.appTerminator = { [unowned self] in self.terminated += 1 }
         model.updatePromptTimeout = 0.3
         model.updateLeaveDelay = 0.05
         await model.checkForUpdate(reason: "test")
