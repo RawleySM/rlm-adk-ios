@@ -270,11 +270,26 @@ class FloorProcessor(FrameProcessor):
             logger.warning(f"floor: passage {reference!r} unavailable: {str(result.get('spoken') or result.get('reason'))[:160]}")
             await self._tell_client({"type": "passage_error", "reference": reference, "reason": result.get("spoken") or result.get("reason") or "unavailable"})
             return False
+        within = passage.requested_range(result)
+        position = None
+        if within is not None and within[1] == within[2]:
+            # One verse ("John 3:16" typed in the navigator): open its chapter, positioned at that verse,
+            # so Read starts there and the verses around it stay on screen.
+            try:
+                chapter = passage.from_tool_result(await tools.fetch_scripture(within[0]), within[0])
+            except Exception:  # noqa: BLE001 - fall back to the verse alone
+                chapter = None
+            if chapter is not None:
+                loaded, position = chapter, within[1]
         if self.reading_state.get("reference") == loaded["reference"] and reason == "client:sync":
             # The phone re-announcing what this session already has (a reconnect): keep the position.
             await self._tell_client(passage.message(self.reading_state))
             return True
         passage.apply(self.reading_state, loaded, source="client")
+        start = passage.index_of_verse(self.reading_state, position) if position is not None else None
+        if start:
+            self.reading_state["spoken_count"] = start
+            self.reading_state["spoken_through"] = int(loaded["verses"][start - 1]["verse"])
         self.events.append({"t": time.time(), "passage": loaded["reference"], "reason": reason})
         from pipecat.frames.frames import LLMMessagesAppendFrame
 
@@ -288,7 +303,7 @@ class FloorProcessor(FrameProcessor):
         await self.refresh_instruction("passage")
         return True
 
-    async def read_active(self, *, restart: bool = False, user_text: str | None = None, reason: str = "", interrupt: bool = True, switch_node: bool = True, indices: list[int] | None = None, announce: str | None = None) -> bool:
+    async def read_active(self, *, restart: bool = False, user_text: str | None = None, reason: str = "", interrupt: bool = True, switch_node: bool = True, indices: list[int] | None = None, announce: str | None = None, from_index: int | None = None) -> bool:
         """Read the open passage from where it stopped (or from the start), one verse per unit, in the reading voice.
 
         Args:
@@ -300,6 +315,8 @@ class FloorProcessor(FrameProcessor):
             switch_node: Move Flows to ``devotional``. Tool handlers pass False and return the node.
             indices: Read only these verses of the open passage (positions in its verse list).
             announce: Spoken first with ``indices`` (the requested reference, e.g. "Romans 12:2.").
+            from_index: Start at this verse of the open passage and read on to its end, announced as
+                "Romans 8, verse 16."; the verses before it count as heard. Overrides ``restart``.
         """
         from pipecat.frames.frames import LLMMessagesAppendFrame
 
@@ -311,6 +328,12 @@ class FloorProcessor(FrameProcessor):
             return False
         if interrupt and (self.reading_state.get("reading") or self.bot_speaking):
             await self._interrupt_and_settle()
+        verses = self.reading_state.get("verses") or []
+        if from_index is not None and 0 <= from_index < len(verses):
+            indices = list(range(from_index, len(verses)))
+            announce = f"{self.reading_state.get('reference')}, verse {verses[from_index]['verse']}."
+            self.reading_state["spoken_count"] = from_index
+            self.reading_state["spoken_through"] = int(verses[from_index - 1]["verse"]) if from_index else 0
         units = passage.read_queue(self.reading_state, restart, indices, announce)
         if indices is None and units and units[0].get("index") is None:
             self.reading_state["spoken_count"] = 0
@@ -643,6 +666,16 @@ class FloorProcessor(FrameProcessor):
                 frame.text = text[len(text) - len(remainder) :] if text.lower().endswith(remainder) else remainder
                 text = frame.text
                 n = _norm(text)
+            verse = passage.verse_request(passage.norm(text)) if final and self.reading_state.get("verses") else None
+            start = passage.index_of_verse(self.reading_state, verse) if verse is not None else None
+            if start is not None:
+                # "Start at verse 16", "go back to verse 5": read the open passage from there, no model turn.
+                # Before the continue rule, which would hear "continue from verse 5" as a plain resume.
+                logger.info(f"floor: verse request {verse} in {text!r} for {self.reading_state.get('reference')}")
+                self.events.append({"t": time.time(), "verse_request": verse, "text": text})
+                await self.read_active(user_text=text, reason="phrase", from_index=start)
+                await self._swallow(frame)
+                return
             request = passage.read_request(passage.norm(text)) if final else None
             if request is None and final and any(p in n for p in self._continue) and len(n.split()) <= 10:
                 request = "resume"

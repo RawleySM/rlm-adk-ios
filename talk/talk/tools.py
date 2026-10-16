@@ -181,6 +181,7 @@ async def read_scripture(args: FlowArgs, flow_manager: FlowManager):
     loaded = passage.from_tool_result(result, reference)
     indices = None
     announce = None
+    from_index = None
     within = passage.requested_range(result)
     if within is not None:
         # Verses inside one chapter: the pane shows the whole chapter and the reading covers the verses asked for.
@@ -191,16 +192,21 @@ async def read_scripture(args: FlowArgs, flow_manager: FlowManager):
                 passage.apply(state, chapter, source="tool")
                 if floor is not None:
                     await floor._tell_client(passage.message(state))
-        if state.get("reference") == chapter_ref:
+        if state.get("reference") == chapter_ref and first == last:
+            # One verse ("Matthew 25:14"): start there and read on to the end of the chapter.
+            from_index = passage.index_of_verse(state, first)
+        elif state.get("reference") == chapter_ref:
             indices = [i for i, v in enumerate(state.get("verses") or []) if first <= v["verse"] <= last]
             announce = f"{loaded['reference']}."
-    if indices is None:
+    if indices is None and from_index is None:
         passage.apply(state, loaded, source="tool")
         if floor is not None:
             await floor._tell_client(passage.message(state))
+    if from_index is not None:
+        verses = [v for v in (state.get("verses") or [])[from_index:]]
     if floor is not None:
         # The pane shows what is read; the floor queues the verses in the reading voice and tracks them.
-        await floor.read_active(restart=True, reason="read_scripture", interrupt=False, switch_node=False, indices=indices, announce=announce)
+        await floor.read_active(restart=True, reason="read_scripture", interrupt=False, switch_node=False, indices=indices, announce=announce, from_index=from_index)
         if flow_manager.current_node == "devotional":
             await floor.refresh_instruction("read_scripture")
         spoken = " ".join(v["text"] for v in verses)
@@ -216,8 +222,15 @@ async def continue_reading(args: FlowArgs, flow_manager: FlowManager):
     if not state.get("verses"):
         return {"error": "no passage open", "instruction": "Tell Rawley no passage is open in the scripture pane and ask what he would like read."}, None
     floor = _floor(flow_manager)
+    try:
+        from_verse = int(args["from_verse"]) if args.get("from_verse") not in (None, "") else None
+    except (TypeError, ValueError):
+        from_verse = None
+    from talk import passage
+
+    from_index = passage.index_of_verse(state, from_verse) if from_verse is not None else None
     if floor is not None:
-        await floor.read_active(restart=bool(args.get("from_start")), reason="continue_reading", interrupt=False, switch_node=False)
+        await floor.read_active(restart=bool(args.get("from_start")), reason="continue_reading", interrupt=False, switch_node=False, from_index=from_index)
         if flow_manager.current_node == "devotional":
             await floor.refresh_instruction("continue_reading")
         return {"reference": state.get("reference"), "spoken": True}, (_node("devotional", flow_manager) if flow_manager.current_node != "devotional" else NO_RESPONSE)
@@ -280,7 +293,7 @@ SCHEMAS: dict[str, FlowsFunctionSchema] = {
     ),
     "read_scripture": FlowsFunctionSchema(
         name="read_scripture",
-        description="Read a Scripture reference such as 'Psalm 23' or 'Romans 8:28-30' aloud, verbatim from the retained edition. The tool speaks it; you add nothing.",
+        description="Read a Scripture reference aloud, verbatim from the retained edition: a chapter ('Psalm 23') from its start, a range ('Romans 8:28-30') just those verses, one verse ('Matthew 25:14') from that verse to the end of its chapter. Always pass the verse with a colon when Rawley names one ('Matthew 25 14' is 'Matthew 25:14'). The tool speaks it; you add nothing.",
         properties={"reference": {"type": "string"}},
         required=["reference"],
         handler=read_scripture,
@@ -288,7 +301,10 @@ SCHEMAS: dict[str, FlowsFunctionSchema] = {
     "continue_reading": FlowsFunctionSchema(
         name="continue_reading",
         description="Read the passage open in the scripture pane (the one in the pane note), resuming where its reading stopped, or from the start when it was never read or finished. Use when Rawley says read it, read this, continue, go on, or pick up where you stopped. The tool speaks it; you add nothing.",
-        properties={"from_start": {"type": "boolean", "description": "True when Rawley asks to hear it again from the beginning."}},
+        properties={
+            "from_start": {"type": "boolean", "description": "True when Rawley asks to hear it again from the beginning."},
+            "from_verse": {"type": "integer", "description": "Start at this verse of the open passage and read on, e.g. 16 for 'start at verse 16' or 'back up to verse 16'."},
+        },
         required=[],
         handler=continue_reading,
     ),
