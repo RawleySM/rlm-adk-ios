@@ -1,76 +1,89 @@
-"""`POST /tools/work`: hand a spoken work request to the durable outbox and post it once.
+"""`POST /tools/work`: send what Rawley asked for to the Intake resident.
 
-The operation is created in the outbox (`outbox.create_operation`) and dispatched immediately
-(`outbox.dispatch`, which runs `allocatorctl inbox post` for the live run's root resident). A posted
-directive is only *accepted*: the spoken acknowledgement names the operation and says it is not done.
-A refusal from the allocator is spoken verbatim. Nothing here ever reports completion; results arrive
-later as outbox artifacts (`artifact_available`) through the existing work endpoints.
+The request becomes a ticket in the intake issues log (`issues.record_report`), exactly like a Bug
+chip report: it is triaged on a background thread and then staged or mailed to `intake_recipient`
+by `intake_mail_mode`, so this path passes the same stage/post gate as every other one. Nothing here
+posts to the allocator, and nothing reports completion: Intake's replies arrive on the ticket
+(`GET /intake/feed`, the pushed `intake_message`).
+
+The body is the talk tier's report (`report_id`, `transcript`, `context`, `source`, `kind`,
+`origin`: the `send_to_intake` tool files Rawley's own last words this way) or the short form
+`{request_text, kind?, operation_id?}`. `kind` is a hint (`issues.KINDS`); his first spoken word, and
+then the triage, decide otherwise.
 """
 
 from __future__ import annotations
 
-import re
-import sqlite3
+import time
 
-from .. import outbox
+from .. import issues
 from ..config import Config
 
 
-def _refusal_text(operation: dict) -> str | None:
-    """The allocator's own words from the latest attempt (stderr first, then stdout), whitespace-collapsed."""
-    attempts = [a for a in operation.get("attempts") or [] if a.get("outcome") not in ("reconcile",)]
-    if not attempts:
-        return None
-    last = attempts[-1]
-    text = (last.get("stderr") or "").strip() or (last.get("stdout") or "").strip()
-    return re.sub(r"\s+", " ", text)[:400] or None
-
-
-def work_tool(conn: sqlite3.Connection, cfg: Config, request_text: str, kind: str = "research", operation_id: str | None = None) -> dict:
-    """Create and dispatch one work operation; return its status and a spoken acknowledgement.
+def request_report(payload: dict) -> dict:
+    """The ``POST /issues`` report for a ``/tools/work`` body (a report passes through unchanged).
 
     Args:
-        conn: Consumer database connection (the outbox tables).
-        cfg: Service configuration (allocatorctl path and timeout).
-        request_text: The user's request, verbatim.
-        kind: Operation kind label (default `research`).
-        operation_id: Optional client id; a repeat with the same id never posts twice.
+        payload: A report (has ``transcript``) or ``{request_text, kind?, operation_id?, report_id?,
+            context?, source?, origin?}``.
 
     Returns:
-        `{accepted, operation_id, short_id, status, message_id, run_id, refusal, completed: False, spoken}`.
+        A report for ``issues.record_report``; ``origin`` defaults to ``tool``. Without a
+        ``report_id`` or ``operation_id`` every call is a new ticket.
     """
-    text = (request_text or "").strip()
-    if not text:
-        return {"accepted": False, "status": "rejected", "completed": False, "spoken": "I did not hear what work to ask for."}
-    operation = outbox.create_operation(conn, kind=kind or "research", request_text=text, operation_id=operation_id)
-    op_id = operation["operation_id"]
-    dispatched = outbox.dispatch(conn, cfg, op_id)
-    operation = outbox.get_operation(conn, op_id) or operation
-    status = operation["status"]
-    short = op_id[:8]
-    posted = next((a for a in reversed(operation.get("attempts") or []) if a.get("message_id")), None)
-    result = {
-        "accepted": status == "directive_posted",
-        "operation_id": op_id,
-        "short_id": short,
-        "kind": operation["kind"],
-        "status": status,
-        "dispatch": {k: v for k, v in dispatched.items() if k in ("dispatched", "reason", "attempt_id")},
-        "message_id": posted.get("message_id") if posted else None,
-        "run_id": posted.get("run_id") if posted else None,
-        "refusal": None,
-        "completed": False,
+    if isinstance(payload.get("transcript"), dict):
+        return {**payload, "origin": payload.get("origin") or "tool"}
+    text = str(payload.get("request_text") or "").strip()
+    return {
+        "report_id": str(payload.get("report_id") or payload.get("operation_id") or issues.new_report_id()),
+        "surface": "voice_portal",
+        "origin": payload.get("origin") or "tool",
+        "kind": payload.get("kind"),
+        "started_at": time.time(),
+        "ended_at": time.time(),
+        "ended_by": "tool",
+        "transcript": {"segments": [{"t": time.time(), "text": text, "source": "request"}] if text else []},
+        "source": payload.get("source") or {},
+        "context": payload.get("context") or {},
     }
-    if status == "directive_posted":
-        result["spoken"] = f"Accepted as operation {short}. It is not done; I will say when there is a result."
-    elif status == "backend_unavailable":
-        refusal = _refusal_text(operation) or (operation.get("last_error") or "the allocator is unavailable")
-        result["refusal"] = refusal
-        result["spoken"] = f"Saved as operation {short}, but the allocator refused it: {refusal}. It is not done."
-    elif status == "delivery_unknown":
-        result["spoken"] = f"Operation {short} was sent, but delivery is not confirmed. It is not done."
-    elif status == "artifact_available":
-        result["spoken"] = f"Operation {short} already has a result available."
-    else:
-        result["spoken"] = f"Saved as operation {short}; it has not been sent. It is not done."
-    return result
+
+
+def spoken_for(cfg: Config, ticket: dict) -> str:
+    """What the talk tier says: "Sent to Intake." only when the mail will actually be posted."""
+    if (ticket.get("triage") or {}).get("disposition") == "no_report":
+        return "Saved in the intake log; it was too short to send to Intake."
+    if not cfg.intake_recipient:
+        return "Saved in the intake log."
+    if cfg.intake_mail_mode != "post":
+        return "Saved for Intake. Mail to Intake is on hold, so it has not been sent yet."
+    return "Sent to Intake."
+
+
+def work_tool(cfg: Config, payload: dict) -> dict:
+    """Record one request as an intake ticket and triage it in the background.
+
+    Args:
+        cfg: Service configuration (``issues_log``, ``intake_recipient``, ``intake_mail_mode``).
+        payload: The request body (see ``request_report``).
+
+    Returns:
+        ``{accepted, status ("recorded" | "rejected"), ticket_id, report_id, created, kind_hint,
+        mail_mode, completed: False, spoken}``. A repeat with the same report id records nothing.
+    """
+    report = request_report(payload)
+    if not issues.transcript_text(report).strip():
+        return {"accepted": False, "status": "rejected", "completed": False, "spoken": "I did not hear what to send to Intake."}
+    ticket, created = issues.record_report(cfg, report)
+    if created:
+        issues.triage_in_background(cfg, ticket["ticket_id"])
+    return {
+        "accepted": True,
+        "status": "recorded",
+        "ticket_id": ticket["ticket_id"],
+        "report_id": ticket["report_id"],
+        "created": created,
+        "kind_hint": ticket.get("kind_hint"),
+        "mail_mode": cfg.intake_mail_mode if cfg.intake_recipient else "unset",
+        "completed": False,
+        "spoken": spoken_for(cfg, ticket),
+    }

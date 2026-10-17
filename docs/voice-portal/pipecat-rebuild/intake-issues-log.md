@@ -1,14 +1,25 @@
-# Intake issues log (bug reports from the Bug chip)
+# Intake issues log (what Rawley sends the Intake resident)
 
-Rawley reports a bug by voice: he taps **Bug** on the portal page, the chip reads **Bug
-Reporting...**, he describes the problem (spoken, or typed into the input field), and taps it again.
-While the chip is on, the assistant says nothing and answers nothing, but his voice is still recorded
-and transcribed. The talk tier (Spark-A) posts what it heard, with the context of the moment, to
-the skill service on the desktop. The skill service records it as a ticket in this log and triages it.
+Rawley reaches the Intake resident from the voice portal in three ways, and every one becomes a
+ticket in this log:
 
-The Intake resident (`intake-resident-proposal.md`, `intake-delegation-plan.md`) is meant to act on
-these tickets. Until its runtime is started, the mail to it is **staged, not delivered**: see
-"Mail to the Intake resident" below.
+- **Bug chip.** He taps **Bug** on the portal page, the chip reads **Bug Reporting...**, he
+  describes the problem (spoken, or typed into the input field), and taps it again. While the chip
+  is on, the assistant says nothing and answers nothing, but his voice is still recorded and
+  transcribed. The talk tier (Spark-A) posts what it heard, with the context of the moment, to the
+  skill service on the desktop (`POST /issues`).
+- **In conversation.** He asks the assistant to tell, ask, teach or send something to Intake, to
+  remember something or to propose a project. The talk tier's `send_to_intake(kind)` tool files his
+  own last words (never the model's paraphrase) with `POST /tools/work`, and the assistant says
+  "Sent to Intake." and nothing more (`talk-protocol.md`).
+- **Work tab.** A request recorded on the phone's Work tab is sent with `POST /work/<id>/dispatch`
+  (`outbox.send_to_intake`).
+
+All three go through `issues.record_report`, so the stage/post mail gate below covers every path;
+nothing in the skill service posts to the allocator any other way (the old work outbox dispatch and
+its `inbox list --all` reconciliation are retired). The skill service triages each ticket and mails
+it to Intake (`intake-solo-plan.md`). Intake's replies come back on the ticket and are shown on the
+phone as an `Intake: ...` line (and on the Bug card).
 
 ## Where it is
 
@@ -17,25 +28,28 @@ these tickets. Until its runtime is started, the mail to it is **staged, not del
 | Log | desktop `~/.local/rlm-adk/stores/intake/issues.jsonl` (skill service config `issues_log`; empty means `<state root>/intake/issues.jsonl`, which is what tests and isolated backends use) |
 | Lock | `issues.jsonl.lock` beside it (advisory `flock`, held for each scan-and-append) |
 | Writer | the skill service, `backend/voice_portal/issues.py` |
-| Read API | `GET /issues[?status=open&limit=50]` (newest first), `GET /issues/<ticket_id>` (the folded ticket) |
-| Write API | `POST /issues` (the talk tier; idempotent on `report_id`); `POST /issues/<id>/mail {note?, force?}` (stage or send the ticket's mail); `POST /issues/<id>/status {status, text?, artifact?, by?}` (a status written by someone other than the resident); `POST /issues/replies` (poll the resident's replies now) |
+| Read API | `GET /issues[?status=open&limit=50]` (newest first), `GET /issues/<ticket_id>` (the folded ticket), `GET /intake/feed[?since=<unix>&limit=50]` (Intake's replies and inbound mail, newest last) |
+| Write API | `POST /issues` (the talk tier's Bug chip; idempotent on `report_id`; optional `kind` hint); `POST /tools/work` (the talk tier's `send_to_intake`, or `{request_text, kind?, operation_id?}`); `POST /work/<id>/dispatch` (the Work tab); `POST /issues/<id>/mail {note?, force?}` (stage or send the ticket's mail); `POST /issues/<id>/status {status, text?, artifact?, by?}` (a status written by someone other than the resident); `POST /issues/replies` (read the mailbox now and push what is new) |
+| Push | `{"type": "intake_message", ...}` on the phone's control WebSocket (`/ws`), one per new reply or inbound message (the feed item below) |
 
 ## Format
 
 JSON Lines, one event per line, append-only, `fsync`ed. Every event has `schema: "intake-issue.v1"`,
-`event`, `ticket_id` and `at` (Unix seconds). A ticket is the fold of its events in file order;
-a torn or unknown line is skipped.
+`event`, `ticket_id` and `at` (Unix seconds); only `inbound` events carry `ticket_id: null`. A
+ticket is the fold of its events in file order; a torn or unknown line is skipped.
 
 | Event | Written | Fields |
 |---|---|---|
-| `reported` | at once, when the talk tier posts the report | `report_id`, `ticket` (the whole ticket below, with `triage.state: "pending"` and a provisional keyword triage) |
+| `reported` | at once, when a report or request is filed | `report_id`, `ticket` (the whole ticket below, with `triage.state: "pending"` and a provisional keyword triage) |
 | `triaged` | when the model call returns (seconds; a cold owner takes minutes), or from the keyword rules when it fails | `triage` (replaces the ticket's triage; `state: "done"`) |
 | `mail_staged` | after triage when mail is staged (`intake_mail_mode: "stage"`, the default) | `recipient`, `body` (the mail file), `command` (the exact `allocatorctl inbox post --to ... --file ...` that "post" mode would run), `note` |
-| `mailed` | after triage when mail is sent (`intake_mail_mode: "post"`) | `message_id`, `recipient`, `note` |
-| `status` | a reply from the resident (polled every `intake_poll_s`), or `POST /issues/<id>/status` | `status` (the reply's leading `status: <word>`: accepted, answered, escalated, failed, needs_detail, done, declined), `text`, `reply_message_id`/`in_reply_to` or `from`, `artifact` |
+| `mailed` | after triage when mail is sent (`intake_mail_mode: "post"`) | `message_id`, `recipient`, `instance_id` (the mailbox's sealed launch, read from `inbox list` right after the post; null when that listing failed), `note` |
+| `status` | a reply from the resident threaded on the ticket's mail (read every `intake_poll_s`), or `POST /issues/<id>/status` | `status` (the reply's leading `status: <word>`, else `answered`), `text`, `reply_message_id`, `in_reply_to`, `from` (the mailbox's `{kind, resident_id, package_key, name}`, or the writer's name), `sent_at`, `instance_id`, `artifact` |
+| `inbound` | mail from a resident to the operator that is not a reply to a ticket's mail (unthreaded, or a reply to something else) | `ticket_id: null`, `message_id`, `status` (its leading word, or null), `text`, `from`, `sent_at`, `in_reply_to`, `instance_id`, `mentions` (the ticket ids its text names) |
 
-A consumer appends its own events under the same `ticket_id` (and takes the lock); it never
-rewrites lines.
+Status words: `accepted`, `answered`, `learned`, `proposed`, `started`, `escalated`, `needs_detail`,
+`done`, `failed`, `declined`. A consumer appends its own events under the same `ticket_id` (and
+takes the lock); it never rewrites lines.
 
 ### The ticket
 
@@ -46,12 +60,13 @@ rewrites lines.
   "report_id": "<talk tier uuid>",
   "recorded_at": 1792051200.0, "recorded_at_iso": "2026-10-15T07:20:00+00:00",
   "recorded_by": "voice-portal skill service",
-  "surface": "voice_portal", "reporter": "operator", "status": "open",
+  "surface": "voice_portal", "origin": "bug_chip|conversation|work_tab|tool", "kind_hint": "teaching",
+  "reporter": "operator", "status": "open",
   "text": "The report's words: the server transcript segments joined (typed lines included).",
   "transcript": {
-    "segments": [{"t": 1792051190.2, "text": "...", "source": "voice|typed"}],
+    "segments": [{"t": 1792051190.2, "text": "...", "source": "voice|typed|conversation|request"}],
     "device_segments": [{"text": "the phone's own recognizer finals"}],
-    "asr": "cohere-transcribe", "started_at": 0, "ended_at": 0, "ended_by": "client|admin|disconnect"
+    "asr": "cohere-transcribe", "started_at": 0, "ended_at": 0, "ended_by": "client|admin|disconnect|send_to_intake|tool|work_tab"
   },
   "source": {"session_id": "ws-…", "client": "ios", "app_build": "17", "transport": "websocket", "audio_route": "<AVAudioSession route>", "install_id": "…"},
   "context": {
@@ -61,7 +76,7 @@ rewrites lines.
     "recent_floor_events": [{"t": 0, "mode": "…"}]
   },
   "triage": {
-    "kind": "bug|feature_request|question|feedback",
+    "kind": "bug|feature_request|message|teaching|project_proposal",
     "title": "≤ 80 characters", "summary": "…", "observed": "…", "expected": "…", "steps": ["…"],
     "component": "voice_input|voice_output|conversation|scripture_pane|prayer|app_ui|connectivity|backend|other",
     "severity": "critical|major|minor|cosmetic",
@@ -76,22 +91,39 @@ rewrites lines.
 }
 ```
 
+`origin` and `kind_hint` are absent on tickets recorded before 2026-10-17 (they came from the Bug
+chip); those tickets may also carry the retired kinds `question` and `feedback`, which fold, list and
+are re-mailed as messages. Every ticket id is `bug-YYYYMMDD-NN`, whatever its kind.
+
 ## Triage: flag, sort, disposition
 
 One strict-JSON call to the skill service's reasoning owner (`inference_base_url`, thinking off,
 `response_format` schema `issue_triage`; one plain retry when the owner rejects the schema), with the
 report's words and its context (open passage and whether it was being read, the mode, the last
-conversation turns, the app build and audio route). The model **flags** (`severity`, `flags`) and
-**sorts** (`kind`, `component`); off-list values fall back to the keyword rules. The host then
-derives, deterministically:
+conversation turns, the app build and audio route, and the kind it was sent as). The model **flags**
+(`severity`, `flags`) and **sorts** (`kind`, `component`); off-list values fall back to the keyword
+rules.
+
+The kind is decided in this order:
+
+1. **Rawley's first spoken word** (fillers such as "um" and "okay" skipped): "teach ..." /
+   "remember ..." is a `teaching`, "project ..." / "proposal ..." / "propose ..." a
+   `project_proposal`, "bug ..." a `bug`.
+2. **The caller's hint**: `send_to_intake(kind)`, a `kind` on `POST /issues` or `/tools/work`, the
+   Bug chip's optional `client_bug` `kind`. Anything outside the five kinds is ignored.
+3. **The model** (or the keyword rules when it fails: "remember that", "keep in mind" make a
+   teaching; "new project", "start a project" a proposal; "I'd like", "please add" a feature request;
+   otherwise a bug).
+
+The host then derives, deterministically:
 
 * **disposition**: `no_report` when fewer than three words were said (the press is kept: its
-  context still says what was happening); `needs_detail` when the model says an engineer would have
-  to ask (its `detail_questions` say what); `ready` for a bug; `request` for a feature request,
-  question or feedback.
+  context still says what was happening); for a bug, `needs_detail` when the model says an engineer
+  would have to ask (its `detail_questions` say what), else `ready`; every other kind is a `request`
+  (no `needs_detail` gate; any open questions still travel in the mail).
 * **priority**, the sort key for a consumer: P1 for critical or `blocks_use` / `data_loss`, P2 major,
   P3 minor, P4 cosmetic or `no_report`.
-* **route**: `intake` for every ticket until the consumer exists and decides otherwise.
+* **route**: `intake` for every ticket.
 
 When the owner is down the keyword rules triage the ticket (`source: fallback_keywords`, the error
 in `errors`). A ticket still pending when the skill service starts is triaged again.
@@ -101,14 +133,59 @@ in `errors`). A ticket still pending when the skill service starts is triaged ag
 With `intake_recipient` set (production: `intk01`), a triaged ticket whose disposition is in
 `intake_mail_dispositions` (`ready`, `request`, `needs_detail`) gets a plain-text mail
 (`issues.mail_text`): a first line `voice-portal ticket_id=... kind=... priority=... disposition=...
-component=...`, his words, the triage, open questions, the context and how to reply
-(`send_message("operator", "status: <word> ...", in_reply_to=<the message id>)`). Plain text on
-purpose: a JSON body shaped `{"kind": "job_request"}` is read by the host as cloud-job demand.
+component=...`, a line naming the kind, where it came from (Bug chip, conversation, Work tab), his
+words, the triage, open questions, the context, `Full record: GET http://127.0.0.1:8765/issues/<id>`
+(the resident runs on the desktop beside the skill service) and how to reply
+(`send_message("operator", "status: <word> ...", in_reply_to=<the message id>)`) with the words for
+its kind (`intake-solo-plan.md` section 3):
+
+| Kind | Reply words | The reply names |
+|---|---|---|
+| `bug`, `feature_request` | `accepted`, then `done` / `failed` (or `needs_detail`, `declined`) | the PR, the merge commit, the build or deploy; what stopped it |
+| `message` | `answered` (or `needs_detail`, `declined`) | the answer, with the record ids and dates it rests on |
+| `teaching` | `learned` (or `needs_detail`, `declined`) | what was learned, where it applies, the package version that holds it |
+| `project_proposal` | `proposed`, then `started` after his go-ahead (or `needs_detail`, `declined`) | the brief; then the project id, the repository and the first commit |
+
+Plain text on purpose: a JSON body shaped `{"kind": "job_request"}` is read by the host as cloud-job
+demand.
 
 - `intake_mail_mode: "stage"` (default while the runtime is not running): the mail is written under
   `<state root>/outbox/issues/` and a `mail_staged` event records it and the exact post command.
-  Nothing reaches the allocator, and no replies are polled.
+  Nothing reaches the allocator, and no replies are read. `send_to_intake` then says "Saved for
+  Intake. Mail to Intake is on hold, so it has not been sent yet." A staged ticket is not posted by
+  itself when the mode changes: `POST /issues/<id>/mail {"force": true}` sends it.
 - `intake_mail_mode: "post"`: the command runs (`allocatorctl inbox post --to <recipient> --file
-  <mail>`, receipt `posted message_id=<id> to=<recipient>`), a `mailed` event records the id, and a
-  background thread reads replies every `intake_poll_s` with `allocatorctl inbox list --to-operator
-  --json --in-reply-to <id>` (rlm-adk #1352), one `status` event per new reply.
+  <mail>`, receipt `posted message_id=<id> to=<recipient>`), a `mailed` event records the id and
+  the mailbox instance, and a background thread reads the mailbox every `intake_poll_s`.
+
+## Reading Intake's replies and mail
+
+One `allocatorctl inbox list --to-operator --json` per poll (schema `rlm_adk.inbox_list.v1`:
+`instance_id` and every message residents sent the operator in that instance, oldest first). The
+listing has no cursor, so each message is recorded once by `message_id`:
+
+- `in_reply_to` names a ticket's `mailed` message of the same instance (or a mail recorded before
+  instance ids were kept: message ids are unique `mail-<uuid>`): a `status` event on that ticket,
+  whose status becomes the reply's leading word.
+- Anything else: an `inbound` event (`ticket_id: null`) with the ticket ids its text names. A mail of
+  another instance is never threaded, so its replies arrive as inbound mail.
+
+A refused or failed listing records nothing and is retried at the next poll. Every new reply and
+inbound message is pushed to the phone (`intake_message`, below); a phone that was away catches up
+with `GET /intake/feed?since=<the last at it applied>` when it reconnects.
+
+### The phone's view (`GET /intake/feed`, `intake_message`)
+
+```json
+{"type": "intake_message", "id": "mail-5b1e…", "kind": "reply|inbound",
+ "ticket_id": "bug-20261017-02", "ticket_title": "…", "ticket_kind": "teaching",
+ "status": "learned", "text": "status: learned. …", "display": "…",
+ "from_name": "Intake", "sent_at": "2026-10-17T09:00:00+00:00", "at": 1792224000.5,
+ "in_reply_to": "mail-77…", "instance_id": "intake-solo-20261017", "mentions": []}
+```
+
+`display` is the text without its leading `status: <word>`. The feed is `{"items": [...], "now",
+"log"}`, newest last; `since` filters on `at` (when the skill service recorded it), `limit` keeps the
+newest. An operator's own `POST /issues/<id>/status` is not in the feed. The app shows the newest as
+`Intake: <display>` in the conversation pane (status and ticket beneath it) and lists the latest
+three replies about the Bug card's ticket on the card.

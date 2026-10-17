@@ -12,16 +12,18 @@ struct BugReportEvent: Equatable {
     var component: String?
     var disposition: String?
     var error: String?
+    /// The triaged kind: bug, feature_request, message, teaching or project_proposal.
+    var kind: String?
 
     init?(message: [String: Any]) {
         guard let state = message["state"] as? String else { return nil }
         self.init(state: state, reportId: message["report_id"] as? String, ticketId: message["ticket_id"] as? String, title: message["title"] as? String,
                   segments: message["segments"] as? Int, priority: message["priority"] as? String, component: message["component"] as? String,
-                  disposition: message["disposition"] as? String, error: message["error"] as? String)
+                  disposition: message["disposition"] as? String, error: message["error"] as? String, kind: message["kind"] as? String)
     }
 
     init(state: String, reportId: String? = nil, ticketId: String? = nil, title: String? = nil, segments: Int? = nil, priority: String? = nil,
-         component: String? = nil, disposition: String? = nil, error: String? = nil) {
+         component: String? = nil, disposition: String? = nil, error: String? = nil, kind: String? = nil) {
         self.state = state
         self.reportId = reportId
         self.ticketId = ticketId
@@ -31,6 +33,7 @@ struct BugReportEvent: Equatable {
         self.component = component
         self.disposition = disposition
         self.error = error
+        self.kind = kind
     }
 }
 
@@ -40,7 +43,7 @@ struct BugReportEvent: Equatable {
 /// and the talk tier stops answering, while the microphone and both transcribers keep running.
 /// Every final transcript the server hears comes back as a line of the report. The second tap
 /// files it (the talk tier posts it to the desktop's intake issues log); the chip shows the ticket
-/// and, a little later, the triaged title and priority.
+/// and, a little later, the triaged title and priority, then Intake's replies about the ticket.
 struct BugReportState: Equatable {
     enum Phase: Equatable {
         case idle, reporting, filing, filed, spooled, failed
@@ -57,8 +60,12 @@ struct BugReportState: Equatable {
     var deviceLines: [String] = []
     var ticketId: String?
     var title: String?
-    /// "P2 · scripture pane · ready", or why it was not filed.
+    /// "P2 · scripture pane · ready" ("teaching · P3 · other · request" for a kind other than a bug),
+    /// or why it was not filed.
     var detail: String?
+    /// Intake's latest replies about this ticket (a reply on it, or mail naming it), newest last.
+    var replies: [IntakeMessage] = []
+    static let maxReplies = 3
 
     /// True while the report is open or being filed: the phone keeps bot speech silent.
     var silencesOutput: Bool { phase == .reporting || phase == .filing }
@@ -107,7 +114,8 @@ struct BugReportState: Equatable {
         case "triaged":
             guard event.ticketId == nil || event.ticketId == ticketId else { return }
             title = event.title ?? title
-            detail = [event.priority, event.component?.replacingOccurrences(of: "_", with: " "), event.disposition?.replacingOccurrences(of: "_", with: " ")].compactMap { $0 }.joined(separator: " · ")
+            let kind = event.kind.flatMap { $0 == "bug" ? nil : $0.replacingOccurrences(of: "_", with: " ") }
+            detail = [kind, event.priority, event.component?.replacingOccurrences(of: "_", with: " "), event.disposition?.replacingOccurrences(of: "_", with: " ")].compactMap { $0 }.joined(separator: " · ")
         case "cancelled":
             self = BugReportState()
         case "none":
@@ -130,6 +138,13 @@ struct BugReportState: Equatable {
         } else {
             interim = text
         }
+    }
+
+    /// A message from Intake: kept when it is about this report's ticket (each once, the last few).
+    mutating func received(_ message: IntakeMessage) {
+        guard let ticketId, message.concerns(ticketId), !replies.contains(where: { $0.id == message.id }) else { return }
+        replies.append(message)
+        if replies.count > Self.maxReplies { replies.removeFirst(replies.count - Self.maxReplies) }
     }
 
     /// The talk connection dropped mid-report; the server files what it heard when its session ends.

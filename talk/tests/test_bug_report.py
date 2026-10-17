@@ -157,6 +157,16 @@ class BugFloor(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.client_messages("bug_report")[-1]["priority"], "P2")
         self.assertIsNone(await self.floor.stop_bug(), "nothing open to stop")
 
+    async def test_chip_kind_hint_travels_with_the_report(self):
+        await self.floor.client_bug({"type": "client_bug", "action": "start", "kind": "teaching", "app_build": "28"})
+        await self.say("Remember that I read the Psalms at night.")
+        message = await self.floor.stop_bug()
+        self.assertEqual(message["state"], "filed")
+        self.assertEqual((self.filed[0]["kind"], self.filed[0]["origin"]), ("teaching", "bug_chip"))
+        await self.floor.start_bug()
+        await self.floor.stop_bug()
+        self.assertIsNone(self.filed[1]["kind"], "no hint: triage decides")
+
     async def test_failed_filing_is_reported_as_spooled(self):
         async def spooled(cfg, payload):
             return {"filed": False, "spooled": "/x.json", "error": "HTTP 503"}

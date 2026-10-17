@@ -114,6 +114,7 @@ struct WorkOperation: Decodable, Identifiable {
         case "delivery_unknown": return "Delivery unknown"
         case "directive_posted": return "Directive posted"
         case "artifact_available": return "Artifact available"
+        case "sent_to_intake": return "Sent to Intake"
         case "failed": return "Failed"
         default: return status
         }

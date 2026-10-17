@@ -1,6 +1,6 @@
 """Skill-service tools: spoken reference parsing, verbatim Scripture, the conversation policy, project
-check-in over the real register records (held-out descriptions), the work acknowledgement, and the
-HTTP routes the Pipecat talk tier calls."""
+check-in over the real register records (held-out descriptions), a request sent to Intake through the
+intake issues log, and the HTTP routes the Pipecat talk tier calls."""
 
 import json
 import os
@@ -16,6 +16,7 @@ from pathlib import Path
 
 from tests.helpers import import_chapters, make_config, numbered
 from tests.test_outbox import STUB
+from voice_portal import issues
 from voice_portal.db import connect
 from voice_portal.server import make_server
 from voice_portal.tools import policy as policy_tool
@@ -25,6 +26,13 @@ from voice_portal.tools.spoken import clean_spoken, normalize_spoken_reference, 
 from voice_portal.tools.work import work_tool
 
 FIXTURE_RECORDS = Path(__file__).resolve().parent / "fixtures" / "project_work"
+
+
+def join_triage_threads(timeout: float = 10.0) -> None:
+    """Wait for the background triage a filed request starts, so the temporary state can be removed."""
+    for thread in threading.enumerate():
+        if thread.name.startswith("triage-"):
+            thread.join(timeout)
 
 PSALM_23 = [
     "A Psalm by David. Yahweh is my shepherd; I shall lack nothing.",
@@ -247,46 +255,59 @@ class WorkToolTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         tmp = Path(self.tmp.name)
         self.cfg = make_config(tmp)
+        self.cfg.inference_base_url = "http://127.0.0.1:9/v1"  # the background triage never reaches a real owner
         stub = Path(self.cfg.allocatorctl)
         stub.write_text(STUB)
         stub.chmod(stub.stat().st_mode | stat.S_IEXEC)
         self.inbox = tmp / "stub_inbox.jsonl"
         os.environ["STUB_INBOX"] = str(self.inbox)
-        self.conn = connect(self.cfg.db_path)
+        os.environ["STUB_MODE"] = "ok"
 
     def tearDown(self):
+        join_triage_threads()
         os.environ.pop("STUB_MODE", None)
         os.environ.pop("STUB_INBOX", None)
-        self.conn.close()
         self.tmp.cleanup()
 
-    def test_posted_is_accepted_not_done(self):
-        os.environ["STUB_MODE"] = "ok"
-        out = work_tool(self.conn, self.cfg, "Find what Edwards says about affections", "research")
-        self.assertEqual(out["status"], "directive_posted")
-        self.assertTrue(out["message_id"].startswith("m"))
-        self.assertFalse(out["completed"])
-        self.assertEqual(out["spoken"], f"Accepted as operation {out['operation_id'][:8]}. It is not done; I will say when there is a result.")
-        self.assertIn(out["operation_id"], self.inbox.read_text())
-        again = work_tool(self.conn, self.cfg, "Find what Edwards says about affections", operation_id=out["operation_id"])
-        self.assertEqual(len(self.inbox.read_text().splitlines()), 1)  # a repeat never posts twice
-        self.assertIn(out["operation_id"][:8], again["spoken"])
+    def tickets(self):
+        return issues.read_tickets(issues.log_path(self.cfg))
 
-    def test_refusal_is_spoken_verbatim(self):
-        os.environ["STUB_MODE"] = "refuse"
-        out = work_tool(self.conn, self.cfg, "Summarise this week's prayers")
-        self.assertEqual(out["status"], "backend_unavailable")
-        self.assertIn("ServiceControlRefused: the allocator service has no live run; start it first", out["spoken"])
-        self.assertIn(out["short_id"], out["spoken"])
-        self.assertIn("It is not done", out["spoken"])
-        self.assertFalse(out["completed"])
-        for word in ("completed", "finished", "done."):
-            self.assertNotIn(word, out["spoken"].replace("It is not done.", ""))
+    def test_request_becomes_an_intake_ticket_and_never_posts_itself(self):
+        self.cfg.intake_recipient = "intk01"
+        out = work_tool(self.cfg, {"request_text": "Find what Edwards says about affections", "kind": "message", "operation_id": "op-1"})
+        self.assertEqual((out["status"], out["accepted"], out["completed"], out["kind_hint"]), ("recorded", True, False, "message"))
+        self.assertEqual(out["spoken"], "Saved for Intake. Mail to Intake is on hold, so it has not been sent yet.")
+        ticket = self.tickets()[out["ticket_id"]]
+        self.assertEqual((ticket["text"], ticket["report_id"], ticket["origin"]), ("Find what Edwards says about affections", "op-1", "tool"))
+        again = work_tool(self.cfg, {"request_text": "Find what Edwards says about affections", "operation_id": "op-1"})
+        self.assertEqual((again["ticket_id"], again["created"]), (out["ticket_id"], False))
+        self.assertEqual(len(self.tickets()), 1)
+        self.assertFalse(self.inbox.exists(), "the tool never runs inbox post; the mail gate does")
+
+    def test_spoken_acknowledgement_follows_the_mail_gate(self):
+        self.cfg.intake_recipient = "intk01"
+        self.cfg.intake_mail_mode = "post"
+        self.assertEqual(work_tool(self.cfg, {"request_text": "Remember that I read the Psalms at night."})["spoken"], "Sent to Intake.")
+        self.assertEqual(work_tool(self.cfg, {"request_text": "Yes."})["spoken"], "Saved in the intake log; it was too short to send to Intake.")
+        self.cfg.intake_recipient = ""
+        self.assertEqual(work_tool(self.cfg, {"request_text": "Remember that I read the Psalms at night."})["spoken"], "Saved in the intake log.")
+
+    def test_the_talk_tiers_report_passes_through(self):
+        report = {
+            "report_id": "talk-1", "origin": "conversation", "kind": "project_proposal", "surface": "voice_portal",
+            "transcript": {"segments": [{"t": 1, "text": "Tell Intake I want a map of the parts of my prayers.", "source": "conversation"}]},
+            "context": {"mode_before": "available", "recent_turns": [{"role": "user", "text": "Tell Intake I want a map of the parts of my prayers."}]},
+            "source": {"session_id": "webrtc-1"},
+        }
+        out = work_tool(self.cfg, report)
+        ticket = self.tickets()[out["ticket_id"]]
+        self.assertEqual((ticket["origin"], ticket["kind_hint"], ticket["triage"]["kind"]), ("conversation", "project_proposal", "project_proposal"))
+        self.assertEqual(ticket["context"]["recent_turns"][0]["role"], "user")
 
     def test_empty_request_is_rejected(self):
-        out = work_tool(self.conn, self.cfg, "  ")
+        out = work_tool(self.cfg, {"request_text": "  "})
         self.assertEqual(out["status"], "rejected")
-        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM work_operations").fetchone()[0], 0)
+        self.assertEqual(self.tickets(), {})
 
 
 class ToolRouteTests(unittest.TestCase):
@@ -313,6 +334,7 @@ class ToolRouteTests(unittest.TestCase):
     def tearDown(self):
         self.server.shutdown()
         self.server.server_close()
+        join_triage_threads()
         os.environ.pop("STUB_MODE", None)
         os.environ.pop("STUB_INBOX", None)
         self.tmp.cleanup()
@@ -352,7 +374,8 @@ class ToolRouteTests(unittest.TestCase):
         with urllib.request.urlopen(req, timeout=30) as response:
             work = json.loads(response.read())
             self.assertEqual(response.status, 201)
-        self.assertEqual(work["status"], "backend_unavailable")
+        self.assertEqual(work["status"], "recorded")
+        self.assertTrue(work["ticket_id"].startswith("bug-"))
         self.assertFalse(work["completed"])
         for body in (policy, scripture, project, work):
             no_markup(self, body.get("spoken") or "")

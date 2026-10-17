@@ -1,10 +1,17 @@
-"""Intake issues log: bug reports spoken into the voice portal, recorded as tickets.
+"""Intake issues log: what Rawley sends the Intake resident from the voice portal, recorded as tickets.
 
-The phone's Bug chip puts the talk tier in ``bug`` mode; when Rawley taps it again the talk tier
-posts what it transcribed (``POST /issues``) with the context of the moment (open passage, reading,
-recent conversation, app build). This module turns that into a ticket and records it in an
-append-only JSON Lines log on the desktop (config ``issues_log``; production
-``~/.local/rlm-adk/stores/intake/issues.jsonl``) that a resident will later monitor.
+Two paths file a ticket. The phone's Bug chip puts the talk tier in ``bug`` mode; when Rawley taps
+it again the talk tier posts what it transcribed (``POST /issues``) with the context of the moment
+(open passage, reading, recent conversation, app build). In conversation, the talk tier's
+``send_to_intake`` tool files his own last words (``POST /tools/work``, ``tools/work.py``), and the
+Work tab's dispatch files its request (``outbox.send_to_intake``). Every path goes through
+``record_report``, so the mail gate below covers all of them. Tickets live in an append-only JSON
+Lines log on the desktop (config ``issues_log``; production ``~/.local/rlm-adk/stores/intake/issues.jsonl``).
+
+A ticket is one of five kinds (``KINDS``): ``bug``, ``feature_request``, ``message``, ``teaching``,
+``project_proposal``. The caller may pass a kind hint; a spoken first word ("teach ...",
+"remember ...", "project ...", "proposal ...", "bug ...") overrides the hint, and the hint overrides
+the model (``spoken_kind``).
 
 Order of work, so the words are never lost to a slow or failed model call:
 
@@ -22,12 +29,16 @@ Later consumers append their own events (claimed, resolved) under the same ``tic
 
 3. When ``intake_recipient`` names a resident, a triaged ticket whose disposition is in
    ``intake_mail_dispositions`` is mailed to it (``mail_ticket``: plain text whose first line is
-   ``voice-portal ticket_id=... kind=...``). With ``intake_mail_mode = "stage"`` (the default while
-   the runtime is not running) the mail and the exact ``allocatorctl inbox post --to`` command are
-   written beside the log and a ``mail_staged`` event records them; nothing reaches the allocator.
-   With ``"post"`` the command runs and a ``mailed`` event records the message id. ``poll_replies`` reads the resident's answers
-   (``inbox list --to-operator --json --in-reply-to``) and appends one ``status`` event per reply;
-   the reply's leading ``status: <word>`` becomes the ticket's status.
+   ``voice-portal ticket_id=... kind=...`` and whose last lines give the reply words for its kind).
+   With ``intake_mail_mode = "stage"`` (the default while the runtime is not running) the mail and
+   the exact ``allocatorctl inbox post --to`` command are written beside the log and a
+   ``mail_staged`` event records them; nothing reaches the allocator. With ``"post"`` the command
+   runs and a ``mailed`` event records the message id and the mailbox's instance id.
+4. ``poll_replies`` reads the mailbox once per poll (``inbox list --to-operator --json``, the whole
+   history: there is no cursor) and records each message once by ``message_id``: a reply threaded
+   on a ticket's mail of this instance becomes a ``status`` event (its leading ``status: <word>`` is
+   the ticket's status), anything else an ``inbound`` event (``ticket_id`` null). ``feed`` serves
+   both to the phone (``GET /intake/feed``, and the pushed ``intake_message``).
 """
 
 from __future__ import annotations
@@ -50,7 +61,10 @@ from .reasoning import ReasoningError, stream_chat
 log = logging.getLogger("voice_portal.issues")
 
 SCHEMA = "intake-issue.v1"
-KINDS = ["bug", "feature_request", "question", "feedback"]
+KINDS = ["bug", "feature_request", "message", "teaching", "project_proposal"]
+# NOTE [Context]: tickets triaged before 2026-10-17 carry the retired kinds ``question`` and
+# ``feedback``; they fold and list as recorded and are mailed with the ``message`` reply words.
+LEGACY_KINDS = ["question", "feedback"]
 COMPONENTS = ["voice_input", "voice_output", "conversation", "scripture_pane", "prayer", "app_ui", "connectivity", "backend", "other"]
 SEVERITIES = ["critical", "major", "minor", "cosmetic"]
 FLAGS = ["blocks_use", "data_loss", "regression", "intermittent", "reproducible", "wrong_content"]
@@ -76,32 +90,38 @@ TRIAGE_SCHEMA = {
     },
 }
 
-TRIAGE_SYSTEM = """You triage bug reports that Rawley speaks into his voice portal: an iPhone app with a
-Scripture pane (passage display, verse shading while a passage is read aloud, a book and chapter
-navigator, read mode), a spoken assistant (British voice; Scripture is read in a second voice), prayer
-capture (prayers addressed to God are recorded, never answered), quiet mode, typed input, and a
-desktop skill service behind it. The transcript comes from speech recognition: read it charitably and
-correct obvious mis-hearings in your own fields, but never add facts that are not in the transcript or
-the context.
+TRIAGE_SYSTEM = """You triage what Rawley speaks into his voice portal for Intake, the resident that handles his
+requests. The portal is an iPhone app with a Scripture pane (passage display, verse shading while a
+passage is read aloud, a book and chapter navigator, read mode), a spoken assistant (British voice;
+Scripture is read in a second voice), prayer capture (prayers addressed to God are recorded, never
+answered), quiet mode, typed input, and a desktop skill service behind it. The transcript comes from
+speech recognition: read it charitably and correct obvious mis-hearings in your own fields, but never
+add facts that are not in the transcript or the context.
 
 Return one JSON object:
-- kind: bug (something behaves wrongly), feature_request (something new or different is wanted),
-  question (he asks how or why something works), feedback (an opinion without a defect).
-- title: at most 80 characters, specific to what he described (for example "Typed question answered
+- kind: bug (something in the portal behaves wrongly), feature_request (something new or different
+  is wanted in the portal), message (a question, a note or an opinion for Intake that is none of the
+  others), teaching (he teaches Intake something or asks it to remember something: a rule, a
+  preference or a method to apply from now on), project_proposal (he proposes a new project: work
+  with its own outcome, beyond a change to the portal).
+- title: at most 80 characters, specific to what he said (for example "Typed question answered
   about the previous passage").
 - summary: two or three plain sentences.
-- observed / expected: what happened and what he expected, in his terms; empty string when not said.
-- steps: steps to reproduce that he stated or that the context shows; empty list when there are none.
+- observed / expected: for a bug, what happened and what he expected, in his terms; otherwise an
+  empty string.
+- steps: steps to reproduce a bug that he stated or that the context shows; otherwise an empty list.
 - component: voice_input (hearing him: microphone, interrupting, transcription), voice_output (the
   bot's audio, voices, speed), conversation (the assistant's answers, tools, wrong information),
   scripture_pane (passage display, shading, navigation, reading), prayer (prayer capture, amen),
   app_ui (buttons, layout, keyboard, screens), connectivity (connecting, dropping, delays), backend
-  (skill service data, work requests), other.
+  (skill service data, work requests), other (also a message, teaching or proposal that concerns no
+  part of the portal).
 - severity: critical (the portal cannot be used or data is lost), major (a main use is broken),
   minor (works with friction), cosmetic (appearance only).
 - flags: any of blocks_use, data_loss, regression (it used to work), intermittent, reproducible,
   wrong_content (the assistant or the pane showed or said something false).
-- needs_detail: true when an engineer could not act on it without asking him something.
+- needs_detail: true when an engineer could not act on a bug or feature request without asking him
+  something; false for a message, a teaching or a project proposal.
 - detail_questions: the questions to ask him when needs_detail is true, else an empty list."""
 
 _COMPONENT_WORDS = [
@@ -116,6 +136,18 @@ _COMPONENT_WORDS = [
 _MAJOR_WORDS = ("crash", "doesn't work", "does not work", "didn't work", "can't", "cannot", "won't", "broken", "stuck", "froze", "never", "lost")
 _FEATURE_WORDS = ("i want", "i'd like", "i would like", "it would be nice", "please add", "could you add", "should be able", "feature")
 _FILLERS = {"um", "uh", "er", "ah", "hmm", "mm", "okay", "ok", "so", "yeah"}
+_TEACHING_WORDS = ("remember that", "remember this", "keep in mind", "i want you to learn", "learn that")
+_PROPOSAL_WORDS = ("new project", "project proposal", "propose a project", "start a project")
+# The first word Rawley speaks (after fillers) names the kind outright; see ``spoken_kind``.
+_FIRST_WORD_KINDS = {
+    "teach": "teaching",
+    "teaching": "teaching",
+    "remember": "teaching",
+    "project": "project_proposal",
+    "proposal": "project_proposal",
+    "propose": "project_proposal",
+    "bug": "bug",
+}
 
 
 def log_path(cfg: Config) -> Path:
@@ -158,7 +190,11 @@ def _append(path: Path, event: dict) -> None:
 
 
 def read_events(path: Path) -> list[dict]:
-    """Every well-formed event in file order; a torn or foreign line is skipped, never fatal."""
+    """Every well-formed event in file order; a torn or foreign line is skipped, never fatal.
+
+    An event names its ``ticket_id``; only ``inbound`` events (mail from a resident that is not a
+    reply to a ticket) carry ``ticket_id: null``.
+    """
     if not path.is_file():
         return []
     events = []
@@ -171,16 +207,23 @@ def read_events(path: Path) -> list[dict]:
                 event = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if isinstance(event, dict) and event.get("ticket_id"):
+            if isinstance(event, dict) and (event.get("ticket_id") or event.get("event") == "inbound"):
                 events.append(event)
     return events
 
 
 def read_tickets(path: Path) -> dict[str, dict]:
     """Fold the log into tickets keyed by ``ticket_id`` (insertion order = order reported)."""
+    return fold_tickets(read_events(path))
+
+
+def fold_tickets(events: list[dict]) -> dict[str, dict]:
+    """Fold events (file order) into tickets keyed by ``ticket_id``; ``inbound`` events belong to none."""
     tickets: dict[str, dict] = {}
-    for event in read_events(path):
-        tid = event["ticket_id"]
+    for event in events:
+        tid = event.get("ticket_id")
+        if not tid:
+            continue
         if event.get("event") == "reported" and isinstance(event.get("ticket"), dict):
             tickets[tid] = {**event["ticket"], "events": 1}
             continue
@@ -198,7 +241,7 @@ def read_tickets(path: Path) -> dict[str, dict]:
         elif event.get("event") == "status" and event.get("status"):
             ticket["status"] = event["status"]
             if event.get("reply_message_id"):
-                ticket.setdefault("replies", []).append({k: event.get(k) for k in ("reply_message_id", "in_reply_to", "from", "status", "text", "sent_at", "at")})
+                ticket.setdefault("replies", []).append({k: event.get(k) for k in ("reply_message_id", "in_reply_to", "from", "status", "text", "sent_at", "at", "instance_id")})
     return tickets
 
 
@@ -211,12 +254,35 @@ def _first_sentence(text: str, limit: int = 80) -> str:
     return sentence if len(sentence) <= limit else sentence[: limit - 1].rsplit(" ", 1)[0] + "…"
 
 
-def keyword_triage(text: str) -> dict:
-    """Deterministic triage from the transcript's words (the provisional and the fallback triage)."""
+def spoken_kind(text: str) -> str | None:
+    """The kind Rawley named with his first word, fillers skipped: "teach ..." and "remember ..." are a
+    teaching, "project ..." and "proposal ..." a project proposal, "bug ..." a bug; else None."""
+    first = next((w for w in _words(text) if w not in _FILLERS), "")
+    return _FIRST_WORD_KINDS.get(first)
+
+
+def _hinted(kind_hint: str | None) -> str | None:
+    return kind_hint if kind_hint in KINDS else None
+
+
+def keyword_triage(text: str, kind_hint: str | None = None) -> dict:
+    """Deterministic triage from the transcript's words (the provisional and the fallback triage).
+
+    Args:
+        text: The report's words.
+        kind_hint: The caller's kind (``KINDS``), used unless the first spoken word names one.
+    """
     lowered = f" {text.lower()} "
     component = next((name for name, words in _COMPONENT_WORDS if any(w in lowered for w in words)), "other")
     feature = any(w in lowered for w in _FEATURE_WORDS)
     major = any(w in lowered for w in _MAJOR_WORDS)
+    if any(w in lowered for w in _PROPOSAL_WORDS):
+        kind = "project_proposal"
+    elif any(w in lowered for w in _TEACHING_WORDS):
+        kind = "teaching"
+    else:
+        kind = "feature_request" if feature and not major else "bug"
+    kind = spoken_kind(text) or _hinted(kind_hint) or kind
     content_words = [w for w in _words(text) if w not in _FILLERS]
     flags = []
     if "again" in lowered or "every time" in lowered or "always" in lowered:
@@ -226,7 +292,7 @@ def keyword_triage(text: str) -> dict:
     if "used to" in lowered:
         flags.append("regression")
     return {
-        "kind": "feature_request" if feature and not major else "bug",
+        "kind": kind,
         "title": _first_sentence(text) or "Bug chip pressed with nothing said",
         "summary": text.strip()[:400],
         "observed": "",
@@ -240,12 +306,16 @@ def keyword_triage(text: str) -> dict:
     }
 
 
-def _clean_triage(raw: dict, text: str) -> dict:
-    """Coerce a model's reply into the closed vocabulary; anything off-list falls back to the keyword value."""
-    base = keyword_triage(text)
+def _clean_triage(raw: dict, text: str, kind_hint: str | None = None) -> dict:
+    """Coerce a model's reply into the closed vocabulary; anything off-list falls back to the keyword value.
+
+    The kind is Rawley's first spoken word when it names one, else the caller's hint, else the model's.
+    """
+    base = keyword_triage(text, kind_hint)
     out = dict(base)
     if raw.get("kind") in KINDS:
         out["kind"] = raw["kind"]
+    out["kind"] = spoken_kind(text) or _hinted(kind_hint) or out["kind"]
     if raw.get("component") in COMPONENTS:
         out["component"] = raw["component"]
     if raw.get("severity") in SEVERITIES:
@@ -267,14 +337,16 @@ def _clean_triage(raw: dict, text: str) -> dict:
 
 
 def disposition_of(triage: dict, text: str) -> tuple[str, str]:
-    """(disposition, priority) from a triage: the sort key a monitor orders open tickets by."""
+    """(disposition, priority) from a triage: the sort key a monitor orders open tickets by.
+
+    Only a bug is held as ``needs_detail``; every other kind is a ``request`` (its open questions, if
+    any, still travel in the mail).
+    """
     content_words = [w for w in _words(text) if w not in _FILLERS]
     if len(content_words) < 3:
         disposition = "no_report"
-    elif triage.get("needs_detail"):
-        disposition = "needs_detail"
     elif triage.get("kind") == "bug":
-        disposition = "ready"
+        disposition = "needs_detail" if triage.get("needs_detail") else "ready"
     else:
         disposition = "request"
     flags = set(triage.get("flags") or [])
@@ -320,7 +392,9 @@ def record_report(cfg: Config, payload: dict) -> tuple[dict, bool]:
     Args:
         cfg: Service configuration (``issues_log``).
         payload: The talk tier's report: ``report_id``, ``transcript {segments, device_segments}``,
-            ``started_at``, ``ended_at``, ``ended_by``, ``source {...}``, ``context {...}``.
+            ``started_at``, ``ended_at``, ``ended_by``, ``source {...}``, ``context {...}``, and
+            optionally ``kind`` (a hint from ``KINDS``; anything else is ignored) and ``origin``
+            (``bug_chip`` when absent, ``conversation``, ``work_tab`` or ``tool``).
 
     Returns:
         The ticket as folded from the log and whether this call created it (False for a repeat).
@@ -340,7 +414,8 @@ def record_report(cfg: Config, payload: dict) -> tuple[dict, bool]:
         when = time.time()
         ticket_id = _next_ticket_id(tickets, when)
         text = transcript_text(payload)[:MAX_TRANSCRIPT_CHARS]
-        provisional = _finish_triage(keyword_triage(text), text, state="pending", source="provisional_keywords", model=None, errors=[])
+        kind_hint = _hinted(payload.get("kind"))
+        provisional = _finish_triage(keyword_triage(text, kind_hint), text, state="pending", source="provisional_keywords", model=None, errors=[])
         transcript = payload.get("transcript") or {}
         ticket = {
             "schema": SCHEMA,
@@ -350,6 +425,8 @@ def record_report(cfg: Config, payload: dict) -> tuple[dict, bool]:
             "recorded_at_iso": dt.datetime.fromtimestamp(when, dt.timezone.utc).isoformat(timespec="seconds"),
             "recorded_by": "voice-portal skill service",
             "surface": payload.get("surface") or "voice_portal",
+            "origin": str(payload.get("origin") or "bug_chip")[:40],
+            "kind_hint": kind_hint,
             "reporter": "operator",
             "status": "open",
             "text": text,
@@ -402,15 +479,17 @@ def triage_ticket(cfg: Config, ticket_id: str) -> dict | None:
     if ticket is None or (ticket.get("triage") or {}).get("state") == "done":
         return None
     text = ticket.get("text") or ""
+    kind_hint = ticket.get("kind_hint")
     started = time.monotonic()
     errors: list[str] = []
     triage = None
     if len([w for w in _words(text) if w not in _FILLERS]) < 3:
-        triage = _finish_triage(keyword_triage(text), text, state="done", source="no_words", model=None, errors=[])
+        triage = _finish_triage(keyword_triage(text, kind_hint), text, state="done", source="no_words", model=None, errors=[])
     else:
+        hint_line = f"He sent it as a {kind_hint.replace('_', ' ')}.\n\n" if kind_hint else ""
         messages = [
             {"role": "system", "content": TRIAGE_SYSTEM},
-            {"role": "user", "content": f"Context when the report began:\n{_context_lines(ticket)}\n\nReport transcript:\n{text}"},
+            {"role": "user", "content": f"Context when the report began:\n{_context_lines(ticket)}\n\n{hint_line}Report transcript:\n{text}"},
         ]
         structured = {**(cfg.inference_extra_body or {}), "response_format": {"type": "json_schema", "json_schema": {"name": "issue_triage", "strict": True, "schema": TRIAGE_SCHEMA}}}
         for extra in (structured, cfg.inference_extra_body):
@@ -429,7 +508,7 @@ def triage_ticket(cfg: Config, ticket_id: str) -> dict | None:
                 parsed = json.loads(match.group(0))
                 if not isinstance(parsed, dict):
                     raise ValueError("reply is not an object")
-                triage = _finish_triage(_clean_triage(parsed, text), text, state="done", source="reasoning", model=cfg.inference_model, errors=errors, elapsed_ms=int((time.monotonic() - started) * 1000), usage=usage)
+                triage = _finish_triage(_clean_triage(parsed, text, kind_hint), text, state="done", source="reasoning", model=cfg.inference_model, errors=errors, elapsed_ms=int((time.monotonic() - started) * 1000), usage=usage)
                 break
             except ReasoningError as exc:
                 errors.append(f"{exc} {(exc.body or '')[:200]}".strip())
@@ -441,7 +520,7 @@ def triage_ticket(cfg: Config, ticket_id: str) -> dict | None:
                 errors.append(f"{type(exc).__name__}: {exc}")
                 break
         if triage is None:
-            triage = _finish_triage(keyword_triage(text), text, state="done", source="fallback_keywords", model=None, errors=errors, elapsed_ms=int((time.monotonic() - started) * 1000))
+            triage = _finish_triage(keyword_triage(text, kind_hint), text, state="done", source="fallback_keywords", model=None, errors=errors, elapsed_ms=int((time.monotonic() - started) * 1000))
     with _LogLock(path):
         current = read_tickets(path).get(ticket_id) or {}
         if (current.get("triage") or {}).get("state") == "done":
@@ -487,6 +566,7 @@ def summary(ticket: dict) -> dict:
         "ticket_id": ticket.get("ticket_id"),
         "recorded_at_iso": ticket.get("recorded_at_iso"),
         "status": ticket.get("status"),
+        "origin": ticket.get("origin") or "bug_chip",
         "title": triage.get("title"),
         "kind": triage.get("kind"),
         "component": triage.get("component"),
@@ -514,22 +594,68 @@ def new_report_id() -> str:
 # ----- the Intake resident's mail (instance mailbox) -----
 
 POSTED_RE = re.compile(r"posted\s+message_id=(\S+)\s+to=(\S+)")
-STATUS_WORDS = ("accepted", "answered", "escalated", "failed", "needs_detail", "done", "declined")
+TICKET_RE = re.compile(r"\bbug-\d{8}-\d{2,}\b")
+# Leading words a resident's reply may carry (``status: <word> ...``); the ticket's status becomes it.
+STATUS_WORDS = ("accepted", "answered", "learned", "proposed", "started", "escalated", "needs_detail", "done", "failed", "declined")
+
+# What the mail calls each kind, and the reply words (in the order they are used) and what each names.
+_KIND_LINES = {
+    "bug": "A bug report about the voice portal.",
+    "feature_request": "A feature request for the voice portal.",
+    "message": "A message for you.",
+    "teaching": "A teaching.",
+    "project_proposal": "A project proposal.",
+}
+_REPLY_WORDS = {
+    "bug": ("accepted", "needs_detail", "declined", "done", "failed"),
+    "feature_request": ("accepted", "needs_detail", "declined", "done", "failed"),
+    "message": ("answered", "needs_detail", "declined"),
+    "teaching": ("learned", "needs_detail", "declined"),
+    "project_proposal": ("proposed", "started", "needs_detail", "declined"),
+}
+_REPLY_GUIDES = {
+    "bug": "Reply status: accepted when you take it (needs_detail or declined, with the reason, when you cannot), then status: done naming the PR, the merge commit and the build or deploy, or status: failed with what stopped it.",
+    "feature_request": "Reply status: accepted when you take it (needs_detail or declined, with the reason, when you cannot), then status: done naming the PR, the merge commit and the build or deploy, or status: failed with what stopped it.",
+    "message": "Reply status: answered with the answer, quoting the record ids and dates it rests on (needs_detail when you cannot answer without asking him).",
+    "teaching": "Reply status: learned, restating what you learned, where it applies and the package version that now holds it.",
+    "project_proposal": "Reply status: proposed with the brief (outcome, first step, sources, risks, how it stays small) and ask once for a go-ahead; only after he says go, reply status: started naming the project id, the repository and the first commit.",
+}
+_ORIGIN_LINES = {
+    "bug_chip": "the phone's Bug chip",
+    "conversation": "the conversation (he asked the assistant to send it to you)",
+    "work_tab": "the phone's Work tab",
+    "tool": "a skill-service tool call",
+}
 
 
-def mail_text(ticket: dict, note: str | None = None) -> str:
+def _mail_kind(kind: str | None) -> str:
+    """The kind whose reply words a mail uses (a retired or unknown kind reads as a message)."""
+    return kind if kind in KINDS else "message"
+
+
+def mail_text(ticket: dict, note: str | None = None, *, record_url: str | None = None) -> str:
     """The plain-text mail a resident receives for one ticket (never JSON: a JSON body of the
-    shape ``{"kind": "job_request"}`` would be read as cloud-job demand by the host)."""
+    shape ``{"kind": "job_request"}`` would be read as cloud-job demand by the host).
+
+    Args:
+        ticket: The folded ticket.
+        note: Text appended under "Note from the operator's session".
+        record_url: Where the resident reads the full ticket (``GET /issues/<id>``); left out when None.
+    """
     triage = ticket.get("triage") or {}
     context = ticket.get("context") or {}
     source = ticket.get("source") or {}
     passage = context.get("passage") or {}
+    kind = _mail_kind(triage.get("kind"))
+    origin = _ORIGIN_LINES.get(ticket.get("origin") or "bug_chip", ticket.get("origin") or "the voice portal")
+    build = f" (app build {source['app_build']})" if source.get("app_build") else ""
     lines = [
         f"voice-portal ticket_id={ticket.get('ticket_id')} kind={triage.get('kind')} priority={triage.get('priority')} "
         f"disposition={triage.get('disposition')} component={triage.get('component')}",
         "",
+        _KIND_LINES[kind],
         f"Title: {triage.get('title')}",
-        f"Recorded: {ticket.get('recorded_at_iso')} from the phone's Bug chip (app build {source.get('app_build', '?')}).",
+        f"Recorded: {ticket.get('recorded_at_iso')} from {origin}{build}.",
         "",
         "Rawley said (speech recognition, read charitably):",
         f"  \"{ticket.get('text') or ''}\"",
@@ -549,22 +675,53 @@ def mail_text(ticket: dict, note: str | None = None) -> str:
         lines += [f"  - {q}" for q in triage["detail_questions"]]
     if note:
         lines += ["", "Note from the operator's session:", note]
-    lines += ["", "Context when the report began:"]
+    lines += ["", "Context when it was recorded:"]
     if passage.get("reference"):
         lines.append(f"  Scripture pane: {passage['reference']} ({'being read aloud' if passage.get('reading') else 'open'}).")
-    lines.append(f"  Portal mode: {context.get('mode_before')}.")
+    if context.get("mode_before"):
+        lines.append(f"  Portal mode: {context.get('mode_before')}.")
     for turn in (context.get("recent_turns") or [])[-4:]:
         lines.append(f"  {turn.get('role')}: {str(turn.get('text') or '')[:240]}")
+    lines.append("")
+    if record_url:
+        lines.append(f"Full record: GET {record_url} (intake issues log).")
     lines += [
-        "",
-        f"Full record: GET http://100.90.105.30:8765/issues/{ticket.get('ticket_id')} (intake issues log).",
-        "Reply to this message with send_message(\"operator\", \"status: <accepted|answered|escalated|failed|needs_detail> ...\", in_reply_to=<this message id>).",
+        f"Reply to this message with send_message(\"operator\", \"status: <word> ...\", in_reply_to=<this message id>); <word> is one of {', '.join(_REPLY_WORDS[kind])}.",
+        _REPLY_GUIDES[kind],
     ]
     return "\n".join(lines) + "\n"
 
 
+def _record_url(cfg: Config, ticket_id: str) -> str:
+    # NOTE [Context]: the mailed resident runs under the allocator on the desktop, the same host as
+    # this service, so the loopback address reaches it; no tailnet address is baked into the mail.
+    return f"http://127.0.0.1:{cfg.listen_port}/issues/{ticket_id}"
+
+
 def _allocatorctl(cfg: Config, args: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run([cfg.allocatorctl, *args], capture_output=True, text=True, timeout=cfg.allocatorctl_timeout_s)
+
+
+def inbox_listing(cfg: Config) -> dict | None:
+    """The instance mailbox's messages to the operator, one ``allocatorctl inbox list --to-operator
+    --json`` (schema ``rlm_adk.inbox_list.v1``: ``instance_id`` and ``messages``, oldest first, the
+    whole history), or None when the CLI cannot be run or refuses."""
+    try:
+        proc = _allocatorctl(cfg, ["inbox", "list", "--to-operator", "--json"])
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        log.warning("inbox list failed: %s", exc)
+        return None
+    if proc.returncode != 0:
+        log.warning("inbox list refused (exit %s): %s", proc.returncode, ((proc.stderr or "") + (proc.stdout or "")).strip()[:300])
+        return None
+    try:
+        document = json.loads(proc.stdout or "{}")
+    except json.JSONDecodeError:
+        log.warning("inbox list printed no JSON: %r", (proc.stdout or "")[:200])
+        return None
+    if not isinstance(document, dict) or not isinstance(document.get("messages"), list):
+        return None
+    return document
 
 
 def mail_ticket(cfg: Config, ticket_id: str, *, note: str | None = None, force: bool = False) -> dict:
@@ -577,8 +734,8 @@ def mail_ticket(cfg: Config, ticket_id: str, *, note: str | None = None, force: 
         force: Send again although the ticket was already mailed.
 
     Returns:
-        ``{"mailed": True, "message_id", "recipient"}``; in stage mode ``{"mailed": False,
-        "staged": True, "body", "command"}``; otherwise ``{"mailed": False, "reason", ...}``.
+        ``{"mailed": True, "message_id", "recipient", "instance_id"}``; in stage mode ``{"mailed":
+        False, "staged": True, "body", "command"}``; otherwise ``{"mailed": False, "reason", ...}``.
     """
     if not cfg.intake_recipient:
         return {"mailed": False, "reason": "intake_recipient_unset"}
@@ -593,7 +750,7 @@ def mail_ticket(cfg: Config, ticket_id: str, *, note: str | None = None, force: 
     outdir = cfg.root / "outbox" / "issues"
     outdir.mkdir(parents=True, exist_ok=True)
     body = outdir / f"{ticket_id}-{int(time.time())}.txt"
-    body.write_text(mail_text(ticket, note), encoding="utf-8")
+    body.write_text(mail_text(ticket, note, record_url=_record_url(cfg, ticket_id)), encoding="utf-8")
     command = [cfg.allocatorctl, "inbox", "post", "--to", cfg.intake_recipient, "--file", str(body)]
     if cfg.intake_mail_mode != "post":
         # Stub: everything short of delivery. The runtime is not running; the staged command is what
@@ -610,52 +767,81 @@ def mail_ticket(cfg: Config, ticket_id: str, *, note: str | None = None, force: 
     match = POSTED_RE.search(proc.stdout or "")
     if proc.returncode != 0 or not match:
         return {"mailed": False, "reason": "refused", "returncode": proc.returncode, "output": ((proc.stdout or "") + (proc.stderr or "")).strip()[:600]}
-    event = {"schema": SCHEMA, "event": "mailed", "ticket_id": ticket_id, "at": time.time(), "message_id": match.group(1), "recipient": match.group(2), "note": note, "body": str(body)}
+    # The post receipt names no instance; the listing does (the same sealed launch the post used).
+    # Replies are threaded only within it, so a later instance's message ids never match this mail.
+    listing = inbox_listing(cfg)
+    instance_id = listing.get("instance_id") if listing else None
+    event = {"schema": SCHEMA, "event": "mailed", "ticket_id": ticket_id, "at": time.time(), "message_id": match.group(1), "recipient": match.group(2), "instance_id": instance_id, "note": note, "body": str(body)}
     with _LogLock(path):
         _append(path, event)
-    log.info("issue %s mailed to %s as %s", ticket_id, match.group(2), match.group(1))
-    return {"mailed": True, "message_id": match.group(1), "recipient": match.group(2)}
+    log.info("issue %s mailed to %s as %s (instance %s)", ticket_id, match.group(2), match.group(1), instance_id)
+    return {"mailed": True, "message_id": match.group(1), "recipient": match.group(2), "instance_id": instance_id}
+
+
+def _status_word(text: str) -> str | None:
+    """The reply's leading status word (``status: done ...``, ``Status = done.``, ``Done. ...``), or None."""
+    m = re.match(r"\s*status\s*[:=]\s*([a-z_]+)", text or "", re.I)
+    word = (m.group(1) if m else (text or "").strip().split(" ", 1)[0]).lower().strip(".,:")
+    return word if word in STATUS_WORDS else None
 
 
 def _reply_status(text: str) -> str:
-    m = re.match(r"\s*status\s*[:=]\s*([a-z_]+)", text or "", re.I)
-    word = (m.group(1) if m else (text or "").strip().split(" ", 1)[0]).lower().strip(".,:")
-    return word if word in STATUS_WORDS else "answered"
+    """A threaded reply's status: its leading word, else ``answered``."""
+    return _status_word(text) or "answered"
+
+
+def display_text(text: str) -> str:
+    """A message's words without the leading ``status: <word>`` (what the phone shows)."""
+    return re.sub(r"^\s*status\s*[:=]\s*[a-z_]+[\s.,:;-]*", "", text or "", count=1, flags=re.I).strip() or (text or "").strip()
 
 
 def poll_replies(cfg: Config) -> list[dict]:
-    """Record the resident's replies to mailed tickets as ``status`` events; returns those recorded."""
+    """Read the mailbox once and record every new message to the operator; returns the events written.
+
+    One ``inbox list --to-operator --json`` per poll. A message is recorded once by ``message_id``
+    (the listing has no cursor; every poll returns the whole history). A reply whose ``in_reply_to``
+    names a ticket's mail becomes a ``status`` event on that ticket; mail recorded with another
+    instance id is never matched (a mail recorded before instance ids were kept matches by id alone:
+    message ids are unique ``mail-<uuid>``). Everything else (unthreaded mail, a reply to a message
+    that is not a ticket's) becomes an ``inbound`` event with ``ticket_id`` null and the ticket ids its
+    text names in ``mentions``.
+    """
+    listing = inbox_listing(cfg)
+    if listing is None:
+        return []
+    instance_id = listing.get("instance_id")
     path = log_path(cfg)
-    tickets = read_tickets(path)
     recorded: list[dict] = []
-    for ticket in tickets.values():
-        seen = {r.get("reply_message_id") for r in ticket.get("replies") or []}
-        for mail in ticket.get("mail") or []:
-            try:
-                proc = _allocatorctl(cfg, ["inbox", "list", "--to-operator", "--json", "--in-reply-to", mail["message_id"]])
-            except (OSError, subprocess.TimeoutExpired) as exc:
-                log.warning("reply poll for %s failed: %s", ticket["ticket_id"], exc)
+    with _LogLock(path):
+        # Scan and append under one lock: the poller thread and POST /issues/replies never record twice.
+        events = read_events(path)
+        seen = {e.get("reply_message_id") for e in events if e.get("event") == "status"} | {e.get("message_id") for e in events if e.get("event") == "inbound"}
+        threads: dict[str, str] = {}
+        for ticket in fold_tickets(events).values():
+            for mail in ticket.get("mail") or []:
+                if mail.get("instance_id") in (None, instance_id):
+                    threads[mail["message_id"]] = ticket["ticket_id"]
+        for message in listing["messages"]:
+            if not isinstance(message, dict):
                 continue
-            if proc.returncode != 0:
-                # An id from an earlier instance is refused (mail_bad_reply); nothing to record.
+            message_id = message.get("message_id")
+            if not message_id or message_id in seen:
                 continue
-            try:
-                messages = json.loads(proc.stdout or "{}").get("messages") or []
-            except json.JSONDecodeError:
-                continue
-            for message in messages:
-                if message.get("message_id") in seen:
-                    continue
-                event = {
-                    "schema": SCHEMA, "event": "status", "ticket_id": ticket["ticket_id"], "at": time.time(),
-                    "status": _reply_status(message.get("text") or ""), "reply_message_id": message.get("message_id"),
-                    "in_reply_to": mail["message_id"], "from": message.get("from"), "text": message.get("text"), "sent_at": message.get("sent_at"),
-                }
-                with _LogLock(path):
-                    _append(path, event)
-                seen.add(message.get("message_id"))
-                recorded.append(event)
-                log.info("issue %s: reply %s (%s)", ticket["ticket_id"], event["reply_message_id"], event["status"])
+            text = str(message.get("text") or "")
+            reply_to = message.get("in_reply_to")
+            base = {"schema": SCHEMA, "at": time.time(), "text": text, "from": message.get("from"), "sent_at": message.get("sent_at"), "in_reply_to": reply_to, "instance_id": instance_id}
+            if reply_to in threads:
+                event = {**base, "event": "status", "ticket_id": threads[reply_to], "status": _reply_status(text), "reply_message_id": message_id}
+            else:
+                event = {**base, "event": "inbound", "ticket_id": None, "status": _status_word(text), "message_id": message_id, "mentions": sorted(set(TICKET_RE.findall(text)))}
+            _append(path, event)
+            seen.add(message_id)
+            recorded.append(event)
+    for event in recorded:
+        if event["event"] == "status":
+            log.info("issue %s: reply %s (%s)", event["ticket_id"], event["reply_message_id"], event["status"])
+        else:
+            log.info("inbound mail %s from %s (mentions %s)", event["message_id"], _sender_name(event.get("from")), event["mentions"] or "-")
     return recorded
 
 
@@ -672,16 +858,89 @@ def record_status(cfg: Config, ticket_id: str, status: str, *, text: str = "", a
     return event
 
 
-def start_reply_poller(cfg: Config) -> threading.Thread | None:
-    """Poll replies every ``intake_poll_s`` seconds on a daemon thread (only when mail is posted)."""
+# ----- the phone's view of Intake's mail (GET /intake/feed, the pushed intake_message) -----
+
+
+def _sender_name(sender) -> str | None:
+    if isinstance(sender, dict):
+        return sender.get("name") or sender.get("resident_id") or sender.get("package_key")
+    return str(sender) if sender else None
+
+
+def _is_feed_event(event: dict) -> bool:
+    return (event.get("event") == "status" and bool(event.get("reply_message_id"))) or event.get("event") == "inbound"
+
+
+def feed_item(event: dict, tickets: dict[str, dict]) -> dict:
+    """One ``intake_message``: a resident's reply on a ticket (``kind: reply``) or unthreaded mail
+    (``kind: inbound``), with the ticket's title and kind and the words the phone shows (``display``).
+
+    No key is named ``message`` or ``session_id``: the app decodes every frame of its control socket
+    as a ``ServerEvent`` whose ``message`` is a string, and a frame that fails that decode is dropped.
+    """
+    ticket = tickets.get(event.get("ticket_id") or "") or {}
+    triage = ticket.get("triage") or {}
+    text = str(event.get("text") or "")
+    return {
+        "type": "intake_message",
+        "id": event.get("reply_message_id") or event.get("message_id"),
+        "kind": "reply" if event.get("event") == "status" else "inbound",
+        "ticket_id": event.get("ticket_id"),
+        "ticket_title": triage.get("title"),
+        "ticket_kind": triage.get("kind"),
+        "status": event.get("status"),
+        "text": text,
+        "display": display_text(text),
+        "from_name": _sender_name(event.get("from")),
+        "sent_at": event.get("sent_at"),
+        "at": event.get("at"),
+        "in_reply_to": event.get("in_reply_to"),
+        "instance_id": event.get("instance_id"),
+        "mentions": event.get("mentions") or [],
+    }
+
+
+def feed_items(cfg: Config, events: list[dict]) -> list[dict]:
+    """``feed_item`` for each of ``events`` (as ``poll_replies`` returns them) that the feed shows."""
+    tickets = read_tickets(log_path(cfg))
+    return [feed_item(e, tickets) for e in events if _is_feed_event(e)]
+
+
+def feed(cfg: Config, *, since: float | None = None, limit: int = 50) -> list[dict]:
+    """Residents' replies and inbound mail recorded after ``since`` (Unix seconds), newest last.
+
+    Args:
+        cfg: Service configuration (``issues_log``).
+        since: Only items whose ``at`` (when this service recorded them) is later; None for all.
+        limit: At most this many, the newest.
+    """
+    events = read_events(log_path(cfg))
+    tickets = fold_tickets(events)
+    items = [feed_item(e, tickets) for e in events if _is_feed_event(e)]
+    if since is not None:
+        items = [i for i in items if float(i.get("at") or 0) > since]
+    return items[-max(1, limit):]
+
+
+def start_reply_poller(cfg: Config, on_recorded=None, stop: threading.Event | None = None) -> threading.Thread | None:
+    """Poll replies every ``intake_poll_s`` seconds on a daemon thread (only when mail is posted).
+
+    Args:
+        cfg: Service configuration.
+        on_recorded: Called with the new ``feed_item``s after a poll that recorded any (the service
+            pushes them to the phone as ``intake_message``).
+        stop: Ends the loop when set (tests); the service never sets it.
+    """
     if not cfg.intake_recipient or cfg.intake_mail_mode != "post" or cfg.intake_poll_s <= 0:
         return None
+    stop = stop or threading.Event()
 
     def loop() -> None:
-        while True:
-            time.sleep(cfg.intake_poll_s)
+        while not stop.wait(cfg.intake_poll_s):
             try:
-                poll_replies(cfg)
+                recorded = poll_replies(cfg)
+                if recorded and on_recorded is not None:
+                    on_recorded(feed_items(cfg, recorded))
             except Exception:  # noqa: BLE001 - logged; the next poll tries again
                 log.exception("reply poll failed")
 

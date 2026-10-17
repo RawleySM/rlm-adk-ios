@@ -81,7 +81,7 @@ under `~/.local/state/voice-talk/bug-spool/` and posted again every 60 s until i
 
 | Direction | Message | Meaning |
 |---|---|---|
-| client → server | `{"type":"client_bug","action":"start","client":"ios","app_build","transport","audio_route","install_id"}` | Open a report. Flat string fields (the WebRTC data channel carries a string map); they travel as the ticket's `source`. A second `start` re-announces the open report. |
+| client → server | `{"type":"client_bug","action":"start","client":"ios","app_build","transport","audio_route","install_id","kind"?}` | Open a report. Flat string fields (the WebRTC data channel carries a string map); they travel as the ticket's `source`. `kind` (optional, on `start` or `stop`) is a kind hint for a chip that files more than bugs (`message`, `teaching`, `project_proposal`, `bug`, `feature_request`; the report's `kind`); without it the triage decides. A second `start` re-announces the open report. |
 | client → server | `{"type":"client_bug","action":"stop","device_segments":"line\nline"}` | File it. The floor first waits (up to 6 s) for an utterance still being spoken or transcribed. `device_segments` are the phone's own recognizer finals, kept beside the server transcript. |
 | client → server | `{"type":"client_bug","action":"cancel"}` | Drop the report unfiled. |
 | server → client | `{"type":"mode","mode":"bug","reason":"bug:client"}` / `{"mode":"available","reason":"bug:client"}` | The floor entered / left bug mode. `client_mode` received meanwhile only changes the mode the report returns to. |
@@ -91,6 +91,29 @@ under `~/.local/state/voice-talk/bug-spool/` and posted again every 60 s until i
 After a filed report the history gains "(I filed a bug report, bug-YYYYMMDD-NN, with the intake
 issues log.)" so the assistant can answer a question about it. `talk/tools/bug_probe.py` checks the
 flow against a running tier.
+
+## Sending to Intake in conversation (`send_to_intake`, `talk/tools.py`)
+
+When Rawley asks the assistant to tell, ask, teach or send something to Intake, to remember
+something, to propose a project or to have work done, the model calls `send_to_intake(kind)` (`kind`:
+`message`, `teaching`, `project_proposal`, `bug` or `feature_request`; required, but only a hint:
+his first spoken word and then the skill service's triage decide). The tool files **his own last
+words**, not the model's paraphrase: the user messages of the LLM context since the assistant last
+said something, joined in order (a request split across two transcripts is sent whole; the floor's
+notes such as "(I opened Romans 12 in the scripture pane.)" and the current turn's tool calls are
+passed over), else the floor's last forwarded utterance. It posts them as a report (origin
+`conversation`, the floor's context, `report_id` for idempotence) to `POST /tools/work`, speaks the
+skill service's acknowledgement verbatim and returns `NO_RESPONSE`, so the model adds nothing:
+
+- "Sent to Intake." when the mail will be posted (`intake_mail_mode: "post"`);
+- "Saved for Intake. Mail to Intake is on hold, so it has not been sent yet." in stage mode;
+- "Saved for Intake. The desktop is not answering, so it goes when it is back." when the skill
+  service cannot take it: the report is spooled with the bug reports (`bug-spool/`) and posted
+  again to `/issues` every 60 s until it is accepted.
+
+The function result (ticket id, kind, the words sent) stays in the context, so "what did you send?"
+can be answered. Intake's replies come back to the phone from the skill service, not through the
+talk tier (`intake-issues-log.md`).
 
 ## Conversation states (Pipecat Flows, `talk/flows.py`)
 
@@ -103,10 +126,10 @@ speaking on entry (`respond_immediately` False) except `project`:
 | `conversation` | first request; `word_from_prayer` from `available` | all tools | tool transitions, the floor |
 | `prayer` | the floor on an address phrase or `client_mode prayer` | none | amen (→ `available`) |
 | `devotional` | `read_scripture` after it spoke a reading | `continue_reading` first, then the rest | `project_checkin` (→ `project`), the floor |
-| `project` | `project_checkin` (entry runs the LLM once: the report or the confirmation question) | project and work tools first, then the rest | tool transitions, the floor |
+| `project` | `project_checkin` (entry runs the LLM once: the report or the confirmation question) | `project_checkin` and `send_to_intake` first, then the rest | tool transitions, the floor |
 | `quiet` | the floor on the quiet phrase or `client_mode quiet`; operator hold | none | wake phrase (→ `available`), release |
 
-Exact-speech tools (`read_scripture`, `continue_reading`, `word_from_prayer`, `request_work`) queue
+Exact-speech tools (`read_scripture`, `continue_reading`, `word_from_prayer`, `send_to_intake`) queue
 their sentences as `TTSSpeakFrame`s and return Flows' `NO_RESPONSE` (or a node whose entry does not
 respond), so the model adds nothing after them; their spoken text is in the function result so a
 devotional question can be answered from the passage heard.
@@ -142,7 +165,7 @@ devotional question can be answered from the passage heard.
 Function calls the LLM may make, each an HTTP call to the skill service on the desktop
 (`http://100.90.105.30:8765`): `search_sources`, `read_scripture` (`/tools/scripture`),
 `word_from_prayer` (`/tools/word`), `interpretations` (`/tools/interpretations`),
-`project_checkin` (`/tools/project`), `request_work` (`POST /tools/work`). Pipecat runs them
+`project_checkin` (`/tools/project`), `send_to_intake` (`POST /tools/work`). Pipecat runs them
 asynchronously; the audio loop never waits on them.
 
 ## Operator admin (same port)

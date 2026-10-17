@@ -9,7 +9,9 @@ in the intake issues log on the desktop and triages it.
 
 A report must never be lost to a skill-service outage: a post that fails is written to a spool
 directory under the talk tier's state root and retried in the background until the service accepts
-it (the service is idempotent on ``report_id``).
+it (the service is idempotent on ``report_id``). The ``send_to_intake`` tool files its requests the
+same way (``file_report(..., route="/tools/work")``); a spooled one is posted again to ``/issues``,
+which records the same ticket.
 """
 
 from __future__ import annotations
@@ -45,6 +47,8 @@ class BugReport:
     source: dict[str, Any] = field(default_factory=dict)
     device_segments: list[dict[str, Any]] = field(default_factory=list)
     finishing: bool = False
+    # The chip's kind hint (``client_bug`` ``kind``), for a chip that files more than bugs; None lets triage decide.
+    kind: str | None = None
 
     def add(self, text: str, source: str) -> dict[str, Any]:
         segment = {"t": round(time.time(), 3), "text": text.strip(), "source": source}
@@ -61,6 +65,8 @@ class BugReport:
         return {
             "report_id": self.report_id,
             "surface": "voice_portal",
+            "origin": "bug_chip",
+            "kind": self.kind,
             "started_at": self.started_at,
             "ended_at": time.time(),
             "ended_by": ended_by,
@@ -92,29 +98,35 @@ def _spool_dir(cfg: TalkConfig) -> Path:
     return path
 
 
-async def post_report(cfg: TalkConfig, payload: dict[str, Any]) -> dict[str, Any]:
-    """POST one report to the skill service; returns its JSON or raises on transport/HTTP failure."""
-    url = cfg.skill_base_url.rstrip("/") + "/issues"
+async def post_report(cfg: TalkConfig, payload: dict[str, Any], route: str = "/issues") -> dict[str, Any]:
+    """POST one report to the skill service (``/issues``, or ``/tools/work`` for ``send_to_intake``);
+    returns its JSON or raises on transport/HTTP failure."""
+    url = cfg.skill_base_url.rstrip("/") + route
     timeout = aiohttp.ClientTimeout(total=cfg.skill_timeout_s)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.post(url, json=payload) as response:
             text = await response.text()
             if response.status not in (200, 201):
-                raise RuntimeError(f"skill service HTTP {response.status} for /issues: {text[:200]}")
+                raise RuntimeError(f"skill service HTTP {response.status} for {route}: {text[:200]}")
             return json.loads(text)
 
 
 _retry_task: asyncio.Task | None = None
 
 
-async def file_report(cfg: TalkConfig, payload: dict[str, Any]) -> dict[str, Any]:
+async def file_report(cfg: TalkConfig, payload: dict[str, Any], route: str = "/issues") -> dict[str, Any]:
     """File a report; on failure spool it and keep retrying in the background.
+
+    Args:
+        cfg: The talk tier's configuration (skill service URL, state root).
+        payload: The report (``BugReport.payload`` or ``tools.intake_report``).
+        route: The first post's route; a spooled report is posted again to ``/issues``.
 
     Returns:
         ``{"filed": True, ...skill service reply}`` or ``{"filed": False, "spooled": path, "error": ...}``.
     """
     try:
-        reply = await post_report(cfg, payload)
+        reply = await post_report(cfg, payload, route)
         asyncio.get_running_loop().create_task(flush_spool(cfg))
         return {"filed": True, **reply}
     except Exception as exc:  # noqa: BLE001 - any failure spools the report; nothing is dropped

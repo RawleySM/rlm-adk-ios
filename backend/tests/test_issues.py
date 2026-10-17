@@ -1,6 +1,7 @@
 """Intake issues log: a report is recorded at once with its verbatim words, triaged by one strict-JSON
-reasoning call (keyword rules when the owner fails), folded from an append-only log, idempotent per
-report id, and served over HTTP."""
+reasoning call (keyword rules when the owner fails) into one of five kinds (the first spoken word,
+then the caller's hint, then the model decide), folded from an append-only log, idempotent per
+report id, and served over HTTP with the phone's feed."""
 
 import json
 import tempfile
@@ -143,6 +144,50 @@ class IssuesLog(unittest.TestCase):
         self.assertEqual(issues.disposition_of({"kind": "bug", "severity": "minor", "flags": ["blocks_use"]}, words), ("ready", "P1"))
         self.assertEqual(issues.disposition_of({"kind": "feature_request", "severity": "minor", "flags": []}, words), ("request", "P3"))
         self.assertEqual(issues.disposition_of({"kind": "bug", "severity": "major", "needs_detail": True, "flags": []}, words), ("needs_detail", "P2"))
+        for kind in ("feature_request", "message", "teaching", "project_proposal"):
+            self.assertEqual(issues.disposition_of({"kind": kind, "severity": "minor", "needs_detail": True, "flags": []}, words)[0], "request", f"{kind}: no needs_detail gate")
+
+    def test_first_spoken_word_names_the_kind(self):
+        self.assertEqual(issues.spoken_kind("Teach: when I say amen twice, the prayer is over."), "teaching")
+        self.assertEqual(issues.spoken_kind("Um, remember that I read the Psalms at night."), "teaching")
+        self.assertEqual(issues.spoken_kind("Project. A map of the parts of my prayers."), "project_proposal")
+        self.assertEqual(issues.spoken_kind("Proposal: a weekly testimony digest."), "project_proposal")
+        self.assertEqual(issues.spoken_kind("Bug, the shading lags."), "bug")
+        self.assertIsNone(issues.spoken_kind("The project page is blank."))
+        self.assertIsNone(issues.spoken_kind(""))
+
+    def test_kind_order_first_word_then_hint_then_model(self):
+        self.inference.reply = json.dumps({**MODEL_TRIAGE, "kind": "message"})
+        cases = [
+            ("Remember that verse numbers are blue on purpose.", None, "teaching"),
+            ("Remember that verse numbers are blue on purpose.", "project_proposal", "teaching"),
+            ("Could the pane show two chapters side by side?", "feature_request", "feature_request"),
+            ("Could the pane show two chapters side by side?", "not_a_kind", "message"),
+            ("Could the pane show two chapters side by side?", None, "message"),
+        ]
+        for n, (text, hint, kind) in enumerate(cases):
+            ticket, _ = issues.record_report(self.cfg, {"report_id": f"k-{n}", "kind": hint, "origin": "conversation", "transcript": {"segments": [{"t": 1, "text": text}]}})
+            self.assertEqual(ticket["kind_hint"], hint if hint in issues.KINDS else None)
+            self.assertEqual(ticket["origin"], "conversation")
+            triage = issues.triage_ticket(self.cfg, ticket["ticket_id"])
+            self.assertEqual(triage["kind"], kind, (text, hint))
+            self.assertEqual(triage["disposition"], "request")
+        self.assertIn("He sent it as a feature request.", self.inference.requests[2]["messages"][1]["content"])
+        self.assertEqual(self.inference.requests[0]["response_format"]["json_schema"]["schema"]["properties"]["kind"]["enum"], issues.KINDS)
+
+    def test_keyword_rules_know_the_new_kinds(self):
+        self.assertEqual(issues.keyword_triage("Please remember that I pray at six.")["kind"], "teaching")
+        self.assertEqual(issues.keyword_triage("I want to start a new project about my prayer parts.")["kind"], "project_proposal")
+        self.assertEqual(issues.keyword_triage("The reading voice stops mid chapter.", "message")["kind"], "message")
+        self.assertEqual(issues.keyword_triage("Bug: the reading voice stops.", "message")["kind"], "bug")
+        self.assertEqual(issues.keyword_triage("I'd like a larger font in the pane.")["kind"], "feature_request")
+
+    def test_legacy_kinds_still_fold_and_list(self):
+        ticket, _ = issues.record_report(self.cfg, REPORT)
+        with issues._LogLock(issues.log_path(self.cfg)):
+            issues._append(issues.log_path(self.cfg), {"schema": issues.SCHEMA, "event": "triaged", "ticket_id": ticket["ticket_id"], "at": 2.0, "triage": {**ticket["triage"], "kind": "feedback", "state": "done"}})
+        self.assertEqual(issues.list_tickets(self.cfg)[0]["kind"], "feedback")
+        self.assertEqual(issues.list_tickets(self.cfg)[0]["origin"], "bug_chip")
 
     def test_pending_tickets_are_triaged_again_at_start(self):
         ticket, _ = issues.record_report(self.cfg, REPORT)
@@ -199,6 +244,16 @@ class IssuesHTTP(unittest.TestCase):
         self.assertEqual(listing["issues"][0]["priority"], "P2")
         self.assertEqual(self._call("GET", "/issues/bug-19990101-01")[0], 404)
         self.assertEqual(self._call("POST", "/issues", {"transcript": {}})[0], 400)
+
+    def test_kind_hint_over_http_and_the_feed_route(self):
+        status, body = self._call("POST", "/issues", {**REPORT, "report_id": "r-hint", "kind": "teaching"})
+        self.assertEqual(status, 201)
+        self.assertEqual(self._call("GET", f"/issues/{body['ticket_id']}")[1]["kind_hint"], "teaching")
+        status, feed = self._call("GET", "/intake/feed")
+        self.assertEqual((status, feed["items"]), (200, []))
+        self.assertIsInstance(feed["now"], float)
+        status, feed = self._call("GET", "/intake/feed?since=0&limit=5")
+        self.assertEqual((status, feed["items"]), (200, []))
 
 
 if __name__ == "__main__":

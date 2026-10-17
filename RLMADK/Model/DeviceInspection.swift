@@ -52,8 +52,10 @@ struct DeviceSnapshot: Codable, Equatable {
     var update_install: String? = nil
     /// "Updated to build 21 (from 20)" on the first launch of a newer build.
     var updated_notice: String? = nil
-    /// The Bug chip: phase, lines heard, ticket and outcome.
+    /// The Bug chip: phase, lines heard, ticket, outcome and Intake's replies on it.
     var bug_report: String? = nil
+    /// The newest message from Intake: kind, status, ticket and its words.
+    var intake_last: String? = nil
 
     struct CaptureSummary: Codable, Equatable {
         var capture_id: String

@@ -19,9 +19,10 @@ RPC barrier in `live-voice-stack-alternatives.md`); the phone and the voicesim h
 - Nothing is invented: Scripture is the retained World English Bible text verbatim; teacher excerpts
   are verbatim spans of cited chunks; traditions come only from an explicit map; register reports say
   "none recorded" for empty arrays.
-- Only `POST /tools/work` (through the existing outbox, `allocatorctl inbox post`) and `POST /issues`
-  (the intake issues log) write anything outside the portal's own SQLite. The prayer store and the register are opened
-  read-only; nothing is written to the production prayer store.
+- Only the intake issues log (`POST /issues`, `POST /tools/work`, the Work tab's dispatch) is
+  written outside the portal's own SQLite, and only its mail gate (`intake_mail_mode`) ever runs
+  `allocatorctl inbox post`. The prayer store and the register are opened read-only; nothing is
+  written to the production prayer store.
 
 ## Endpoints
 
@@ -134,18 +135,24 @@ that order. Not confident: `spoken` is "Do you mean <best>? The next closest is 
 Held-out check (written from the v2 records before the scorer ran, `tests/test_skill_tools.py`):
 5 of 5 top-1 correct on the fixture copy of the register at bd5c217.
 
-### `POST /tools/work` `{request_text, kind?, operation_id?}`
+### `POST /tools/work`: send a request to Intake
 
-`outbox.create_operation` then `outbox.dispatch` (one attempt row written before the CLI runs; a
-repeat with the same `operation_id` never posts twice). Returns `accepted`, `operation_id`,
-`short_id`, `kind`, `status`, `message_id`, `run_id`, `refusal`, `completed: false` and `spoken`:
+The talk tier's `send_to_intake` tool posts a report (`report_id`, `transcript` with Rawley's own
+last words, `context`, `source`, `kind`, `origin: "conversation"`); the short form
+`{request_text, kind?, operation_id?}` is accepted too (`origin: "tool"`; `operation_id` makes it
+idempotent). Either way it is `issues.record_report` plus the background triage, exactly as
+`POST /issues`, so the ticket is staged or mailed by the same gate (`intake-issues-log.md`); nothing
+here posts to the allocator. `kind` is a hint (`message`, `teaching`, `project_proposal`, `bug`,
+`feature_request`). Returns `201 {accepted, status: "recorded", ticket_id, report_id, created,
+kind_hint, mail_mode, completed: false, spoken}`; no words is `400` with `status: "rejected"`.
+`spoken` says only what is true of the mail:
 
-- posted: "Accepted as operation <short id>. It is not done; I will say when there is a result."
-- refused (`backend_unavailable`): "Saved as operation <short id>, but the allocator refused it:
-  <the CLI's own words>. It is not done."
-- `delivery_unknown`: "Operation <short id> was sent, but delivery is not confirmed. It is not done."
+- `post` mode: "Sent to Intake."
+- `stage` mode: "Saved for Intake. Mail to Intake is on hold, so it has not been sent yet."
+- no `intake_recipient`: "Saved in the intake log."; fewer than three words: "Saved in the intake
+  log; it was too short to send to Intake."
 
-Completion is never claimed; results arrive later through the existing `/work/<id>` artifacts.
+Completion is never claimed; Intake's replies arrive on the ticket (`GET /intake/feed`).
 
 ### `POST /issues`, `GET /issues`, `GET /issues/<ticket_id>`
 
@@ -156,10 +163,19 @@ started_at, ended_at, ended_by, source, context}`; the service appends a `report
 answers `200` with `created: false` and writes nothing) and triages it on a background thread (one
 strict-JSON reasoning call, keyword rules on failure), appending a `triaged` event. `GET /issues`
 lists tickets newest first (`status`, `limit`); `GET /issues/<id>` returns the folded ticket. The log
-is the one write this service makes outside its own SQLite besides the work outbox.
-`POST /issues/<id>/mail` stages (default) or sends the ticket's mail to `intake_recipient`;
-`POST /issues/<id>/status` appends a status written by someone other than the resident;
-`POST /issues/replies` polls the resident's replies now (see intake-issues-log.md).
+is the one write this service makes outside its own SQLite. The report may carry a `kind` hint and
+an `origin`. `POST /issues/<id>/mail` stages (default) or sends the ticket's mail to
+`intake_recipient`; `POST /issues/<id>/status` appends a status written by someone other than the
+resident; `POST /issues/replies` reads the mailbox now and pushes what is new (see
+intake-issues-log.md).
+
+### `GET /intake/feed?since=<unix>&limit=50`
+
+Intake's replies on tickets and its inbound (unthreaded) mail, newest last: `{items, now, log}`,
+each item the `intake_message` the phone is pushed on `/ws` when it is recorded (`id`, `kind`
+reply|inbound, `ticket_id`, `ticket_title`, `ticket_kind`, `status`, `text`, `display`,
+`from_name`, `sent_at`, `at`, `in_reply_to`, `instance_id`, `mentions`). The app reads it on every
+reconnect after the last `at` it applied.
 
 ### `GET /policy`
 
@@ -185,7 +201,7 @@ applied; an unreadable file serves the defaults with `source.error` set.
 | Teaching: Desiring God, Eleven22 | `~/.local/rlm-adk/stores/life_context/sources/youtube/catalog.sqlite3`, `source_document_current_v1` | interpretations |
 | Teaching: Jonathan Edwards (CCEL ThML), BibleProject transcripts (PDF) | `~/.local/rlm-adk/stores/life_context/sources/scripture_reference/` through the pinned `scripture_reference_readers` (`~/srv/voice-portal/vendor`) | interpretations |
 | Inference owner (themes) | `config.inference_base_url` (desktop forward `127.0.0.1:28111` to Spark-B, model `qwen-coding-b`) | word |
-| Allocator CLI | `~/srv/rlm-adk/bin/allocatorctl inbox post` | work |
+| Allocator CLI | `~/srv/rlm-adk/bin/allocatorctl inbox post --to` (mail gate, post mode only), `inbox list --to-operator --json` (reply reader), `status --json` | issues |
 
 ## The scripture_reference teaching adapter
 
@@ -218,6 +234,10 @@ revisions.
 `["ccel:edwards", "bibleproject:transcript"]`), `tools_inference_timeout_s` (420: covers a cold
 model start, about 245 s observed on Spark-B), `word_max_tokens` (700). Float values can now be
 overridden from the environment like the other types.
+
+The intake keys (`issues_log`, `intake_recipient`, `intake_mail_mode`, `intake_mail_dispositions`,
+`intake_poll_s`) are described in `intake-issues-log.md`. `work_recipient` is no longer read: requests
+from `POST /tools/work` and the Work tab are intake tickets mailed to `intake_recipient`.
 
 ## Left out, and known limits
 
