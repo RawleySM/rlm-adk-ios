@@ -85,7 +85,7 @@ struct PortalView: View {
     }
 
     /// The conversation under the scripture: what was said and heard, and the reply, each labelled
-    /// with its speaker ("You:" and the talk model's name).
+    /// with its speaker ("You:" and the talk model's name), then Intake's newest message ("Intake:").
     private var conversationPane: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 6) {
@@ -103,6 +103,16 @@ struct PortalView: View {
                 if !model.assistantText.isEmpty {
                     Text("\(model.assistantName): \(model.assistantText)").font(.body)
                         .accessibilityIdentifier("assistantText")
+                }
+                if let intake = model.intakeLatest {
+                    // Intake's replies arrive later than the conversation (minutes or hours): its own line.
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("\(intake.speaker): \(intake.shownText)").font(.body)
+                            .accessibilityIdentifier("intakeText")
+                        if !intake.detail.isEmpty {
+                            Text(intake.detail).font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
                 }
                 if let err = model.lastError { Text(err).font(.caption2).foregroundStyle(.red) }
             }
@@ -206,6 +216,11 @@ struct PortalView: View {
             if let outcome = model.bug.outcome {
                 Text(outcome).font(.caption.weight(.medium)).foregroundStyle(model.bug.phase == .failed ? .red : .primary)
                     .accessibilityIdentifier("bugOutcome")
+            }
+            ForEach(model.bug.replies) { reply in
+                Text("\(reply.speaker)\(reply.status.map { " (\($0.replacingOccurrences(of: "_", with: " ")))" } ?? ""): \(reply.shownText)")
+                    .font(.caption)
+                    .accessibilityIdentifier("bugReply")
             }
         }
         .padding(8)

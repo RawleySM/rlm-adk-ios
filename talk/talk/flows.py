@@ -19,9 +19,9 @@ from pipecat.flows import FlowManager, NodeConfig
 
 from talk import tools
 
-_ALL = ["search_sources", "read_scripture", "continue_reading", "word_from_prayer", "interpretations", "project_checkin", "request_work"]
-_DEVOTIONAL = ["continue_reading", "read_scripture", "interpretations", "search_sources", "word_from_prayer", "project_checkin", "request_work"]
-_PROJECT = ["project_checkin", "request_work", "search_sources", "read_scripture", "word_from_prayer", "interpretations"]
+_ALL = ["search_sources", "read_scripture", "continue_reading", "word_from_prayer", "interpretations", "project_checkin", "send_to_intake"]
+_DEVOTIONAL = ["continue_reading", "read_scripture", "interpretations", "search_sources", "word_from_prayer", "project_checkin", "send_to_intake"]
+_PROJECT = ["project_checkin", "send_to_intake", "search_sources", "read_scripture", "word_from_prayer", "interpretations"]
 
 NODE_NAMES = ("available", "conversation", "prayer", "devotional", "project", "quiet")
 

@@ -88,13 +88,10 @@ class PortalService:
         reset = devices.reset_connections(self.conn())  # nothing survives a restart as "connected"
         if reset:
             log.info("device connections reset on start: %d", reset)
-        recovered = outbox.recover_stale_posting(self.conn(), cfg, all_rows=True)
-        if recovered:
-            log.warning("recovered stale posting operations as delivery_unknown: %s", recovered)
         pending = issues.resume_pending(cfg)
         if pending:
             log.info("issues still pending triage, triaging again: %s", pending)
-        if issues.start_reply_poller(cfg):
+        if issues.start_reply_poller(cfg, on_recorded=self.push_intake):
             log.info("intake replies polled every %ss for %s", cfg.intake_poll_s, cfg.intake_recipient)
 
     def conn(self) -> sqlite3.Connection:
@@ -139,6 +136,26 @@ class PortalService:
             return False
         devices.mark_delivered(self.conn(), command["command_id"])
         return True
+
+    def push_intake(self, items: list[dict]) -> int:
+        """Push Intake's new replies and mail (``intake_message`` frames, ``issues.feed_item``) to every
+        live phone session; returns the frames written. A phone that is not connected reads them
+        later from ``GET /intake/feed``; a dead socket is dropped as in ``push_command``."""
+        with self.device_lock:
+            sessions = list(self.device_sessions.items())
+        written = 0
+        for install_id, (session_id, send) in sessions:
+            for item in items:
+                try:
+                    send(item)
+                except Exception as exc:  # WebSocketClosed, OSError, or any broken transport
+                    log.warning("intake message %s to %s not sent: %s", item.get("id"), install_id, exc)
+                    self.drop_device_session(install_id, session_id)
+                    break
+                written += 1
+        if items:
+            log.info("intake messages pushed: %d item(s), %d frame(s) to %d phone(s)", len(items), written, len(sessions))
+        return written
 
     def drop_device_session(self, install_id: str, session_id: str) -> None:
         with self.device_lock:
@@ -250,9 +267,8 @@ class Handler(BaseHTTPRequestHandler):
                     op = outbox.get_operation(conn, op_id)
                     return self._json(200 if op else 404, op or {"error": "not_found"})
                 if method == "POST" and parts[2:] == ["dispatch"]:
-                    return self._json(200, outbox.dispatch(conn, cfg, op_id))
-                if method == "POST" and parts[2:] == ["reconcile"]:
-                    return self._json(200, outbox.reconcile(conn, cfg, op_id))
+                    # The Work tab's dispatch files the request with Intake (the intake issues log).
+                    return self._json(200, outbox.send_to_intake(conn, cfg, op_id))
                 if method == "POST" and parts[2:] == ["source-packet"]:
                     return self._json(201, outbox.build_source_packet(conn, cfg, op_id))
                 if method == "GET" and len(parts) == 4 and parts[2] == "artifacts":
@@ -379,7 +395,13 @@ class Handler(BaseHTTPRequestHandler):
                     event = issues.record_status(cfg, parts[1], str(payload["status"]), text=str(payload.get("text") or ""), artifact=payload.get("artifact"), by=str(payload.get("by") or "operator-session"))
                     return self._json(201 if event else 404, event or {"error": "not_found"})
                 if method == "POST" and parts == ["issues", "replies"]:
-                    return self._json(200, {"recorded": issues.poll_replies(cfg)})
+                    recorded = issues.poll_replies(cfg)
+                    items = issues.feed_items(cfg, recorded)
+                    return self._json(200, {"recorded": recorded, "pushed": svc.push_intake(items) if items else 0})
+            # ----- Intake's replies and mail for the phone -----
+            if method == "GET" and parts == ["intake", "feed"]:
+                since = float(query["since"]) if query.get("since") not in (None, "") else None
+                return self._json(200, {"items": issues.feed(cfg, since=since, limit=int(query.get("limit") or 50)), "now": now(), "log": str(issues.log_path(cfg))})
             return self._json(404, {"error": "not_found", "path": url.path})
         except (ValueError, KeyError, json.JSONDecodeError) as exc:
             return self._json(400, {"error": str(exc)})
@@ -408,8 +430,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(400, {"error": "description or confirm is required", "spoken": "Which project do you mean?"})
             return self._json(200, project_tool(cfg, query.get("description") or "", query.get("confirm")))
         if method == "POST" and name == "work":
-            payload = self._read_json()
-            result = work_tool(conn, cfg, payload.get("request_text") or "", payload.get("kind") or "research", operation_id=payload.get("operation_id"))
+            result = work_tool(cfg, self._read_json())
             return self._json(400 if result["status"] == "rejected" else 201, result)
         return self._json(404, {"error": "not_found", "tool": name, "method": method})
 

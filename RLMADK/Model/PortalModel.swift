@@ -82,6 +82,11 @@ final class PortalModel: ObservableObject {
     /// The last update check's outcome, shown in Diagnostics and the snapshot: when it ran, the
     /// published build and whether that is newer, or why the check failed.
     @Published private(set) var updateCheckStatus: String = "not checked yet"
+    /// The newest message from the Intake resident (IntakeMessage.swift): the conversation pane's
+    /// "Intake:" line, kept across launches.
+    @Published private(set) var intakeLatest: IntakeMessage? = IntakeMessage.loadLatest()
+    /// Message ids applied in this process: a push and the feed catch-up can carry the same one.
+    private var intakeSeen: Set<String> = []
     /// The Bug chip's report (BugReport.swift); while it is open the phone keeps bot speech silent.
     @Published private(set) var bug = BugReportState() {
         didSet { if bug.silencesOutput != oldValue.silencesOutput { talk?.voice.gateOpen = speechGateOpen } }
@@ -442,6 +447,7 @@ final class PortalModel: ObservableObject {
             syncPrayerASR()
             Task {
                 if devotional == nil { await loadDevotional() }
+                await refreshIntakeFeed()
                 await syncLocalWork()
                 await refreshWork()
                 await retryPendingUploads()
@@ -742,8 +748,42 @@ final class PortalModel: ObservableObject {
                 asrJournals[captureId]?.markSynced(through: through)
                 store.saveASRSync(asrJournals)
             }
+        case "intake_message":
+            if let message = IntakeMessage(message: raw) { intakeMessageReceived(message) }
         default:
             break
+        }
+    }
+
+    // MARK: Intake's replies and mail
+
+    /// Applies one message from the Intake resident (a pushed `intake_message` or a feed item): the
+    /// newest becomes the conversation pane's "Intake:" line, and a reply about the Bug card's
+    /// ticket joins the card. Each message id is applied once.
+    func intakeMessageReceived(_ message: IntakeMessage) {
+        guard intakeSeen.insert(message.id).inserted else { return }
+        if (message.at ?? 0) >= (intakeLatest?.at ?? 0) || intakeLatest == nil {
+            intakeLatest = message
+            message.saveAsLatest()
+        }
+        if let at = message.at, at > UserDefaults.standard.double(forKey: "intakeFeedSince") {
+            UserDefaults.standard.set(at, forKey: "intakeFeedSince")
+        }
+        bug.received(message)
+        logLine("intake \(message.kind) \(message.status ?? "-")\(message.ticket_id.map { " \($0)" } ?? ""): \(message.shownText.prefix(120))")
+        sendSnapshot(reason: "intake")
+    }
+
+    /// Catches up on Intake's messages recorded while the phone was away (`GET /intake/feed` after
+    /// the last one applied; the newest three on a first run). A failed fetch waits for the next connect.
+    func refreshIntakeFeed() async {
+        let since = UserDefaults.standard.double(forKey: "intakeFeedSince")
+        let query = since > 0 ? ["since": String(since), "limit": "20"] : ["limit": "3"]
+        do {
+            let feed = try await client.get("intake/feed", query: query, as: IntakeFeed.self)
+            for message in feed.items { intakeMessageReceived(message) }
+        } catch {
+            logLine("intake feed: \(error.localizedDescription)")
         }
     }
 
@@ -1213,7 +1253,8 @@ final class PortalModel: ObservableObject {
             update_check: updateCheckStatus,
             update_install: updateInstall.map { "build \($0.build) \($0.phase.rawValue)" },
             updated_notice: updatedNotice,
-            bug_report: "\(bug.phase) lines \(bug.lines.count) device \(bug.deviceLines.count)\(bug.ticketId.map { " \($0)" } ?? "")\(bug.outcome.map { " — \($0)" } ?? "")"
+            bug_report: "\(bug.phase) lines \(bug.lines.count) device \(bug.deviceLines.count)\(bug.ticketId.map { " \($0)" } ?? "")\(bug.outcome.map { " — \($0)" } ?? "") replies \(bug.replies.count)",
+            intake_last: intakeLatest.map { "\($0.kind) \($0.status ?? "-") \($0.ticket_id ?? "-") — \($0.shownText.prefix(160))" }
         )
     }
 
@@ -2006,8 +2047,9 @@ final class PortalModel: ObservableObject {
         if let list = try? await client.get("work", as: WorkList.self) { work = list.operations }
     }
 
-    /// Records the request locally first (stable operation id), then asks the service to create and
-    /// dispatch it. Offline, the item stays visible as locally queued and is replayed on reconnect.
+    /// Records the request locally first (stable operation id), then asks the service to create it and
+    /// send it to Intake (an intake ticket, `POST /work/<id>/dispatch`). Offline, the item stays
+    /// visible as locally queued and is replayed on reconnect.
     func submitWork(kind: String, text: String) async {
         let operationId = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         localWork.insert(LocalWorkItem(operationId: operationId, kind: kind, requestText: text, createdAt: Date()), at: 0)
@@ -2068,12 +2110,9 @@ final class PortalModel: ObservableObject {
         }
     }
 
-    func reconcileWork(_ operationId: String) async {
-        _ = try? await client.post("work/\(operationId)/reconcile", json: [:], as: [String: AnyDecodable].self)
-        await refreshWork()
-    }
-
-    func dispatchWork(_ operationId: String) async {
+    /// Sends a recorded operation to Intake: the service files it as an intake ticket (staged or
+    /// mailed by its mail gate; it never posts to the allocator itself).
+    func sendWorkToIntake(_ operationId: String) async {
         _ = try? await client.post("work/\(operationId)/dispatch", json: [:], as: [String: AnyDecodable].self)
         await refreshWork()
     }

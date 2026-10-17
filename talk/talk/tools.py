@@ -3,11 +3,12 @@
 Two kinds of tool:
 
 * **Exact-speech tools** (``read_scripture``, ``continue_reading``, ``word_from_prayer``,
-  ``request_work``): the skill service's text is spoken verbatim. The handler pushes one
+  ``send_to_intake``): the skill service's text is spoken verbatim. The handler pushes one
   ``TTSSpeakFrame`` per sentence straight to the TTS, records the words as the assistant's message
   in the context, and returns the result with ``run_llm=False`` so the model does not paraphrase a
-  verse, a frame or an operation id. Verses are pushed one frame each so the reading tracker knows
-  exactly how far a reading got when it is interrupted.
+  verse, a frame or an acknowledgement. Verses are pushed one frame each so the reading tracker knows
+  exactly how far a reading got when it is interrupted. ``send_to_intake`` files Rawley's own last
+  words (``intake_words``), never the model's paraphrase of them.
 * **Composed tools** (``search_sources``, ``interpretations``, ``project_checkin``): the result goes
   back to the model, which answers in its own words under the system prompt's rules.
 
@@ -18,6 +19,8 @@ from __future__ import annotations
 
 import json
 import re
+import time
+import uuid
 from typing import Any
 
 import aiohttp
@@ -30,6 +33,11 @@ from talk.config import TalkConfig
 _cfg: TalkConfig | None = None
 
 LONG_READING_VERSES = 10
+
+# The ticket kinds the skill service triages into (voice_portal.issues.KINDS); send_to_intake's hint.
+INTAKE_KINDS = ("message", "teaching", "project_proposal", "bug", "feature_request")
+# Said when the skill service could not take the request: it is spooled and posted again every minute.
+SPOOLED_SPOKEN = "Saved for Intake. The desktop is not answering, so it goes when it is back."
 
 UNAVAILABLE_NOTE = (
     "This source is unavailable right now. Tell Rawley plainly that you could not reach it, answer briefly "
@@ -265,17 +273,91 @@ async def word_from_prayer(args: FlowArgs, flow_manager: FlowManager):
     return summary, (_node("conversation", flow_manager) if flow_manager.current_node == "available" else NO_RESPONSE)
 
 
-async def request_work(args: FlowArgs, flow_manager: FlowManager):
-    """Post a durable work request to rlm-adk's instance mailbox; accepted or refused, never done."""
-    try:
-        result = await _post("/tools/work", {"request_text": args.get("request", ""), "kind": args.get("kind", "research")})
-    except Exception as exc:
-        return _unavailable(str(exc)), None
-    spoken = str(result.get("spoken") or "").strip() if isinstance(result, dict) else ""
-    if not spoken:
-        return (result if isinstance(result, dict) else _unavailable("bad work result")), None
+def _content_text(content: Any) -> str:
+    if isinstance(content, list):
+        content = " ".join(str(part.get("text") or "") for part in content if isinstance(part, dict))
+    return str(content or "").strip()
+
+
+def intake_words(messages: list[dict[str, Any]], fallback: str = "", *, max_messages: int = 6, max_chars: int = 4000) -> str:
+    """Rawley's own words for the request being handled, verbatim.
+
+    The user messages since the assistant last said something, oldest first and joined, so a request
+    that reached the model in two transcripts ("Send this to Intake." "The reading is too slow.") is
+    sent whole. Tool calls and results of the current turn are passed over, and so are the floor's
+    own notes ("(I opened Romans 12 in the scripture pane.)"). Typed requests are in the context too,
+    unlike ``last_user_text``, which is only the fallback.
+
+    Args:
+        messages: The session's LLM context messages (OpenAI shape), oldest first.
+        fallback: Used when no such user message is found.
+        max_messages: At most this many user messages, the latest.
+        max_chars: The words are cut to this many characters.
+    """
+    collected: list[str] = []
+    for message in reversed(messages):
+        if not isinstance(message, dict):
+            continue
+        role = message.get("role")
+        text = _content_text(message.get("content"))
+        if role == "assistant" and text:
+            break
+        if role != "user" or not text or (text.startswith("(") and text.endswith(")")):
+            continue
+        collected.append(text)
+        if len(collected) >= max_messages:
+            break
+    words = " ".join(reversed(collected)).strip() or str(fallback or "").strip()
+    return words[:max_chars]
+
+
+def intake_report(words: str, kind: str | None, floor=None) -> dict[str, Any]:
+    """The report ``send_to_intake`` files: the intake issues log's ``POST /issues`` shape, origin
+    ``conversation``, Rawley's words as its one segment and the moment's context from the floor."""
+    now = time.time()
+    return {
+        "report_id": uuid.uuid4().hex,
+        "surface": "voice_portal",
+        "origin": "conversation",
+        "kind": kind,
+        "started_at": now,
+        "ended_at": now,
+        "ended_by": "send_to_intake",
+        "transcript": {"segments": [{"t": round(now, 3), "text": words, "source": "conversation"}], "device_segments": [], "asr": _cfg.stt_model if _cfg else None},
+        "source": {"session_id": floor.session_id} if floor is not None else {},
+        "context": floor.report_context() if floor is not None else {},
+    }
+
+
+async def send_to_intake(args: FlowArgs, flow_manager: FlowManager):
+    """Send Rawley's own last words to the Intake resident (``POST /tools/work``, an intake ticket).
+
+    Speaks the skill service's acknowledgement ("Sent to Intake.", or that mail is on hold) and
+    nothing more. A request the skill service cannot take is spooled on this host and posted again
+    until it is accepted (``bug_report.file_report``), and that is said instead.
+    """
+    from talk import bug_report
+
+    kind = str(args.get("kind") or "").strip()
+    kind = kind if kind in INTAKE_KINDS else None
+    floor = _floor(flow_manager)
+    messages: list[dict[str, Any]] = []
+    if floor is not None and floor.context is not None:
+        try:
+            messages = floor.context.get_messages()
+        except Exception:  # noqa: BLE001 - the fallback below still has the last forwarded utterance
+            messages = []
+    words = intake_words(messages, fallback=str(_state(flow_manager).get("last_user_text") or ""))
+    if not words:
+        return {"error": "nothing to send", "instruction": "Ask Rawley what he would like sent to Intake."}, None
+    result = await bug_report.file_report(_cfg, intake_report(words, kind, floor), route="/tools/work")
+    if result.get("filed"):
+        spoken = str(result.get("spoken") or "").strip() or "Sent to Intake."
+    else:
+        spoken = SPOOLED_SPOKEN
+    logger.info(f"send_to_intake: {kind or 'no kind'} {result.get('ticket_id') or result.get('spooled')}: {words[:120]!r}")
     await _speak_exact(flow_manager, [spoken])
-    return {"operation_id": result.get("operation_id"), "status": result.get("status"), "text": spoken, "spoken": True}, NO_RESPONSE
+    return {"ticket_id": result.get("ticket_id"), "kind": kind, "words_sent": words, "text": spoken, "spoken": True}, NO_RESPONSE
 
 
 # ----- schemas -----
@@ -329,12 +411,12 @@ SCHEMAS: dict[str, FlowsFunctionSchema] = {
         required=["description"],
         handler=project_checkin,
     ),
-    "request_work": FlowsFunctionSchema(
-        name="request_work",
-        description="Record a durable work request (research, project task) for the rlm-adk residents. The tool speaks the recorded status (operation id; accepted, or refused with the reason); it is never done by this call. You add nothing.",
-        properties={"request": {"type": "string"}, "kind": {"type": "string", "enum": ["research", "project", "task"]}},
-        required=["request"],
-        handler=request_work,
+    "send_to_intake": FlowsFunctionSchema(
+        name="send_to_intake",
+        description="Send what Rawley just said to Intake, the resident that handles his requests: a message or question for Intake, something he teaches it or asks it to remember, a project he proposes, or a bug or feature for the portal. His own words are sent, not yours. Call it when he asks to tell, ask, send or teach Intake something, to remember something, to propose a project, or to have work done. The tool says whether it was sent; you add nothing.",
+        properties={"kind": {"type": "string", "enum": list(INTAKE_KINDS), "description": "message (a question or note), teaching (teach or remember), project_proposal, bug, or feature_request."}},
+        required=["kind"],
+        handler=send_to_intake,
     ),
 }
 

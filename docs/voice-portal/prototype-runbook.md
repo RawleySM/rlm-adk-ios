@@ -8,12 +8,15 @@ and how to stop it. Companion documents: the [plan](prototype-plan.md), the pres
 
 | Part | Where | What it owns |
 | --- | --- | --- |
-| `backend/voice_portal` (Python 3.12, stdlib only) | desktop `rawley-stanhope`, deployed copy at `~/srv/voice-portal/backend`, state root `~/.local/rlm-adk/voice_portal` | SQLite FTS5 projection of the retained sources, streaming turns against the local inference owner, prayer-intake relay, durable work outbox, HTTP + WebSocket on port 8765 |
+| `backend/voice_portal` (Python 3.12, stdlib only) | desktop `rawley-stanhope`, deployed copy at `~/srv/voice-portal/backend`, state root `~/.local/rlm-adk/voice_portal` | SQLite FTS5 projection of the retained sources, streaming turns against the local inference owner, prayer-intake relay, the intake issues log (Bug chip, `send_to_intake`, Work tab) and its mail to the Intake resident, HTTP + WebSocket on port 8765 |
 | `scripture_reference_readers` | desktop `~/srv/voice-portal/vendor` (pinned copy of `RawleySM/data-pipelines` commit `4e8a5d93aa73774599045e13f2906ed7a34422e3`; `vendor/PIN.txt`) | Reads the retained Scripture store, verifies body hashes, yields WEB verse atoms |
 | `RLMADK` (SwiftUI, iOS 17) | this repository, built unsigned for the simulator on GitHub macOS runners | One `AVAudioEngine` capture owner with local WAV segments, on-device `SFSpeechRecognizer`, `AVSpeechSynthesizer` behind the quiet/prayer/barge-in gate, persisted mode, prayer uploads, work list |
 
 Nothing in this prototype starts, resumes or updates the RLM-ADK allocator. The backend only runs
-`allocatorctl status --json`, `allocatorctl inbox post --file PATH` and `allocatorctl inbox list --all`.
+`allocatorctl status --json` and, through the intake mail gate when `intake_mail_mode` is `"post"`,
+`allocatorctl inbox post --to <intake_recipient> --file PATH` and `allocatorctl inbox list
+--to-operator --json` (`pipecat-rebuild/intake-issues-log.md`). `work_recipient` is no longer read:
+spoken requests and the Work tab are intake tickets mailed to `intake_recipient`.
 
 ## Backend on the desktop
 
@@ -74,8 +77,9 @@ the state root, never in Git.
 | `GET /devotional?passage=PSA.23&date=` | verse segments with cite ids, one teaching excerpt, Theographic people/places |
 | `GET /theographic/passage?osis=Gen.12.1,…` | bounded Theographic join with unresolved keys listed |
 | `POST /turns` | one grounded turn without a socket (smoke/evidence) |
-| `GET /ws` | voice session: `hello`, `partial_transcript` (acknowledged only), `final_transcript` (one model call per turn id), `cancel`, `mode_changed`, `ping`; server sends `session`, `turn_accepted`, `assistant_text_delta`, `assistant_done` (citations, timing, usage, scope), `assistant_cancelled`, `duplicate_turn`, `error`. Binary frames are refused: no PCM uplink. |
-| `POST /work`, `GET /work/{id}`, `POST /work/{id}/dispatch|reconcile|source-packet`, `GET /work/{id}/artifacts/{aid}` | durable outbox over `allocatorctl inbox` |
+| `GET /ws` | voice session: `hello`, `partial_transcript` (acknowledged only), `final_transcript` (one model call per turn id), `cancel`, `mode_changed`, `ping`; server sends `session`, `turn_accepted`, `assistant_text_delta`, `assistant_done` (citations, timing, usage, scope), `assistant_cancelled`, `duplicate_turn`, `error`, `command` (remote inspection) and `intake_message` (a new reply or message from the Intake resident). Binary frames are refused: no PCM uplink. |
+| `POST /work`, `GET /work/{id}`, `POST /work/{id}/dispatch|source-packet`, `GET /work/{id}/artifacts/{aid}` | the Work tab's operations; `dispatch` sends one to Intake as an intake ticket |
+| `POST /issues`, `GET /issues[/{id}]`, `POST /tools/work`, `GET /intake/feed?since=` | the intake issues log: tickets, requests sent to Intake, Intake's replies and mail (`pipecat-rebuild/intake-issues-log.md`) |
 | `POST /prayer/captures/{cid}/segments/{n}` (raw audio, `X-Audio-SHA256`), `POST …/finalize`, `POST …/discard`, `GET /prayer/captures/{cid}` | relay to the existing prayer intake with verified digests/lengths |
 | `POST /prayer/test-runs`, `GET /prayer/test-runs/{id}` | the intake's own sanctioned test-run mechanism (never published to the corpus) |
 
@@ -90,16 +94,19 @@ import made it historical. The system prompt tells the model the evidence is a r
 set, so it must say "the retrieved excerpts do not include that" rather than claim corpus-wide
 absence.
 
-### Work outbox states
+### Work tab operations
 
-`queued_locally → posting → directive_posted | backend_unavailable | delivery_unknown`, plus
-`artifact_available` (only with a result reference that names a posted directive of this operation)
-and `failed`. Dispatch is an atomic claim (`BEGIN IMMEDIATE` + conditional update + attempt row);
-only the winner writes its per-attempt directive file `outbox/<op>-attempt<N>.txt`, then runs the
-CLI. A `posting` row left by a crash is recovered as `delivery_unknown` at service start and is never
-replayed; reconciliation uses `inbox list --all` and only proves non-delivery when the earlier
-attempt's run id is in the listing. Source packets are `source_packet` artifacts written to unique
-files and are never promoted to a result.
+An operation is recorded on the phone first (a stable operation id), created on the service
+(`queued_locally`) and sent with `POST /work/{id}/dispatch`, which files its request as an intake
+ticket (`issues.record_report`, report id `work-<operation id>`, origin `work_tab`) and sets
+`sent_to_intake` with `note: ticket_id=<id>`. A repeat files nothing new. The ticket is triaged and
+staged or mailed like a spoken request, so the Work tab passes the same `intake_mail_mode` gate; the
+service never posts an operation to the allocator itself. The direct `inbox post` dispatch, its
+`posting` / `delivery_unknown` recovery and the `inbox list --all` reconciliation are retired (they
+bypassed the gate, and the CLI no longer has `--all`); rows from before keep their old statuses
+(`backend_unavailable`, `delivery_unknown`, `directive_posted`) and their attempt evidence, and only
+`queued_locally` or `backend_unavailable` rows can be sent. Source packets are `source_packet`
+artifacts written to unique files and are never promoted to a result.
 
 ## iPhone client
 
@@ -419,6 +426,13 @@ Installing on the phone (acceptance step, separate from the build):
   the transcript is labelled "You:". The talk server sends `{"type": "assistant", "name": ...}` when
   the app syncs (config `llm_display_name`, else `llm_model`); the app keeps the last name. The
   Devotional disclosure is gone from the pane.
+- Intake's replies (build 27 and later): the skill service pushes `{"type": "intake_message", ...}`
+  on the control socket when the Intake resident replies to a ticket or mails Rawley, and the app
+  reads `GET /intake/feed?since=` on every reconnect for what it missed. The conversation pane shows
+  the newest as "Intake: <words>" under the model's reply (status and ticket beneath it; kept across
+  launches), the Bug card lists the latest three replies about its ticket, and the device snapshot
+  reports `intake_last`. The Work tab's buttons read "Record and send to Intake" and "Send to Intake"
+  (Reconcile is gone).
 - Reading from a verse (build 26 and later): tap a verse's blue number in the scripture pane to read
   from that verse to the end of the chapter (`client_read` `play` with `index`, its position in the
   pane's passage). Saying or typing "start at verse 16" / "go back to verse 5" does the same without a

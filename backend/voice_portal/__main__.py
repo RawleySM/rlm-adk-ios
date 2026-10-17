@@ -86,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("readiness")
     sub.add_parser("probe")
     p = sub.add_parser("work")
-    p.add_argument("action", choices=["create", "dispatch", "reconcile", "show", "list", "packet"])
+    p.add_argument("action", choices=["create", "send", "show", "list", "packet"])
     p.add_argument("arg", nargs="?")
     p.add_argument("--kind", default="research")
     p = sub.add_parser("prayer")
@@ -160,10 +160,9 @@ def main(argv: list[str] | None = None) -> int:
     elif args.cmd == "work":
         if args.action == "create":
             _print(outbox.create_operation(conn, kind=args.kind, request_text=args.arg or ""))
-        elif args.action == "dispatch":
-            _print(outbox.dispatch(conn, cfg, args.arg))
-        elif args.action == "reconcile":
-            _print(outbox.reconcile(conn, cfg, args.arg))
+        elif args.action == "send":
+            # Files the operation with Intake (an intake ticket; staged or mailed by intake_mail_mode).
+            _print(outbox.send_to_intake(conn, cfg, args.arg))
         elif args.action == "show":
             _print(outbox.get_operation(conn, args.arg))
         elif args.action == "packet":

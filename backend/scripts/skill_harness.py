@@ -56,7 +56,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default="http://100.90.105.30:8765")
     ap.add_argument("--out", required=True)
-    ap.add_argument("--post-work", action="store_true", help="also POST a real work request (creates an operation and may post mail)")
+    ap.add_argument("--post-work", action="store_true", help="also POST a real work request (files an intake ticket, mailed only in post mode)")
     args = ap.parse_args()
     base = args.base
     checks: list[dict] = []
@@ -118,12 +118,12 @@ def main() -> int:
     rep = (confirmed.get("spoken") or "").lower()
     check("5", "project_report_axes", confirmed.get("report") is not None and all(w in rep for w in ("disposition:", "need:", "products:", "consumers:", "evidence:")), spoken=(confirmed.get("spoken") or "")[:160])
 
-    # 6. Work request (optional real post)
+    # 6. Request sent to Intake (optional: files a real intake ticket)
     if args.post_work:
-        status, work, _ = post(base, "/tools/work", {"request_text": "Research how Jonathan Edwards and John Piper differ on the affections in prayer.", "kind": "research"})
+        status, work, _ = post(base, "/tools/work", {"request_text": "Research how Jonathan Edwards and John Piper differ on the affections in prayer.", "kind": "message"})
         raw["work"] = work
-        check("6", "work_operation_id", status in (200, 201) and bool(work.get("operation_id")), status=work.get("status"))
-        check("6", "work_never_done", "done" not in (work.get("status") or "") and "not done" in (work.get("spoken") or "").lower(), spoken=(work.get("spoken") or "")[:160])
+        check("6", "work_ticket_id", status in (200, 201) and bool(work.get("ticket_id")), status=work.get("status"))
+        check("6", "work_never_done", work.get("completed") is False and "done" not in (work.get("spoken") or "").lower(), spoken=(work.get("spoken") or "")[:160])
     else:
         status, worklist, _ = get(base, "/work")
         check("6", "work_endpoint_reachable", status == 200, operations=len(worklist.get("operations") or []))

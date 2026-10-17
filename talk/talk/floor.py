@@ -367,21 +367,17 @@ class FloorProcessor(FrameProcessor):
     def _bug_message(self, state: str, **fields) -> dict:
         return {"type": "bug_report", "state": state, "report_id": self.bug.report_id if self.bug else None, "t": time.time(), **fields}
 
-    async def start_bug(self, *, source: dict | None = None, reason: str = "client") -> BugReport:
-        """Open a report: silence output, keep transcribing into the report, tell the phone."""
-        if self.bug is not None:
-            await self._tell_client(self._bug_message("started", segments=len(self.bug.segments), again=True))
-            return self.bug
+    def report_context(self) -> dict:
+        """The moment a report or a ``send_to_intake`` request is filed in: mode, Flows node, whether
+        the bot was speaking, the open passage, the recent conversation and floor events."""
         verses = self.reading_state.get("verses") or []
-        report = BugReport(mode_before=self.mode, resume_reading=bool(self.reading_state.get("reading")))
-        report.source = {"session_id": self.session_id, **{k: v for k, v in (source or {}).items() if isinstance(v, (str, int, float, bool)) or v is None}}
         messages = []
         if self.context is not None:
             try:
                 messages = self.context.get_messages()
             except Exception:  # noqa: BLE001 - context is optional evidence
                 messages = []
-        report.context = {
+        return {
             "mode_before": self.mode,
             "node": self.node,
             "bot_speaking": self.bot_speaking,
@@ -395,6 +391,21 @@ class FloorProcessor(FrameProcessor):
             "recent_turns": bug_report.recent_turns(messages),
             "recent_floor_events": self.events[-12:],
         }
+
+    async def start_bug(self, *, source: dict | None = None, reason: str = "client", kind: str | None = None) -> BugReport:
+        """Open a report: silence output, keep transcribing into the report, tell the phone.
+
+        Args:
+            source: The phone's facts (flat values only are kept).
+            reason: For the log and the mode reason.
+            kind: The chip's kind hint (``client_bug`` ``kind``), filed with the report.
+        """
+        if self.bug is not None:
+            await self._tell_client(self._bug_message("started", segments=len(self.bug.segments), again=True))
+            return self.bug
+        report = BugReport(mode_before=self.mode, resume_reading=bool(self.reading_state.get("reading")), kind=kind or None)
+        report.source = {"session_id": self.session_id, **{k: v for k, v in (source or {}).items() if isinstance(v, (str, int, float, bool)) or v is None}}
+        report.context = self.report_context()
         self.bug = report
         self.pending_turn = False
         self._cancel_pending_amen()
@@ -509,8 +520,10 @@ class FloorProcessor(FrameProcessor):
         return result
 
     async def client_bug(self, message: dict) -> None:
-        """The phone's ``client_bug`` message: ``action`` start | stop | cancel."""
+        """The phone's ``client_bug`` message: ``action`` start | stop | cancel, and an optional
+        ``kind`` hint (a ticket kind, for a chip that files more than bugs) on start or stop."""
         action = message.get("action")
+        kind = str(message.get("kind") or "").strip() or None
         # The app sends flat string fields (the WebRTC data channel carries a string map): app_build,
         # transport, audio_route, install_id, client; and on stop device_segments, one line each.
         source = dict(message.get("context")) if isinstance(message.get("context"), dict) else {}
@@ -519,8 +532,10 @@ class FloorProcessor(FrameProcessor):
         if isinstance(device, str):
             device = [{"text": line} for line in device.split("\n") if line.strip()]
         if action == "start":
-            await self.start_bug(source=source, reason="client")
+            await self.start_bug(source=source, reason="client", kind=kind)
         elif action == "stop":
+            if kind and self.bug is not None:
+                self.bug.kind = kind
             # Filing waits for the utterance in flight and for the skill service; it runs as its own
             # task so the processor that delivered the message keeps passing audio meanwhile.
             self._spawn(self._stop_from_client(device or None, source or None))

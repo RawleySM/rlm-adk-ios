@@ -71,11 +71,11 @@ class Config:
     # `mail_staged` event without touching the allocator; "post" delivers it with `inbox post`.
     intake_mail_mode: str = "stage"
     intake_mail_dispositions: list[str] = field(default_factory=lambda: ["ready", "request", "needs_detail"])
-    # Seconds between polls of the Intake resident's replies (`inbox list --to-operator --json`).
+    # Seconds between polls of the instance mailbox (`inbox list --to-operator --json`, one call per
+    # poll): replies threaded on tickets and unthreaded resident mail.
     intake_poll_s: int = 60
-    # Recipient of `request_work` directives (the work outbox); empty posts without --to, which
-    # the installed allocatorctl refuses.
-    work_recipient: str = ""
+    # NOTE [Context]: `work_recipient` is retired: spoken requests (`POST /tools/work`) and the Work
+    # tab are intake tickets mailed to `intake_recipient`; a config file that still names it is ignored.
     source_commit: str = ""
 
     @property
