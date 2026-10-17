@@ -138,7 +138,9 @@ Held-out check (written from the v2 records before the scorer ran, `tests/test_s
 ### `POST /tools/work`: send a request to Intake
 
 The talk tier's `send_to_intake` tool posts a report (`report_id`, `transcript` with Rawley's own
-last words, `context`, `source`, `kind`, `origin: "conversation"`); the short form
+last words, `context`, `source`, `kind`, `origin: "conversation"`); its escalation safety net posts
+the same report with `origin: "auto_escalation"` and `assistant_reply` (what the assistant said when
+it could not meet the request; `talk-protocol.md`); the short form
 `{request_text, kind?, operation_id?}` is accepted too (`origin: "tool"`; `operation_id` makes it
 idempotent). Either way it is `issues.record_report` plus the background triage, exactly as
 `POST /issues`, so the ticket is staged or mailed by the same gate (`intake-issues-log.md`); nothing
@@ -154,6 +156,11 @@ kind_hint, mail_mode, completed: false, spoken}`; no words is `400` with `status
 
 Completion is never claimed; Intake's replies arrive on the ticket (`GET /intake/feed`).
 
+The call returns as soon as the `reported` event is fsynced (one lock, one scan of the log): the
+triage model call and the allocatorctl post run on background threads, so the spoken
+acknowledgement is immediate. Measured 2026-10-17 against an isolated backend on Spark-A: see
+`intake-issues-log.md` ("Latency").
+
 ### `POST /issues`, `GET /issues`, `GET /issues/<ticket_id>`
 
 The intake issues log (`issues.py`, format in [intake-issues-log.md](intake-issues-log.md)). The
@@ -163,8 +170,9 @@ started_at, ended_at, ended_by, source, context}`; the service appends a `report
 answers `200` with `created: false` and writes nothing) and triages it on a background thread (one
 strict-JSON reasoning call, keyword rules on failure), appending a `triaged` event. `GET /issues`
 lists tickets newest first (`status`, `limit`); `GET /issues/<id>` returns the folded ticket. The log
-is the one write this service makes outside its own SQLite. The report may carry a `kind` hint and
-an `origin`. `POST /issues/<id>/mail` stages (default) or sends the ticket's mail to
+is the one write this service makes outside its own SQLite. The report may carry a `kind` hint, an
+`origin` and, for an auto-escalation, the `assistant_reply`; `GET /issues` rows and `GET /intake/feed`
+items carry the ticket's `origin`. `POST /issues/<id>/mail` stages (default) or sends the ticket's mail to
 `intake_recipient`; `POST /issues/<id>/status` appends a status written by someone other than the
 resident; `POST /issues/replies` reads the mailbox now and pushes what is new (see
 intake-issues-log.md).

@@ -12,6 +12,14 @@ ticket in this log:
   remember something or to propose a project. The talk tier's `send_to_intake(kind)` tool files his
   own last words (never the model's paraphrase) with `POST /tools/work`, and the assistant says
   "Sent to Intake." and nothing more (`talk-protocol.md`).
+- **Automatically.** He asks for something the assistant cannot do. The assistant is told to call
+  `send_to_intake` itself instead of saying it cannot (`feature_request` for a missing capability or
+  a change, `message` for a question its tools cannot answer, `bug` when something it should do
+  failed); when it says it cannot anyway, the talk tier's safety net files his words the same way
+  with origin `auto_escalation` and the assistant's reply, and says "I've passed that to Intake; it
+  will reply on your phone." (`talk-protocol.md`, "Automatic escalation"). Rawley's words
+  (2026-10-17): the voice assistant is for answering quickly; a larger feature he must wait for is
+  tracked and registered as a fix.
 - **Work tab.** A request recorded on the phone's Work tab is sent with `POST /work/<id>/dispatch`
   (`outbox.send_to_intake`).
 
@@ -60,7 +68,8 @@ takes the lock); it never rewrites lines.
   "report_id": "<talk tier uuid>",
   "recorded_at": 1792051200.0, "recorded_at_iso": "2026-10-15T07:20:00+00:00",
   "recorded_by": "voice-portal skill service",
-  "surface": "voice_portal", "origin": "bug_chip|conversation|work_tab|tool", "kind_hint": "teaching",
+  "surface": "voice_portal", "origin": "bug_chip|conversation|auto_escalation|work_tab|tool", "kind_hint": "teaching",
+  "assistant_reply": "I can't set a timer from here. (auto_escalation only; null otherwise)",
   "reporter": "operator", "status": "open",
   "text": "The report's words: the server transcript segments joined (typed lines included).",
   "transcript": {
@@ -93,7 +102,18 @@ takes the lock); it never rewrites lines.
 
 `origin` and `kind_hint` are absent on tickets recorded before 2026-10-17 (they came from the Bug
 chip); those tickets may also carry the retired kinds `question` and `feedback`, which fold, list and
-are re-mailed as messages. Every ticket id is `bug-YYYYMMDD-NN`, whatever its kind.
+are re-mailed as messages. `assistant_reply` is recorded only by the talk tier's auto-escalation
+(origin `auto_escalation`) and is quoted to the triage model and in the mail. Every ticket id is
+`bug-YYYYMMDD-NN`, whatever its kind.
+
+### Latency
+
+`POST /issues` and `POST /tools/work` answer as soon as the `reported` event is on disk (one lock,
+one scan of the log, one fsync); the triage call and the allocatorctl post run on background
+threads. Measured 2026-10-17 on Spark-A against an isolated backend with a 1 s fake triage owner:
+`POST /tools/work` median 5.9 ms, p90 6.5 ms, max 7.8 ms over 30 calls
+(`tests/test_issues.py::test_tools_work_returns_before_triage_and_lists_the_origin` holds it under
+0.9 s with the slow owner).
 
 ## Triage: flag, sort, disposition
 
@@ -133,21 +153,38 @@ in `errors`). A ticket still pending when the skill service starts is triaged ag
 With `intake_recipient` set (production: `intk01`), a triaged ticket whose disposition is in
 `intake_mail_dispositions` (`ready`, `request`, `needs_detail`) gets a plain-text mail
 (`issues.mail_text`): a first line `voice-portal ticket_id=... kind=... priority=... disposition=...
-component=...`, a line naming the kind, where it came from (Bug chip, conversation, Work tab), his
-words, the triage, open questions, the context, `Full record: GET http://127.0.0.1:8765/issues/<id>`
+component=...`, a line naming the kind, where it came from (Bug chip, conversation, the assistant's
+own escalation, Work tab), his words, for an auto-escalated ticket the block "This request was
+auto-escalated. The voice assistant could not meet this; its reply was: ..." and that a tracked fix
+is expected, the triage, open questions, the context, `Full record: GET http://127.0.0.1:8765/issues/<id>`
 (the resident runs on the desktop beside the skill service) and how to reply
 (`send_message("operator", "status: <word> ...", in_reply_to=<the message id>)`) with the words for
 its kind (`intake-solo-plan.md` section 3):
 
 | Kind | Reply words | The reply names |
 |---|---|---|
-| `bug`, `feature_request` | `accepted`, then `done` / `failed` (or `needs_detail`, `declined`) | the PR, the merge commit, the build or deploy; what stopped it |
+| `bug`, `feature_request` | `accepted`, then `done` / `failed` (or `needs_detail`, `declined`) | the PR, the merge commit, the build or deploy; what stopped it; the GitHub issue when the work outlives the turn (below) |
 | `message` | `answered` (or `needs_detail`, `declined`) | the answer, with the record ids and dates it rests on |
 | `teaching` | `learned` (or `needs_detail`, `declined`) | what was learned, where it applies, the package version that holds it |
 | `project_proposal` | `proposed`, then `started` after his go-ahead (or `needs_detail`, `declined`) | the brief; then the project id, the repository and the first commit |
 
 Plain text on purpose: a JSON body shaped `{"kind": "job_request"}` is read by the host as cloud-job
 demand.
+
+### Tracking on GitHub
+
+An accepted bug or feature that is **not finished within Intake's delivering turn** gets a GitHub
+issue in `RawleySM/rlm-adk-ios`, opened by Intake from the template
+`.github/ISSUE_TEMPLATE/intake.md` (fields: intake ticket id, Rawley's words, origin, acceptance,
+status) with the labels `intake` plus `bug`, or `capability-gap` when the voice assistant could not
+meet the request (origin `auto_escalation`), or `feature` otherwise. The delivering PR says
+`Fixes #<n>`, so the merge closes it; the ticket's `status` events carry the issue URL (Intake names
+it in its reply); the voice portal's Inbox (ticket `bug-20261016-03`, to be built by Intake) will
+show them. The backlog is therefore
+<https://github.com/RawleySM/rlm-adk-ios/issues?q=label%3Aintake>, and the work register's
+`rlm-adk-ios` record says so. Work finished within the turn needs no issue: the `done` reply with
+the PR and merge commit is its record. Issues are opened by Intake as it accepts work, never
+backfilled for tickets it has not taken.
 
 - `intake_mail_mode: "stage"` (default while the runtime is not running): the mail is written under
   `<state root>/outbox/issues/` and a `mail_staged` event records it and the exact post command.

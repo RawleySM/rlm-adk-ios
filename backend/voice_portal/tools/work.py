@@ -7,9 +7,14 @@ posts to the allocator, and nothing reports completion: Intake's replies arrive 
 (`GET /intake/feed`, the pushed `intake_message`).
 
 The body is the talk tier's report (`report_id`, `transcript`, `context`, `source`, `kind`,
-`origin`: the `send_to_intake` tool files Rawley's own last words this way) or the short form
-`{request_text, kind?, operation_id?}`. `kind` is a hint (`issues.KINDS`); his first spoken word, and
-then the triage, decide otherwise.
+`origin`: the `send_to_intake` tool files Rawley's own last words this way with origin
+`conversation`; the talk tier's escalation safety net files them with origin `auto_escalation` and
+the assistant's `assistant_reply`) or the short form `{request_text, kind?, operation_id?}`. `kind`
+is a hint (`issues.KINDS`); his first spoken word, and then the triage, decide otherwise.
+
+The call returns as soon as the `reported` event is on disk (one lock, one scan of the log, one
+fsync): the triage model call and the allocatorctl post run on background threads, so the talk
+tier's spoken acknowledgement is immediate.
 """
 
 from __future__ import annotations

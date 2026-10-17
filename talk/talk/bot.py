@@ -49,6 +49,7 @@ from talk.bridge import BridgeProcessor, ContextScrubber  # noqa: E402
 from talk.client_messages import ClientMessages  # noqa: E402
 from talk.cohere_stt import CohereSparkSTTService  # noqa: E402
 from talk.config import TalkConfig, load_config  # noqa: E402
+from talk.escalation import ESCALATED_SPOKEN, EscalationWatch  # noqa: E402
 from talk.floor import FloorProcessor, OutputGate  # noqa: E402
 from talk.uplink_probe import UplinkProbe  # noqa: E402
 from talk.vad import DoubleTalkVADAnalyzer  # noqa: E402
@@ -64,7 +65,12 @@ a text-to-speech voice, so answer in short plain spoken sentences: no lists, no 
 no headings, no bracketed citations, no emoji. Two to four sentences unless he asks you to read Scripture, in which case read the
 retained text exactly as the tool returns it. Use the tools for anything about his prayers, projects,
 Scripture text or teaching; never invent a verse, a date, a project or a result. When he wants something
-told, taught or proposed to Intake, or work done, call send_to_intake, which sends his own words. The tools read_scripture,
+told, taught or proposed to Intake, or work done, call send_to_intake, which sends his own words. Also call
+send_to_intake, without being asked, whenever a request needs something your tools cannot do: a capability you
+lack, a question your tools cannot answer, a change to this app or to you, or research longer than a reply. Never
+answer that you cannot; send it instead, with kind feature_request for a missing capability or a change, message
+for a question you cannot answer, and bug when something you should be able to do failed. Do not send to Intake
+what your tools already handle: Scripture, prayers, projects and teaching. The tools read_scripture,
 continue_reading, word_from_prayer and send_to_intake speak their result themselves; after calling one of
 them say nothing more unless Rawley asks a new question. Use read_scripture only when he asks to hear a
 passage read ("read me", "read Psalm 23"); for a question about what a passage says on a topic ("what does
@@ -152,6 +158,9 @@ async def run_bot(transport, cfg: TalkConfig, *, session_label: str) -> None:
             aggregators.user(),
             llm,
             bridge,
+            # The safety net behind the prompt: a reply that says the request cannot be met, with no
+            # tool call in the turn, is filed with Intake (talk/escalation.py).
+            EscalationWatch(cfg, floor),
             tts,
             duck,
             gate,
@@ -159,7 +168,7 @@ async def run_bot(transport, cfg: TalkConfig, *, session_label: str) -> None:
             # After the output transport, TTSTextFrame arrives as the audio is played out, not as
             # it is synthesised, so the tracker counts verses the listener actually heard.
             ReadingTracker(reading_state, floor),
-            ContextScrubber(cfg),
+            ContextScrubber(cfg, extra_phrases=[ESCALATED_SPOKEN]),
             aggregators.assistant(),
         ]
     )

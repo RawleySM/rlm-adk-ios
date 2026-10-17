@@ -3,9 +3,11 @@
 Two paths file a ticket. The phone's Bug chip puts the talk tier in ``bug`` mode; when Rawley taps
 it again the talk tier posts what it transcribed (``POST /issues``) with the context of the moment
 (open passage, reading, recent conversation, app build). In conversation, the talk tier's
-``send_to_intake`` tool files his own last words (``POST /tools/work``, ``tools/work.py``), and the
-Work tab's dispatch files its request (``outbox.send_to_intake``). Every path goes through
-``record_report``, so the mail gate below covers all of them. Tickets live in an append-only JSON
+``send_to_intake`` tool files his own last words (``POST /tools/work``, ``tools/work.py``): on his
+request, or on its own when a request needs something its tools cannot do; the talk tier's safety
+net files the same report with origin ``auto_escalation`` and the assistant's reply when the model
+said it could not instead. The Work tab's dispatch files its request (``outbox.send_to_intake``).
+Every path goes through ``record_report``, so the mail gate below covers all of them. Tickets live in an append-only JSON
 Lines log on the desktop (config ``issues_log``; production ``~/.local/rlm-adk/stores/intake/issues.jsonl``).
 
 A ticket is one of five kinds (``KINDS``): ``bug``, ``feature_request``, ``message``, ``teaching``,
@@ -393,8 +395,10 @@ def record_report(cfg: Config, payload: dict) -> tuple[dict, bool]:
         cfg: Service configuration (``issues_log``).
         payload: The talk tier's report: ``report_id``, ``transcript {segments, device_segments}``,
             ``started_at``, ``ended_at``, ``ended_by``, ``source {...}``, ``context {...}``, and
-            optionally ``kind`` (a hint from ``KINDS``; anything else is ignored) and ``origin``
-            (``bug_chip`` when absent, ``conversation``, ``work_tab`` or ``tool``).
+            optionally ``kind`` (a hint from ``KINDS``; anything else is ignored), ``origin``
+            (``bug_chip`` when absent, ``conversation``, ``auto_escalation``, ``work_tab`` or
+            ``tool``) and ``assistant_reply`` (what the voice assistant said when it could not meet
+            the request; recorded on the ticket and quoted in the mail).
 
     Returns:
         The ticket as folded from the log and whether this call created it (False for a repeat).
@@ -427,6 +431,7 @@ def record_report(cfg: Config, payload: dict) -> tuple[dict, bool]:
             "surface": payload.get("surface") or "voice_portal",
             "origin": str(payload.get("origin") or "bug_chip")[:40],
             "kind_hint": kind_hint,
+            "assistant_reply": str(payload.get("assistant_reply") or "")[:2000] or None,
             "reporter": "operator",
             "status": "open",
             "text": text,
@@ -459,6 +464,8 @@ def _context_lines(ticket: dict) -> str:
         lines.append(f"Portal mode before the report: {context['mode_before']}.")
     if context.get("bot_speaking"):
         lines.append("The assistant was speaking when the report began.")
+    if ticket.get("assistant_reply"):
+        lines.append(f"The voice assistant could not meet this request; its reply was: {str(ticket['assistant_reply'])[:400]}")
     for turn in (context.get("recent_turns") or [])[-6:]:
         if isinstance(turn, dict) and turn.get("text"):
             lines.append(f"{turn.get('role', '?')}: {str(turn['text'])[:300]}")
@@ -613,9 +620,13 @@ _REPLY_WORDS = {
     "teaching": ("learned", "needs_detail", "declined"),
     "project_proposal": ("proposed", "started", "needs_detail", "declined"),
 }
+# An accepted bug or feature that is not finished within the delivering turn is tracked as a GitHub
+# issue in the portal's repository (labels ``intake`` plus ``bug`` or ``capability-gap``), named in
+# the status reply and closed by the delivering PR ("Fixes #<n>"); docs/.../intake-issues-log.md.
+_TRACKING_GUIDE = "If it is not finished in this turn, open a GitHub issue in RawleySM/rlm-adk-ios from the intake template (labels intake and bug, or intake and capability-gap when the assistant could not meet the request), name its URL in your status reply, and make the delivering PR say Fixes #<n>."
 _REPLY_GUIDES = {
-    "bug": "Reply status: accepted when you take it (needs_detail or declined, with the reason, when you cannot), then status: done naming the PR, the merge commit and the build or deploy, or status: failed with what stopped it.",
-    "feature_request": "Reply status: accepted when you take it (needs_detail or declined, with the reason, when you cannot), then status: done naming the PR, the merge commit and the build or deploy, or status: failed with what stopped it.",
+    "bug": "Reply status: accepted when you take it (needs_detail or declined, with the reason, when you cannot), then status: done naming the PR, the merge commit and the build or deploy, or status: failed with what stopped it. " + _TRACKING_GUIDE,
+    "feature_request": "Reply status: accepted when you take it (needs_detail or declined, with the reason, when you cannot), then status: done naming the PR, the merge commit and the build or deploy, or status: failed with what stopped it. " + _TRACKING_GUIDE,
     "message": "Reply status: answered with the answer, quoting the record ids and dates it rests on (needs_detail when you cannot answer without asking him).",
     "teaching": "Reply status: learned, restating what you learned, where it applies and the package version that now holds it.",
     "project_proposal": "Reply status: proposed with the brief (outcome, first step, sources, risks, how it stays small) and ask once for a go-ahead; only after he says go, reply status: started naming the project id, the repository and the first commit.",
@@ -623,6 +634,7 @@ _REPLY_GUIDES = {
 _ORIGIN_LINES = {
     "bug_chip": "the phone's Bug chip",
     "conversation": "the conversation (he asked the assistant to send it to you)",
+    "auto_escalation": "the conversation (the voice assistant could not meet it and passed it to you by itself)",
     "work_tab": "the phone's Work tab",
     "tool": "a skill-service tool call",
 }
@@ -660,8 +672,17 @@ def mail_text(ticket: dict, note: str | None = None, *, record_url: str | None =
         "Rawley said (speech recognition, read charitably):",
         f"  \"{ticket.get('text') or ''}\"",
         "",
-        f"Summary: {triage.get('summary') or ''}",
     ]
+    if ticket.get("origin") == "auto_escalation" or ticket.get("assistant_reply"):
+        # Rawley's words: the voice assistant answers quickly or not at all; what it could not do
+        # becomes tracked work, so a reply that says it cannot is a capability gap to fix.
+        lines += [
+            "This request was auto-escalated. The voice assistant could not meet this; its reply was:",
+            f"  \"{ticket.get('assistant_reply') or '(not recorded)'}\"",
+            "A tracked fix is expected: either the capability the assistant lacked, or the answer he asked for, with the work recorded as below.",
+            "",
+        ]
+    lines.append(f"Summary: {triage.get('summary') or ''}")
     if triage.get("observed"):
         lines.append(f"Observed: {triage['observed']}")
     if triage.get("expected"):
@@ -873,7 +894,8 @@ def _is_feed_event(event: dict) -> bool:
 
 def feed_item(event: dict, tickets: dict[str, dict]) -> dict:
     """One ``intake_message``: a resident's reply on a ticket (``kind: reply``) or unthreaded mail
-    (``kind: inbound``), with the ticket's title and kind and the words the phone shows (``display``).
+    (``kind: inbound``), with the ticket's title, kind and origin and the words the phone shows
+    (``display``).
 
     No key is named ``message`` or ``session_id``: the app decodes every frame of its control socket
     as a ``ServerEvent`` whose ``message`` is a string, and a frame that fails that decode is dropped.
@@ -889,6 +911,7 @@ def feed_item(event: dict, tickets: dict[str, dict]) -> dict:
         "ticket_title": triage.get("title"),
         "ticket_kind": triage.get("kind"),
         "status": event.get("status"),
+        "origin": ticket.get("origin"),
         "text": text,
         "display": display_text(text),
         "from_name": _sender_name(event.get("from")),
