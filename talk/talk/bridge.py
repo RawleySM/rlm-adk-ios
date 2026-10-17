@@ -99,12 +99,14 @@ class ContextScrubber(FrameProcessor):
     The bridge speaks "One moment." through the TTS, and the assistant aggregator records whatever
     was spoken as assistant history. After a few turns the model imitated that history and answered
     "One moment." with no tool call (phone run 2026-10-14 05:48 UTC). This processor sits right
-    before the assistant aggregator and drops ``TTSTextFrame`` units equal to a bridge phrase.
+    before the assistant aggregator and drops ``TTSTextFrame`` units equal to a bridge phrase. The
+    escalation watch's spoken line is scrubbed the same way (``extra_phrases``): the watch appends its
+    own note to the context, with the ticket id, once the request is filed.
     """
 
-    def __init__(self, cfg: TalkConfig):
+    def __init__(self, cfg: TalkConfig, extra_phrases: list[str] | None = None):
         super().__init__(name="context-scrubber")
-        self._phrases = {p.strip().lower() for p in [*cfg.bridge_phrases, cfg.bridge_followup_phrase] if p}
+        self._phrases = {p.strip().lower() for p in [*cfg.bridge_phrases, cfg.bridge_followup_phrase, *(extra_phrases or [])] if p}
 
     async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)

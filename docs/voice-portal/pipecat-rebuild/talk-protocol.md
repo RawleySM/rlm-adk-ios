@@ -115,6 +115,42 @@ The function result (ticket id, kind, the words sent) stays in the context, so "
 can be answered. Intake's replies come back to the phone from the skill service, not through the
 talk tier (`intake-issues-log.md`).
 
+### Automatic escalation (`talk/escalation.py`)
+
+Rawley's direction (2026-10-17): the assistant exists to answer quickly; what it cannot do goes to
+Intake by itself and is tracked as a fix. Two layers:
+
+1. **The prompt.** `SYSTEM_PROMPT` and the `send_to_intake` description tell the model to call
+   `send_to_intake` without being asked whenever a request needs something its tools cannot do (a
+   capability it lacks, a question its tools cannot answer, a change to the app or to itself,
+   research longer than a reply), never to answer that it cannot, and which kind to send
+   (`feature_request` for a missing capability or a change, `message` for a question it cannot
+   answer, `bug` when something it should do failed). Prayer and quiet nodes have no functions, so
+   nothing is escalated there; Scripture, prayers, projects and teaching stay with the tools.
+2. **The safety net** (`EscalationWatch`, between the LLM and the TTS; `TalkConfig.auto_escalate`,
+   default true). When an assistant response ends whose text says the request cannot be met and no
+   tool ran in that user turn, it files Rawley's verbatim last words (the same `intake_words` and
+   `bug_report.file_report(..., route="/tools/work")` as `send_to_intake`) with origin
+   `auto_escalation`, the assistant's reply (`assistant_reply`) and the floor's context (mode, node,
+   passage, recent turns), kind hint `feature_request`, or `message` when his words were a question.
+   It then speaks one line, "I've passed that to Intake; it will reply on your phone.", through the
+   output gate, and once the filing returns appends a context note with the ticket id. Filing is
+   fire-and-forget: the conversation is never held for it, and a request the desktop cannot take is
+   spooled with the bug reports and retried.
+
+   Patterns (first person, case-insensitive, apostrophes normalised, quoted spans removed first so
+   Scripture read aloud never matches): "I can't", "I cannot", "I'm/I am unable", "I'm/I am not
+   able to", "I won't be able to", "I don't / do not have access | a way | any way | the ability |
+   that ability | a tool | any tool | the tools | that capability | such a capability | that feature |
+   that option", "I have no way to", "isn't / is not something I can", "not something/anything I'm
+   able to", "beyond what I can", "outside (of) what I can", "I'm/I am not set up | equipped | built
+   | designed to".
+
+   Never escalated: a response in prayer, quiet or bug mode or while held; a response in a user turn
+   that ran any tool (the model relaying a tool result, such as a verse that was not found, or its
+   own `send_to_intake`); an interrupted response; a second response of a user turn already filed
+   (`FloorProcessor.turn_serial` counts forwarded turns, spoken or typed); the flag off.
+
 ## Conversation states (Pipecat Flows, `talk/flows.py`)
 
 One `FlowManager` per session with six `NodeConfig`s, every node sharing the role message and never

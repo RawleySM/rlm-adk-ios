@@ -8,7 +8,8 @@ Two kinds of tool:
   in the context, and returns the result with ``run_llm=False`` so the model does not paraphrase a
   verse, a frame or an acknowledgement. Verses are pushed one frame each so the reading tracker knows
   exactly how far a reading got when it is interrupted. ``send_to_intake`` files Rawley's own last
-  words (``intake_words``), never the model's paraphrase of them.
+  words (``intake_words``), never the model's paraphrase of them; the model calls it on its own for
+  a request its tools cannot meet, and ``talk.escalation`` files the same report when it did not.
 * **Composed tools** (``search_sources``, ``interpretations``, ``project_checkin``): the result goes
   back to the model, which answers in its own words under the system prompt's rules.
 
@@ -311,22 +312,36 @@ def intake_words(messages: list[dict[str, Any]], fallback: str = "", *, max_mess
     return words[:max_chars]
 
 
-def intake_report(words: str, kind: str | None, floor=None) -> dict[str, Any]:
-    """The report ``send_to_intake`` files: the intake issues log's ``POST /issues`` shape, origin
-    ``conversation``, Rawley's words as its one segment and the moment's context from the floor."""
+def intake_report(words: str, kind: str | None, floor=None, *, origin: str = "conversation", assistant_reply: str | None = None, ended_by: str | None = None) -> dict[str, Any]:
+    """The report ``send_to_intake`` (and the escalation watch) files: the intake issues log's
+    ``POST /issues`` shape, Rawley's words as its one segment and the moment's context from the floor.
+
+    Args:
+        words: Rawley's verbatim words (``intake_words``).
+        kind: The kind hint (``INTAKE_KINDS``), or None to let triage decide.
+        floor: This session's FloorProcessor; supplies the session id and the context.
+        origin: ``conversation`` (the model called ``send_to_intake``) or ``auto_escalation`` (the
+            safety net filed a request the assistant said it could not meet).
+        assistant_reply: For an auto-escalation, what the assistant said; recorded on the ticket and
+            quoted in the mail to Intake.
+        ended_by: The report's ``ended_by``; defaults to ``send_to_intake`` for a conversation report.
+    """
     now = time.time()
-    return {
+    report = {
         "report_id": uuid.uuid4().hex,
         "surface": "voice_portal",
-        "origin": "conversation",
+        "origin": origin,
         "kind": kind,
         "started_at": now,
         "ended_at": now,
-        "ended_by": "send_to_intake",
+        "ended_by": ended_by or ("send_to_intake" if origin == "conversation" else origin),
         "transcript": {"segments": [{"t": round(now, 3), "text": words, "source": "conversation"}], "device_segments": [], "asr": _cfg.stt_model if _cfg else None},
         "source": {"session_id": floor.session_id} if floor is not None else {},
         "context": floor.report_context() if floor is not None else {},
     }
+    if assistant_reply:
+        report["assistant_reply"] = str(assistant_reply)[:2000]
+    return report
 
 
 async def send_to_intake(args: FlowArgs, flow_manager: FlowManager):
@@ -413,8 +428,8 @@ SCHEMAS: dict[str, FlowsFunctionSchema] = {
     ),
     "send_to_intake": FlowsFunctionSchema(
         name="send_to_intake",
-        description="Send what Rawley just said to Intake, the resident that handles his requests: a message or question for Intake, something he teaches it or asks it to remember, a project he proposes, or a bug or feature for the portal. His own words are sent, not yours. Call it when he asks to tell, ask, send or teach Intake something, to remember something, to propose a project, or to have work done. The tool says whether it was sent; you add nothing.",
-        properties={"kind": {"type": "string", "enum": list(INTAKE_KINDS), "description": "message (a question or note), teaching (teach or remember), project_proposal, bug, or feature_request."}},
+        description="Send what Rawley just said to Intake, the resident that handles his requests and builds what the portal lacks: a message or question for Intake, something he teaches it or asks it to remember, a project he proposes, or a bug or feature for the portal. His own words are sent, not yours. Call it when he asks to tell, ask, send or teach Intake something, to remember something, to propose a project, or to have work done. Also call it, without being asked, whenever his request needs something your tools cannot do: a capability you lack, a question your tools cannot answer, a change to this app or to you, or research longer than a reply. Never tell him you cannot; send it instead. The tool says whether it was sent; you add nothing.",
+        properties={"kind": {"type": "string", "enum": list(INTAKE_KINDS), "description": "message (a question or note, or a question your tools cannot answer), teaching (teach or remember), project_proposal, bug (something you should be able to do failed), or feature_request (a capability you lack, or a change to the app or to you)."}},
         required=["kind"],
         handler=send_to_intake,
     ),

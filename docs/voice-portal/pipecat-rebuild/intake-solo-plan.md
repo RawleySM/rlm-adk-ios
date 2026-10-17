@@ -75,6 +75,12 @@ blocker that needs him; never status chatter.
 - `request_work` becomes `send_to_intake(kind)`, filing Rawley's verbatim last words, not the model's
   paraphrase; it says "Sent to Intake." and nothing more.
 - `client_bug` keeps working; it carries an optional `kind` hint for a future chip.
+- **Automatic escalation** (added 2026-10-17, Rawley: "if I ask for something and the voice assistant
+  can't meet it, it should automatically go to the resident ... I want that properly tracked and
+  registered as such a fix"): the prompt tells the model to call `send_to_intake` itself for anything
+  its tools cannot do, and `talk/escalation.py` files his words with origin `auto_escalation` when
+  the model says it cannot anyway (`talk-protocol.md`, "Automatic escalation"). The mail tells Intake
+  the request was auto-escalated and that a tracked fix is expected.
 
 ### App (`RLMADK/`)
 - Handle `intake_message`: an `Intake: <text>` line in the conversation pane, mirroring `You:` and
@@ -109,6 +115,16 @@ blocker that needs him; never status chatter.
 6. Release the hold (`resume`) and supervise: checks every 60 s until convergence, never more than
    300 s apart afterwards, with model-call and token deltas (thinking included) for Intake and its
    delegates.
+
+### Tracking (GitHub + the work register)
+- An accepted bug or feature that Intake does not finish within its delivering turn gets a GitHub
+  issue in `RawleySM/rlm-adk-ios` from `.github/ISSUE_TEMPLATE/intake.md`, labels `intake` plus
+  `bug`, or `capability-gap` (the assistant could not meet the request), or `feature`; the
+  delivering PR says `Fixes #<n>`; the ticket's status events carry the issue URL; the portal's
+  Inbox (`bug-20261016-03`) will show them (`intake-issues-log.md`, "Tracking on GitHub"). Intake
+  opens issues as it accepts work; nothing is backfilled.
+- The work register record `rlm-adk-ios` names that issue list as the repository's backlog and the
+  Intake resident as the consumer of voice requests.
 
 ## 6. Acceptance
 

@@ -144,6 +144,22 @@ class IntakeMail(FakeAllocator):
             self.assertIn("from the conversation", text)
             self.assertNotIn("Full record", text, "no record line without a URL")
 
+    def test_auto_escalated_mail_says_so_and_asks_for_a_tracked_fix(self):
+        ticket = {"ticket_id": "bug-20261017-02", "text": "Set a timer for ten minutes.", "origin": "auto_escalation", "assistant_reply": "I can't set a timer from here.", "triage": {"kind": "feature_request", "title": "Timer from the portal", "summary": "He wants a timer."}}
+        text = issues.mail_text(ticket)
+        self.assertIn("the voice assistant could not meet it and passed it to you by itself", text)
+        self.assertIn("This request was auto-escalated. The voice assistant could not meet this; its reply was:", text)
+        self.assertIn("\"I can't set a timer from here.\"", text)
+        self.assertIn("A tracked fix is expected", text)
+        self.assertIn("open a GitHub issue in RawleySM/rlm-adk-ios", text)
+        self.assertIn("intake and capability-gap", text)
+        self.assertIn("Fixes #<n>", text)
+        plain = issues.mail_text({"ticket_id": "bug-20261017-03", "text": "Tell Intake hello.", "origin": "conversation", "triage": {"kind": "message", "title": "t"}})
+        self.assertNotIn("auto-escalated", plain)
+        self.assertNotIn("GitHub issue", plain, "the tracking convention is for bugs and features")
+        item = issues.feed_item({"event": "status", "ticket_id": "bug-20261017-02", "reply_message_id": "mail-9", "status": "accepted", "text": "status: accepted. Taking it; issue to follow."}, {"bug-20261017-02": ticket})
+        self.assertEqual((item["origin"], item["ticket_kind"], item["display"]), ("auto_escalation", "feature_request", "Taking it; issue to follow."))
+
     def test_stage_mode_writes_the_mail_and_command_but_never_calls_the_allocator(self):
         self.cfg.intake_mail_mode = "stage"
         ticket = self.ticket()

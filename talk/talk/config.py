@@ -42,6 +42,9 @@ class TalkConfig:
     # Skill service (the cognitive backend over data-pipelines products) on the desktop.
     skill_base_url: str = "http://100.90.105.30:8765"
     skill_timeout_s: float = 20.0
+    # The safety net behind the model (talk/escalation.py): a reply that says the request cannot be
+    # met, with no tool call in that turn, is filed with Intake as Rawley's own words. False turns it off.
+    auto_escalate: bool = True
     # Floor policy (the conversation policy the app and the benchmark share).
     address_phrases: list[str] = field(
         default_factory=lambda: [

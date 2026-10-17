@@ -175,6 +175,30 @@ class IssuesLog(unittest.TestCase):
         self.assertIn("He sent it as a feature request.", self.inference.requests[2]["messages"][1]["content"])
         self.assertEqual(self.inference.requests[0]["response_format"]["json_schema"]["schema"]["properties"]["kind"]["enum"], issues.KINDS)
 
+    def test_auto_escalation_records_origin_and_the_assistants_reply(self):
+        report = {
+            "report_id": "r-auto",
+            "origin": "auto_escalation",
+            "kind": "feature_request",
+            "ended_by": "auto_escalation",
+            "assistant_reply": "I can't set a timer from here.",
+            "transcript": {"segments": [{"t": 1, "text": "Set a timer for ten minutes.", "source": "conversation"}]},
+            "context": {"mode_before": "available", "node": "conversation", "recent_turns": [{"role": "user", "text": "Set a timer for ten minutes."}]},
+        }
+        ticket, created = issues.record_report(self.cfg, report)
+        self.assertTrue(created)
+        self.assertEqual((ticket["origin"], ticket["kind_hint"], ticket["assistant_reply"]), ("auto_escalation", "feature_request", "I can't set a timer from here."))
+        self.assertEqual(ticket["context"]["node"], "conversation")
+        self.assertEqual(issues.list_tickets(self.cfg)[0]["origin"], "auto_escalation")
+        issues.triage_ticket(self.cfg, ticket["ticket_id"])
+        prompt = self.inference.requests[0]["messages"][1]["content"]
+        self.assertIn("could not meet this request; its reply was: I can't set a timer from here.", prompt)
+        self.assertIn("He sent it as a feature request.", prompt)
+        plain, _ = issues.record_report(self.cfg, {**report, "report_id": "r-plain", "origin": "conversation", "assistant_reply": None})
+        self.assertIsNone(plain["assistant_reply"])
+        folded = issues.read_tickets(issues.log_path(self.cfg))[ticket["ticket_id"]]
+        self.assertEqual(folded["assistant_reply"], "I can't set a timer from here.")
+
     def test_keyword_rules_know_the_new_kinds(self):
         self.assertEqual(issues.keyword_triage("Please remember that I pray at six.")["kind"], "teaching")
         self.assertEqual(issues.keyword_triage("I want to start a new project about my prayer parts.")["kind"], "project_proposal")
@@ -244,6 +268,20 @@ class IssuesHTTP(unittest.TestCase):
         self.assertEqual(listing["issues"][0]["priority"], "P2")
         self.assertEqual(self._call("GET", "/issues/bug-19990101-01")[0], 404)
         self.assertEqual(self._call("POST", "/issues", {"transcript": {}})[0], 400)
+
+    def test_tools_work_returns_before_triage_and_lists_the_origin(self):
+        report = {"report_id": "r-work-auto", "origin": "auto_escalation", "kind": "feature_request", "assistant_reply": "I cannot play music.", "transcript": {"segments": [{"t": 1, "text": "Play some worship music.", "source": "conversation"}]}, "context": {"node": "conversation", "mode_before": "available"}}
+        self.inference.delay = 0.1  # per streamed word: a triage of a few seconds must not hold the acknowledgement
+        started = time.monotonic()
+        status, body = self._call("POST", "/tools/work", report)
+        elapsed = time.monotonic() - started
+        self.assertEqual((status, body["status"], body["kind_hint"]), (201, "recorded", "feature_request"))
+        self.assertLess(elapsed, 0.9, f"/tools/work took {elapsed:.3f}s: it must return before the triage")
+        self.assertEqual(self._call("GET", "/issues")[1]["issues"][0]["origin"], "auto_escalation")
+        status, ticket = self._call("GET", f"/issues/{body['ticket_id']}")
+        self.assertEqual(ticket["assistant_reply"], "I cannot play music.")
+        # The slow triage finishes before the test ends, so no reader thread outlives it.
+        self.assertTrue(_wait(lambda: self._call("GET", f"/issues/{body['ticket_id']}")[1]["triage"]["state"] == "done", timeout=30))
 
     def test_kind_hint_over_http_and_the_feed_route(self):
         status, body = self._call("POST", "/issues", {**REPORT, "report_id": "r-hint", "kind": "teaching"})

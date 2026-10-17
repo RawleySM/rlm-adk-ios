@@ -100,6 +100,8 @@ class FloorProcessor(FrameProcessor):
         self.bot_stopped_at = 0.0
         # True from the moment a transcript was forwarded to the LLM until the bot starts speaking.
         self.pending_turn = False
+        # Counts the user turns forwarded to the LLM (spoken or typed); the escalation watch keys on it.
+        self.turn_serial = 0
         self.events: list[dict] = []
         # The report in progress while the mode is ``bug`` (``start_bug`` / ``stop_bug``).
         self.bug: BugReport | None = None
@@ -709,6 +711,7 @@ class FloorProcessor(FrameProcessor):
                 await self.broadcast_interruption()
             if final:
                 self.pending_turn = True
+                self.turn_serial += 1
                 self.reading_state["last_user_text"] = text
                 await self.announce_node("turn")
 
